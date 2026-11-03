@@ -1,0 +1,16 @@
+node_modules
+dist
+.turbo
+*.tsbuildinfo
+.env
+.env.*
+.dev.vars
+.wrangler
+.wrangler-test
+apps/backend/public
+coverage
+playwright-report
+test-results
+.DS_Store
+*.log
+.idea

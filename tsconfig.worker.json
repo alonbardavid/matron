@@ -1,0 +1,11 @@
+{
+  // Everything that runs in the Worker, checked as one program: `pnpm type-check`.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "types": ["@cloudflare/workers-types", "vite/client"] },
+  "include": [
+    "apps/backend/src/**/*",
+    "apps/backend/vite.config.ts",
+    "backend/*/src/**/*",
+    "shared/*/src/**/*"
+  ]
+}

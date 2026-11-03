@@ -1,0 +1,57 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Local development config. Every deploy uses the config that
+  // scripts/gen-wrangler-config.mjs generates from the build output.
+  "name": "matron-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-13",
+  "compatibility_flags": [
+    "nodejs_compat",
+    // A fetch to a Preview on the same zone must go back through the front
+    // door rather than to the zone's origin.
+    "global_fetch_strictly_public",
+    "enhanced_error_serialization",
+  ],
+  // No "directory": vite build sets it to its client output.
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Every request runs the Worker first: which branch a request belongs to is
+    // only known there. Main's asset layer would otherwise answer a page path
+    // with main's index.html and a branch's bundle with its own fallback.
+    "run_worker_first": true,
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": true, "head_sampling_rate": 1 },
+  },
+  // Never add a database_id: the generated config carries the target's.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "matron-local",
+      "migrations_dir": "../../migrations",
+    },
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "matron-local" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BUILD_SESSIONS", "class_name": "BuildSessionObject" },
+      { "name": "BUILDERS", "class_name": "BuilderObject" },
+    ],
+  },
+  "exports": {
+    "BuildSessionObject": { "type": "durable-object", "storage": "sqlite" },
+    "BuilderObject": { "type": "durable-object", "storage": "sqlite" },
+  },
+  "send_email": [{ "name": "SEND_EMAIL" }],
+  "images": { "binding": "IMAGES" },
+  "vars": {
+    "APP_ORIGIN": "http://localhost:5173",
+    "BETTER_AUTH_SECRET": "local-dev-secret-please-change-3f9a1c7d8e2b4506",
+    "SIGNING_KEY": "local-dev-signing-key-please-change-91ab2c7d",
+    "CLOUDFLARE_API_TOKEN": "",
+    // Everything else (database, bucket, repository, image) is named after the Worker.
+    "WORKER_NAME": "matron-local",
+  },
+}

@@ -1,0 +1,11 @@
+.matron-markdown > :first-child {
+  margin-top: 0;
+}
+
+.matron-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.matron-markdown pre {
+  overflow-x: auto;
+}

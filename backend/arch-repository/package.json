@@ -1,0 +1,15 @@
+{
+  "name": "@backend/arch-repository",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@backend/commons": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1"
+  }
+}

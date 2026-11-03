@@ -1,0 +1,30 @@
+{
+  "name": "@frontend/root",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@mantine/core": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
+    "@mantine/form": "^7.17.8",
+    "@mantine/notifications": "^7.17.8",
+    "@frontend/ds": "workspace:*",
+    "@frontend/api": "workspace:*",
+    "@frontend/auth": "workspace:*",
+    "@frontend/branches": "workspace:*",
+    "@frontend/build": "workspace:*",
+    "@frontend/todo-list": "workspace:*",
+    "react-router-dom": "^7.13.1",
+    "@tanstack/react-query": "^5.96.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "vite": "^7.1.0"
+  }
+}

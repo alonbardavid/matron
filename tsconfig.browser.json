@@ -1,0 +1,15 @@
+{
+  // Everything that runs in the browser, checked as one program: `pnpm type-check`.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  },
+  "include": [
+    "apps/frontend/src/**/*",
+    "apps/frontend/vite.config.ts",
+    "frontend/*/src/**/*",
+    "shared/*/src/**/*"
+  ]
+}

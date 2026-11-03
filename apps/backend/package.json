@@ -1,0 +1,38 @@
+{
+  "name": "@app/backend",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../../scripts/assemble-assets.mjs && vite build",
+    "dev": "vite dev",
+    "clean": "rm -rf dist public .wrangler *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@backend/api": "workspace:*",
+    "@backend/arch-api": "workspace:*",
+    "@backend/arch-auth": "workspace:*",
+    "@backend/arch-branches": "workspace:*",
+    "@backend/arch-builder": "workspace:*",
+    "@backend/arch-planner": "workspace:*",
+    "@backend/arch-repository": "workspace:*",
+    "@backend/arch-routing": "workspace:*",
+    "@backend/arch-sessions": "workspace:*",
+    "@backend/commons": "workspace:*",
+    "@backend/db-models": "workspace:*",
+    "@backend/todo": "workspace:*",
+    "@cloudflare/containers": "^0.3.7",
+    "@shared/contract": "workspace:*",
+    "better-auth": "^1.7.7",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.7.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@app/frontend": "workspace:*",
+    "@cloudflare/vite-plugin": "^1.63.1",
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "vite": "^7.1.0",
+    "wrangler": "^4.149.0"
+  }
+}

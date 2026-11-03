@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@backend/api/*": ["./backend/api/src/*"],
+      "@backend/arch-api/*": ["./backend/arch-api/src/*"],
+      "@backend/arch-auth/*": ["./backend/arch-auth/src/*"],
+      "@backend/arch-branches/*": ["./backend/arch-branches/src/*"],
+      "@backend/arch-builder/*": ["./backend/arch-builder/src/*"],
+      "@backend/arch-planner/*": ["./backend/arch-planner/src/*"],
+      "@backend/arch-repository/*": ["./backend/arch-repository/src/*"],
+      "@backend/arch-routing/*": ["./backend/arch-routing/src/*"],
+      "@backend/arch-sessions/*": ["./backend/arch-sessions/src/*"],
+      "@backend/commons/*": ["./backend/commons/src/*"],
+      "@backend/db-models/*": ["./backend/db-models/src/*"],
+      "@backend/todo/*": ["./backend/todo/src/*"],
+      "@shared/contract/*": ["./shared/contract/src/*"],
+      "@frontend/api/*": ["./frontend/api/src/*"],
+      "@frontend/auth/*": ["./frontend/auth/src/*"],
+      "@frontend/branches/*": ["./frontend/branches/src/*"],
+      "@frontend/build/*": ["./frontend/build/src/*"],
+      "@frontend/ds/*": ["./frontend/ds/src/*"],
+      "@frontend/root/*": ["./frontend/root/src/*"],
+      "@frontend/todo-list/*": ["./frontend/todo-list/src/*"]
+    }
+  }
+}

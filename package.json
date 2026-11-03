@@ -1,0 +1,52 @@
+{
+  "name": "matron",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A self-releasing household organizer on Cloudflare Workers",
+  "license": "MIT",
+  "packageManager": "pnpm@10.23.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"blue,magenta\" --kill-others --raw \"pnpm --filter @app/backend dev\" \"pnpm --filter @app/frontend dev\"",
+    "type-check": "node scripts/type-check.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "test": "pnpm --filter tests test",
+    "db:new": "node scripts/new-migration.mjs",
+    "db:migrate": "pnpm --filter @app/backend exec wrangler d1 migrations apply DB --local",
+    "deploy": "pnpm type-check && pnpm build && node scripts/deploy.mjs",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.15.0",
+    "better-auth": "^1.7.7",
+    "concurrently": "^9.1.2",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "turbo": "^2.5.0",
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.1",
+    "typescript-native": "npm:typescript@7.0.2",
+    "vite": "^7.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "kysely": "0.28.17",
+      "drizzle-orm>@opentelemetry/api": "-"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd",
+      "@playwright/test",
+      "better-sqlite3"
+    ]
+  }
+}

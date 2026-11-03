@@ -1,0 +1,38 @@
+{
+  "name": "@app/frontend",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --port 5173",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@frontend/api": "workspace:*",
+    "@frontend/auth": "workspace:*",
+    "@frontend/branches": "workspace:*",
+    "@frontend/build": "workspace:*",
+    "@frontend/ds": "workspace:*",
+    "@frontend/root": "workspace:*",
+    "@frontend/todo-list": "workspace:*",
+    "@shared/contract": "workspace:*",
+    "@mantine/core": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
+    "@mantine/form": "^7.17.8",
+    "@mantine/notifications": "^7.17.8",
+    "@tanstack/react-query": "^5.96.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.13.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "postcss": "^8.5.9",
+    "postcss-preset-mantine": "^1.18.0",
+    "postcss-simple-vars": "^7.0.1",
+    "vite": "^7.1.0"
+  }
+}

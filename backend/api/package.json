@@ -1,0 +1,19 @@
+{
+  "name": "@backend/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@backend/commons": "workspace:*",
+    "@backend/todo": "workspace:*",
+    "@orpc/openapi": "1.15.4",
+    "@orpc/server": "1.15.4",
+    "@shared/contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1"
+  }
+}

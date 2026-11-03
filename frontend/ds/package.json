@@ -1,0 +1,26 @@
+{
+  "name": "@frontend/ds",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@mantine/core": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
+    "@mantine/form": "^7.17.8",
+    "@mantine/notifications": "^7.17.8",
+    "mantine-form-zod-resolver": "^1.3.0",
+    "zod": "^4.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "vite": "^7.1.0"
+  }
+}
