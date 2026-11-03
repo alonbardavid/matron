@@ -1,4 +1,4 @@
-import { eventIterator, oc } from "@orpc/contract";
+import { oc } from "@orpc/contract";
 import { z } from "zod";
 
 export const BUILD_SESSION_STATUSES = [
@@ -89,55 +89,21 @@ export const chatFrameSchema = z.discriminatedUnion("type", [
 export type ChatFrame = z.infer<typeof chatFrameSchema>;
 
 /**
- * Sent once per subscription, after the transcript replay: the client has
+ * Sent once per connection, after the transcript replay: the client has
  * everything stored so far and what follows is live. Not kept in the transcript.
  */
 export const syncedFrameSchema = z.object({ type: z.literal("synced") });
 
-/** What a subscription yields: transcript frames and the sync marker. */
+/** What the server sends: transcript frames and the sync marker. */
 export const serverFrameSchema = z.union([chatFrameSchema, syncedFrameSchema]);
 export type ServerFrame = z.infer<typeof serverFrameSchema>;
 
-export const chatMessageSchema = z.object({
+/** What the client sends on the socket: a user message. The server stamps id, ts and role and broadcasts it. */
+export const clientFrameSchema = z.object({
+  type: z.literal("send"),
   text: z.string().trim().min(1).max(20_000),
 });
-
-/**
- * An event iterator whose events the server may send later, by hand, from a
- * hibernating Durable Object: oRPC's hibernation iterator carries no events to
- * validate, so it passes through; any other iterator is validated event by event.
- */
-function hibernatingEventIterator<T extends z.ZodType>(yields: T) {
-  const inner = eventIterator(yields);
-  const standard = inner["~standard"];
-  return {
-    "~standard": {
-      ...standard,
-      validate: (value: unknown) =>
-        typeof value === "object" && value !== null && "hibernationCallback" in value
-          ? { value: value as never }
-          : standard.validate(value),
-    },
-  } as typeof inner;
-}
-
-/**
- * The chat procedures. They are served over the WebSocket at
- * `sessionSocketPath`, by the session's Durable Object, not over HTTP, so they
- * are not part of the router's HTTP contract.
- */
-export const sessionChatContract = {
-  /**
-   * The transcript from after `after` (all of it when unknown or absent),
-   * then a `synced` frame, then everything new while the socket stays open.
-   */
-  subscribe: oc
-    .input(z.object({ after: z.string().optional() }))
-    .output(hibernatingEventIterator(serverFrameSchema)),
-  /** A user message; the server stamps id, ts and role and broadcasts it. */
-  send: oc.input(chatMessageSchema),
-};
-export type SessionChatContract = typeof sessionChatContract;
+export type ClientFrame = z.infer<typeof clientFrameSchema>;
 
 /** Where the router upgrades a session's chat socket. */
 export function sessionSocketPath(sessionId: string): string {

@@ -7,20 +7,21 @@
     "clean": "rm -rf *.tsbuildinfo"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@backend/arch-auth": "workspace:*",
     "@mantine/core": "^7.17.8",
-    "@mantine/hooks": "^7.17.8",
     "@mantine/form": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
     "@mantine/notifications": "^7.17.8",
-    "@shared/contract": "workspace:*",
     "@orpc/client": "1.15.4",
+    "@orpc/contract": "1.15.4",
     "@orpc/openapi-client": "1.15.4",
     "@orpc/tanstack-query": "1.15.4",
+    "@shared/contract": "workspace:*",
     "@tanstack/react-query": "^5.96.2",
+    "agents": "0.32.0",
     "better-auth": "^1.7.7",
-    "@backend/arch-auth": "workspace:*",
-    "@orpc/contract": "1.15.4"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.1",

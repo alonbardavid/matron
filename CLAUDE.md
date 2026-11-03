@@ -14,7 +14,8 @@ in place, never append history.
 - `backend/arch-api` and `backend/api` — the router's and the application's oRPC
   procedures: `routes/*` implement that side's contract, `handler.ts` serves them.
 - `apps/frontend` — the SPA shell: `main.tsx` wiring only. Screens live in feature packages.
-- `apps/builder` — the builder container: Dockerfile, the agent runner, its prompts.
+- `apps/builder` — the builder image: Dockerfile, the container harness daemon (`src/daemon.ts`)
+  that runs the step commands (`src/cli.ts`) and the coding agent, its prompts and hook.
 - `backend/<feature>` — one package per concern, code under `src/`: `service.ts` (logic and
   authorization), other files as needed. `backend/commons` is cross-cutting low-level code
   (ids, logger, crypto, errors). `backend/db-models` holds every drizzle table.

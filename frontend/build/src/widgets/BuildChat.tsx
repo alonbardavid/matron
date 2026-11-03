@@ -36,7 +36,9 @@ function groupProgress(frames: ChatFrame[]): (ChatFrame | ProgressFrame[])[] {
 export function BuildChat() {
   const { opened, sessionId, close, pending, clearPending, openWithMessage } =
     useBuildChat();
-  const { messages, status, synced, send } = useChatSocket(opened ? sessionId : null);
+  const { messages, status, synced, phase, send } = useChatSocket(
+    opened ? sessionId : null,
+  );
   const sessions = useSessions();
   const create = useCreateSession();
   const queryClient = useQueryClient();
@@ -87,7 +89,10 @@ export function BuildChat() {
       title={
         <Group gap="sm">
           <Text fw={600}>{draft ? "New session" : (session?.title ?? "Build")}</Text>
-          {session && <SessionStatusBadge status={session.status} archived={archived} />}
+          {session && (
+            // The object's phase arrives as it changes; the row catches up on the next refetch.
+            <SessionStatusBadge status={phase ?? session.status} archived={archived} />
+          )}
         </Group>
       }
       styles={{

@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Backend on 8301 (vite dev + Cloudflare plugin, state in apps/backend/.wrangler-test),
 // frontend on 5173 proxying /api to it. global-setup.ts migrates and seeds the test DB.
+// Servers already listening are reused outside CI, and in the builder, which keeps
+// them warm between runs (MATRON_WARM_SERVERS).
+const reuseServers = !process.env.CI || process.env.MATRON_WARM_SERVERS === "1";
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./global-setup.ts",
@@ -22,7 +25,7 @@ export default defineConfig({
       command: "pnpm exec vite dev",
       cwd: "../apps/backend",
       url: "http://localhost:8301/api/arch/health",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: reuseServers,
       timeout: 120_000,
       env: { WORKER_PERSIST_TO: ".wrangler-test" },
     },
@@ -30,7 +33,7 @@ export default defineConfig({
       command: "pnpm --filter @app/frontend dev",
       cwd: "..",
       url: "http://localhost:5173",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: reuseServers,
       timeout: 120_000,
     },
   ],

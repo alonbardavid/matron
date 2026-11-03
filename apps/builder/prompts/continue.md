@@ -11,7 +11,8 @@ finish with `git commit --no-edit`. `git diff HEAD...origin/main` shows what mai
 
 Then continue the work. If the reply answers a question you asked, proceed with the change.
 If it is a new request on the same branch, implement it the same way: read the relevant
-code, keep the change self-contained, type-check, run the tests, and finish with `status: done`. If the
+code, keep the change self-contained, type-check, run the tests that might be affected, and finish
+with `status: done`. If the
 reply only asks to bring the branch up to date, the merge is the whole change.
 
 Never run `git fetch`, `git pull` or `git push`: the workspace has no credentials for the

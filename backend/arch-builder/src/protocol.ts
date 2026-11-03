@@ -1,86 +1,56 @@
 /**
  * The protocol between the BuilderObject (a Durable Object in the Worker) and
- * the builder container (apps/builder). This file is the contract both sides
- * are written against; it has no runtime dependencies so the container can
- * import it as plain types.
+ * the builder image (apps/builder). This file is the contract both sides are
+ * written against; it has no runtime dependencies so the image can mirror it
+ * as plain types (apps/builder/src/types.ts).
  *
  * Transport
  * ---------
- * The container listens on TCP port {@link BUILDER_PORT} (8080). The Durable
- * Object reaches it through `ctx.container.getTcpPort(8080)`, so the host part
- * of the URL is meaningless; only the path and method matter. The container
- * never calls the production URL and never opens a connection to the Worker:
- * the Durable Object opens one WebSocket into the container and both sides
- * talk on it for as long as the container runs.
+ * The object drives the container through the Agents SDK container harness.
+ * Every unit of work is one harness turn whose prompt is a JSON
+ * {@link TurnRequest}: a `step` runs `node /app/dist/cli.js <step>` in the
+ * container with the request on its stdin, an `agent` turn runs the coding
+ * agent in the checkout. The daemon in the image (`apps/builder/src/daemon.ts`)
+ * reports a step's lines as events and its last line as the turn's outcome;
+ * the harness keeps the operation durable, reattaches after an eviction and
+ * snapshots the workspace when the container idles. The container never
+ * calls the Worker.
  *
- * Endpoints
- * ---------
- * `GET /health`
- *   200 `{ ok: true }` as soon as the server accepts requests. The Durable
- *   Object retries this after `start()` (fresh or from a snapshot) until it
- *   answers, then posts the job.
+ * Steps
+ * -----
+ * A step prints {@link StepLine}s, one JSON object per line: `progress` is a
+ * step the user watches in the chat ("cloning", "running pnpm build"), `log`
+ * is command output for operators, and the last line is `result` with the
+ * step's data or `error` with a readable message (exit code 1). Anything
+ * that is not JSON is treated as a log line.
  *
- * `POST /jobs`  body: {@link BuilderJob}  → 202 (or 409 if a job is running)
- *   Starts the job in the background. The job carries every credential the
- *   container needs; nothing is read from the environment except what the
- *   Durable Object also put there (CLOUDFLARE_API_TOKEN & co.). The container
- *   must keep running after the job finishes so the Durable Object can read
- *   the last events and take a snapshot.
+ *   prepare-build      clone `repository.remote`, cut `branch.name` from `branch.baseCommit`
+ *   prepare-continue   reuse the restored checkout (or clone the branch), fetch main → {@link PrepareContinueResult}
+ *   prepare-cleanup    make sure the repository's dependencies exist for a cleanup
+ *   install            pnpm install, skipped when the lockfile is already installed
+ *   verify             type-check, build, tests → {@link VerifyResult}
+ *   commit-push        commit the working tree with the input's message and push the branch → {@link CommitPushResult}
+ *   deploy-preview     build, clone the production D1 into `branch.databaseName` if needed, migrate it, deploy the Preview → {@link DeployResult}
+ *   merge-main         fast-forward main onto the branch and push it (fails when main diverged) → {@link MergeMainResult}
+ *   deploy-production  build, migrate the production D1, deploy production
+ *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
  *
- *   mode "build":    clone `repository.remote`, create `branch.name` from
- *                    `branch.baseCommit`, run the coding agent with `plan`,
- *                    then test, commit (summary + `request` + reasoning), push,
- *                    clone the production D1 into `branch.databaseName`, apply
- *                    the branch's migrations to it, deploy the Preview named
- *                    `branch.previewName` with `builderImage` as the container
- *                    reference and `signingKey` as a Preview secret,
- *                    and emit `deployed` with the preview URL, the D1 id and
- *                    the head commit.
- *   mode "continue": the user sent `message` after the container stopped. The
- *                    container is usually restored from a snapshot and still
- *                    has its workspace; when the workspace is missing (first
- *                    start without a snapshot) it clones `branch.name` first.
- *                    It feeds `message` to the agent and ends the same way as
- *                    "build": redeploy, then `deployed`.
- *   mode "merge":    fast-forward main onto `branch.name` (fail with
- *                    `failed` if main has diverged), push main, apply the
- *                    branch's pending migrations to `cloudflare.productionDatabaseName`,
- *                    deploy production (`cloudflare.workerName`), delete the
- *                    branch's D1, the Preview and the objects under the
- *                    branch's R2 prefix, delete the branch, then emit `merged`.
- *   mode "abandon":  the cleanup half of merge only, then `abandoned`.
- *
- * `GET /ws?after=<seq>`  WebSocket upgrade
- *   The connection. The container first replays every event with `seq`
- *   greater than `after`, in order, then pushes each new {@link BuilderEvent}
- *   as one JSON text frame. `seq` starts at 1 and never repeats inside one
- *   container life; a container restored from a snapshot must continue from
- *   the stored counter, never restart at 1, or the Durable Object will miss
- *   events (it keeps the last seq it saw across restores). The Durable Object
- *   reconnects with its last seq whenever the connection drops.
- *
- *   Frames from the Durable Object are {@link BuilderSocketFrame}: a user
- *   reply while a job is running or `waiting`. The container buffers it until
- *   the agent asks for direction, or hands it over immediately when the agent
- *   is waiting. After `waiting` it must emit `building` once it resumes work.
+ * The object sequences them: build and continue jobs run prepare, install,
+ * agent turns until the agent is done (a question parks the job as `waiting`
+ * until the user replies), verify with up to three fix turns, commit-push,
+ * deploy-preview; a merge runs merge-main, install, deploy-production,
+ * cleanup; an abandon runs prepare-cleanup, cleanup.
  *
  * Status rules
  * ------------
- * A status event is the only way the container changes what the user sees:
- *   idle → building → (waiting ↔ building)* → deploying → deployed | failed
- *   idle → merging → merged | failed
- *   idle → abandoning → abandoned | failed
- * `waiting`, `deployed`, `failed`, `merged` and `abandoned` make the Durable
- * Object snapshot (build/continue modes) and stop the container, after a grace
- * period of five minutes for `waiting`. The container must therefore emit
- * them only once its filesystem is quiescent: files flushed, no background
- * process writing. Every `message` event is relayed to the chat verbatim as
- * markdown from the builder; `progress` events are the steps the user watches
- * in the chat ("cloning", "running pnpm build"); `log` events are for operators only.
+ * The object reports to the session:
+ *   building → (waiting ↔ building)* → deploying → deployed | failed
+ *   merging → merged | failed
+ *   abandoning → abandoned | failed
+ * A job parked as `waiting` runs nothing; the harness snapshots and stops
+ * the container after its idle timeout (five minutes) and restores it for
+ * the next turn.
  */
-
-/** The TCP port the container serves on. */
-export const BUILDER_PORT = 8080;
 
 export type BuilderMode = "build" | "continue" | "merge" | "abandon";
 
@@ -163,32 +133,80 @@ export interface AbandonJob extends BuilderJobBase {
 
 export type BuilderJob = BuildJob | ContinueJob | MergeJob | AbandonJob;
 
-/** A frame from the Durable Object to the container. */
-export interface BuilderSocketFrame {
-  type: "message";
-  text: string;
+export type StepName =
+  | "prepare-build"
+  | "prepare-continue"
+  | "prepare-cleanup"
+  | "install"
+  | "verify"
+  | "commit-push"
+  | "deploy-preview"
+  | "merge-main"
+  | "deploy-production"
+  | "cleanup";
+
+/** How the agent's prompt for one turn is built; the templates live in the image. */
+export type AgentPrompt =
+  | { kind: "build"; extra: string }
+  | { kind: "continue"; message: string; sync: string }
+  | { kind: "fix"; command: string; output: string };
+
+/** What a step reads besides the job, when it needs more. */
+export interface StepInput {
+  summary: string;
+  reasoning: string;
+  request: string;
 }
 
-/** What a status event may carry; only `deployed` and `failed` use it. */
+/** A harness turn's prompt: a step to run, or a turn of the coding agent. */
+export type TurnRequest =
+  | { kind: "step"; step: StepName; job: BuilderJob; input?: StepInput }
+  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob };
+
+export type StepLine =
+  | { type: "progress"; text: string }
+  | { type: "log"; text: string }
+  | { type: "result"; data: unknown }
+  | { type: "error"; message: string; output?: string };
+
+/** What the coding agent returns at the end of a turn. */
+export interface AgentOutcome {
+  status: "done" | "question" | "blocked";
+  summary: string;
+  reasoning: string;
+  message: string;
+}
+
+export interface PrepareContinueResult {
+  sync: string;
+}
+export interface VerifyResult {
+  failure: { label: string; output: string } | null;
+}
+export interface CommitPushResult {
+  committed: boolean;
+}
+export interface MergeMainResult {
+  headCommit: string;
+}
+export interface DeployResult {
+  previewUrl: string;
+  databaseId: string;
+  headCommit: string;
+  /** The commit of main the branch contains after this deploy; the merge check compares it with main's head. */
+  baseCommit: string;
+}
+
+/** What a status report may carry; only `deployed`, `merged` and `failed` use it. */
 export interface BuilderStatusDetail {
   previewUrl?: string;
   databaseId?: string;
   headCommit?: string;
-  /** The commit of main the branch contains after this deploy; the merge check compares it with main's head. */
   baseCommit?: string;
   error?: string;
 }
 
-export type BuilderEvent = { seq: number; ts: number } & (
-  | { type: "message"; text: string }
-  | { type: "status"; status: BuilderStatus; detail?: BuilderStatusDetail }
-  // A step worth showing in the chat; relayed as a `progress` frame.
-  | { type: "progress"; text: string }
-  // Raw command output; logged for operators only.
-  | { type: "log"; text: string }
-);
-
-/** Statuses after which the container has nothing more to do for this job. */
+/** Statuses after which there is nothing more to do for a job. */
 export type TerminalStatus = "deployed" | "failed" | "merged" | "abandoned";
 export const TERMINAL_STATUSES: ReadonlySet<BuilderStatus> = new Set<TerminalStatus>([
   "deployed",

@@ -1,6 +1,12 @@
 /**
- * The HTTP protocol between the Worker's BuilderObject and this container.
- * Mirrors `backend/arch-builder/src/protocol.ts` on the Worker side.
+ * What the Worker's BuilderObject and this image agree on. Mirrors
+ * `backend/arch-builder/src/protocol.ts` on the Worker side.
+ *
+ * The object drives the container through the Agents SDK container harness:
+ * every unit of work is one harness turn, whose prompt is a JSON
+ * {@link TurnRequest}. The daemon in this image (`daemon.ts`) runs a step
+ * turn as `node /app/dist/cli.js <step>` and an agent turn as the coding
+ * agent's CLI in the checkout.
  */
 
 export type JobMode = "build" | "continue" | "merge" | "abandon";
@@ -31,47 +37,52 @@ export type BuilderJob = {
   builderImage?: string;
 };
 
-export type BuilderStatus =
-  | "idle"
-  | "building"
-  | "waiting"
-  | "deploying"
-  | "deployed"
-  | "merging"
-  | "merged"
-  | "abandoning"
-  | "abandoned"
-  | "failed";
+/** The step commands: `node /app/dist/cli.js <step>`. */
+export type StepName =
+  | "prepare-build"
+  | "prepare-continue"
+  | "prepare-cleanup"
+  | "install"
+  | "verify"
+  | "commit-push"
+  | "deploy-preview"
+  | "merge-main"
+  | "deploy-production"
+  | "cleanup";
 
-export type StatusDetail = {
-  previewUrl?: string;
-  databaseId?: string;
-  headCommit?: string;
-  /** The commit of main the branch now contains; the merge check compares it with main's head. */
-  baseCommit?: string;
-  error?: string;
-};
+/** How the agent's prompt for one turn is built; the templates live in /app/prompts. */
+export type AgentPrompt =
+  | { kind: "build"; extra: string }
+  | { kind: "continue"; message: string; sync: string }
+  | { kind: "fix"; command: string; output: string };
 
-export type BuilderEventBody =
-  | { type: "message"; text: string }
-  | { type: "status"; status: BuilderStatus; detail?: StatusDetail }
-  // A step the user may watch in the chat ("cloning", "running pnpm build").
+/** What a step reads besides the job, when it needs more. */
+export type StepInput = { summary: string; reasoning: string; request: string };
+
+/** A harness turn's prompt: a step to run, or a turn of the coding agent. */
+export type TurnRequest =
+  | { kind: "step"; step: StepName; job: BuilderJob; input?: StepInput }
+  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob };
+
+/** One line of a step's output; anything that is not JSON is a log line. */
+export type StepLine =
   | { type: "progress"; text: string }
-  // Raw command output; operators only.
-  | { type: "log"; text: string };
+  | { type: "log"; text: string }
+  | { type: "result"; data: unknown }
+  | { type: "error"; message: string; output?: string };
 
-export type BuilderEvent = { seq: number; ts: number } & BuilderEventBody;
-
-/** What the Worker sends down the socket. */
-export type SocketFrame = { type: "message"; text: string };
-
-/** What the coding agent returns at the end of a turn (the --json-schema). */
+/** What the coding agent returns at the end of a turn (the structured output). */
 export type AgentOutcome = {
   status: "done" | "question" | "blocked";
   summary: string;
   reasoning: string;
   message: string;
 };
+
+export type PrepareContinueResult = { sync: string };
+export type VerifyResult = { failure: { label: string; output: string } | null };
+export type CommitPushResult = { committed: boolean };
+export type MergeMainResult = { headCommit: string };
 
 export type DeployResult = {
   previewUrl: string;

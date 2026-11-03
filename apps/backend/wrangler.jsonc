@@ -11,6 +11,8 @@
     // door rather than to the zone's origin.
     "global_fetch_strictly_public",
     "enhanced_error_serialization",
+    // `ctx.exports`, which the builder's container harness uses for its egress.
+    "enable_ctx_exports",
   ],
   // No "directory": vite build sets it to its client output.
   "assets": {

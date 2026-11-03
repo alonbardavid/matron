@@ -1,5 +1,4 @@
-import { DurableObject } from "cloudflare:workers";
-import { ORPCError } from "@orpc/server";
+import { Agent, type Connection, type ConnectionContext, type WSMessage } from "agents";
 import {
   branchForSession,
   createBranch,
@@ -9,7 +8,6 @@ import {
 import { logger } from "@backend/commons/logger";
 import { ROLES, type Principal, type Role } from "@backend/commons/principal";
 import type { BuilderStatusDetail } from "@backend/arch-builder/protocol";
-import type { SessionsEnv } from "./env";
 import { sessionStatusFor, type RelayedStatus } from "@backend/arch-builder/events";
 import { buildJob } from "@backend/arch-builder/jobs";
 import { mainHead } from "@backend/arch-repository/service";
@@ -20,15 +18,18 @@ import {
   DEPLOYED_MESSAGE,
   SESSION_CLOSED_MESSAGE,
 } from "./messages";
-import type { ChatFrame, ChatRole, ServerFrame } from "@shared/contract/arch/sessions";
-import { chatHandler, encodeFrame } from "./chat-router";
+import {
+  clientFrameSchema,
+  type ChatFrame,
+  type ChatRole,
+  type ServerFrame,
+} from "@shared/contract/arch/sessions";
 import {
   markSessionArchived,
   setSessionStatus,
   touchSession,
   setSessionTitle,
   SOCKET_HEADERS,
-  setSessionSnapshot,
 } from "./service";
 import { Transcript } from "./transcript";
 
@@ -36,77 +37,94 @@ const log = logger("arch-sessions/session-object");
 
 type Phase = "planning" | "building" | "waiting" | "deployed" | "failed" | "closed";
 
-/**
- * Who is behind a socket and, once they subscribed, the id their frames are
- * sent under; kept on the socket so it survives hibernation.
- */
+/** Synced to every connected client as it changes. */
+export interface SessionState {
+  phase: Phase;
+}
+
+/** Who is behind a connection; kept on it so it survives hibernation. */
 interface Attachment {
   principal: Principal;
-  iteratorId?: string;
 }
 
 const TITLE_LENGTH = 80;
 
 /**
- * One build session: the chat sockets, the transcript, the planner, and the
- * bridge to the builder. Named by the session id. The sockets carry the chat
- * contract (`sessionChatContract`): a subscription replays the transcript and
- * then receives every frame the object broadcasts.
+ * One build session: the chat connections, the transcript, the planner, and
+ * the bridge to the builder. Named by the session id. An Agent: its
+ * connections hibernate, and what it keeps lives in its SQLite storage. A new
+ * connection gets the transcript replayed from the frame it names, then a
+ * `synced` frame, then every frame the object broadcasts. Its state, the
+ * phase, is synced to every client as it changes.
  */
-export class BuildSessionObject extends DurableObject<SessionsEnv> {
+export class BuildSessionObject extends Agent<Cloudflare.Env, SessionState> {
+  initialState: SessionState = { phase: "planning" };
   private readonly transcript: Transcript;
-  private readonly chat = chatHandler({
-    subscribed: (ws, iteratorId, after) => this.subscribed(ws, iteratorId, after),
-    received: (ws, text) => this.received(ws, text),
-  });
   // User messages are handled one at a time: the planner must see its own
   // previous answer before it reads the next question.
-  private queue: Promise<void> = Promise.resolve();
+  private inbox: Promise<void> = Promise.resolve();
 
-  constructor(ctx: DurableObjectState, env: SessionsEnv) {
+  constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
     super(ctx, env);
     this.transcript = new Transcript(ctx.storage.sql);
-    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
+  // ── Connections ───────────────────────────────────────────────────────────
+
   /** The upgrade request the router forwarded, with the identity in headers. */
-  async fetch(request: Request): Promise<Response> {
-    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-      return new Response("Expected a WebSocket upgrade", { status: 426 });
-    }
+  async onConnect(
+    connection: Connection<Attachment>,
+    ctx: ConnectionContext,
+  ): Promise<void> {
+    const { request } = ctx;
     const sessionId = request.headers.get(SOCKET_HEADERS.sessionId);
     if (sessionId) this.transcript.set("sessionId", sessionId);
     const principal = readPrincipal(request.headers);
-    if (!principal) return new Response("Missing identity", { status: 401 });
-
-    const pair = new WebSocketPair();
-    const [client, server] = [pair[0], pair[1]];
-    this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ principal } satisfies Attachment);
+    if (!principal) {
+      connection.close(1008, "Missing identity");
+      return;
+    }
+    connection.setState({ principal });
     log.info("socket accepted", {
       sessionId: this.sessionId(),
       userId: principal.userId,
     });
-    return new Response(null, { status: 101, webSocket: client });
+    const after = new URL(request.url).searchParams.get("after");
+    for (const frame of this.transcript.listAfter(after)) this.send(connection, frame);
+    this.send(connection, { type: "synced" });
   }
 
-  /** A chat procedure call; oRPC decodes it and answers on the same socket. */
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.chat.message(ws, message, { context: { ws } });
-  }
-
-  webSocketClose(ws: WebSocket, code: number, reason: string): void {
-    log.debug("socket closed", { sessionId: this.sessionId(), code });
-    this.chat.close(ws);
-    try {
-      ws.close(code, reason);
-    } catch {
-      // Already closed by the peer.
+  /** A user message typed on a connection; handled in order. */
+  async onMessage(connection: Connection<Attachment>, message: WSMessage): Promise<void> {
+    if (typeof message !== "string") return;
+    const parsed = clientFrameSchema.safeParse(parseJson(message));
+    if (!parsed.success) {
+      this.send(connection, errorFrame("The message was not accepted"));
+      return;
     }
+    const principal = connection.state?.principal;
+    if (!principal) {
+      this.send(connection, errorFrame("Unknown connection"));
+      return;
+    }
+    this.inbox = this.inbox
+      .then(() => this.handleUserMessage(principal, parsed.data.text))
+      .catch((err) => {
+        log.error("user message failed", { err, sessionId: this.sessionId() });
+        this.broadcastFrame(errorFrame("Something went wrong handling your message"));
+      });
+    await this.inbox;
   }
 
-  webSocketError(_ws: WebSocket, error: unknown): void {
-    log.warn("socket error", { err: error, sessionId: this.sessionId() });
+  onClose(_connection: Connection, code: number): void {
+    log.debug("socket closed", { sessionId: this.sessionId(), code });
+  }
+
+  onError(connectionOrError: Connection | unknown, error?: unknown): void {
+    log.warn("socket error", {
+      err: error ?? connectionOrError,
+      sessionId: this.sessionId(),
+    });
   }
 
   // ── RPC from the BuilderObject ────────────────────────────────────────────
@@ -121,28 +139,22 @@ export class BuildSessionObject extends DurableObject<SessionsEnv> {
     this.setPhase("closed");
   }
 
-  /** Cleared: every message and state entry is gone; open sockets are closed. */
+  /** Cleared: every message and state entry is gone; open connections are closed. */
   async clear(): Promise<void> {
-    for (const ws of this.ctx.getWebSockets()) {
+    for (const connection of this.getConnections()) {
       try {
-        ws.close(1000, "cleared");
+        connection.close(1000, "cleared");
       } catch {
         // Already gone.
       }
     }
     this.transcript.wipe();
-    await this.ctx.storage.deleteAlarm();
     log.info("session cleared", { sessionId: this.sessionId() });
   }
 
   /** What the planner or builder is doing, shown in the chat as it happens. */
   async progress(text: string, kind?: "log"): Promise<void> {
-    this.broadcast(this.transcript.appendProgress(text, kind));
-  }
-
-  /** The builder's container snapshot handle, kept on the session row. */
-  async builderSnapshot(snapshot: ContainerSnapshot | null): Promise<void> {
-    await setSessionSnapshot(this.sessionId(), snapshot);
+    this.broadcastFrame(this.transcript.appendProgress(text, kind));
   }
 
   /** The builder's progress; the session row and the branch row follow it. */
@@ -193,36 +205,11 @@ export class BuildSessionObject extends DurableObject<SessionsEnv> {
     }
   }
 
-  // ── Chat procedures ───────────────────────────────────────────────────────
-
-  /** `subscribe`: the stored frames from after `after`, the sync marker, then live frames. */
-  private subscribed(ws: WebSocket, iteratorId: string, after: string | undefined): void {
-    const attachment = ws.deserializeAttachment() as Attachment | null;
-    if (!attachment) return;
-    ws.serializeAttachment({ ...attachment, iteratorId } satisfies Attachment);
-    for (const frame of this.transcript.listAfter(after ?? null)) this.send(ws, frame);
-    this.send(ws, { type: "synced" });
-  }
-
-  /** `send`: one user message at a time, in order. */
-  private async received(ws: WebSocket, text: string): Promise<void> {
-    const attachment = ws.deserializeAttachment() as Attachment | null;
-    if (!attachment)
-      throw new ORPCError("UNAUTHORIZED", { message: "Unknown connection" });
-    this.queue = this.queue
-      .then(() => this.handleUserMessage(attachment.principal, text))
-      .catch((err) => {
-        log.error("user message failed", { err, sessionId: this.sessionId() });
-        this.broadcast(errorFrame("Something went wrong handling your message"));
-      });
-    await this.queue;
-  }
-
   // ── Internals ─────────────────────────────────────────────────────────────
 
   private async handleUserMessage(who: Principal, text: string): Promise<void> {
     const sessionId = this.sessionId();
-    this.broadcast(this.transcript.append("user", text));
+    this.broadcastFrame(this.transcript.append("user", text));
     await touchSession(sessionId);
     if (!this.transcript.get<string>("title")) {
       const title = text.replace(/\s+/g, " ").trim().slice(0, TITLE_LENGTH);
@@ -263,7 +250,7 @@ export class BuildSessionObject extends DurableObject<SessionsEnv> {
       });
     } catch (err) {
       log.error("planner failed", { err, sessionId });
-      this.broadcast(errorFrame(`The planner is not available: ${messageOf(err)}`));
+      this.broadcastFrame(errorFrame(`The planner is not available: ${messageOf(err)}`));
       return;
     }
     if (reply.status === "plan" && reply.plan) {
@@ -276,7 +263,7 @@ export class BuildSessionObject extends DurableObject<SessionsEnv> {
         await this.startBuild(who, reply.plan);
       } catch (err) {
         log.error("build start failed", { err, sessionId });
-        this.broadcast(errorFrame(`The build could not start: ${messageOf(err)}`));
+        this.broadcastFrame(errorFrame(`The build could not start: ${messageOf(err)}`));
       }
     }
   }
@@ -344,26 +331,24 @@ export class BuildSessionObject extends DurableObject<SessionsEnv> {
 
   private setPhase(phase: Phase): void {
     this.transcript.set("phase", phase);
+    this.setState({ phase });
   }
 
   /** Stores a server message and sends it to everyone connected. */
   private post(role: Exclude<ChatRole, "user">, text: string): void {
-    this.broadcast(this.transcript.append(role, text));
+    this.broadcastFrame(this.transcript.append(role, text));
     void touchSession(this.sessionId()).catch((err: unknown) =>
       log.warn("touch failed", { err }),
     );
   }
 
-  private broadcast(frame: ServerFrame): void {
-    for (const ws of this.ctx.getWebSockets()) this.send(ws, frame);
+  private broadcastFrame(frame: ServerFrame): void {
+    this.broadcast(JSON.stringify(frame));
   }
 
-  /** To one socket's subscription; a socket that has not subscribed yet gets nothing. */
-  private send(ws: WebSocket, frame: ServerFrame): void {
-    const iteratorId = (ws.deserializeAttachment() as Attachment | null)?.iteratorId;
-    if (!iteratorId) return;
+  private send(connection: Connection, frame: ServerFrame): void {
     try {
-      ws.send(encodeFrame(iteratorId, frame));
+      connection.send(JSON.stringify(frame));
     } catch (err) {
       log.debug("send failed", { err });
     }
@@ -380,6 +365,14 @@ function readPrincipal(headers: Headers): Principal | null {
     email: headers.get(SOCKET_HEADERS.userEmail) ?? "",
     role: role as Role,
   };
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function errorFrame(text: string): ChatFrame {

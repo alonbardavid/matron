@@ -108,10 +108,9 @@ When the plan is agreed, the router starts a builder workflow.
 
 Once a session exists, all communication between the client and the session goes over the WebSocket. The only REST call is creating the session.
 
-The socket carries two oRPC procedures from the sessions contract, served by the session's Durable Object with oRPC's WebSocket adapter and hibernation plugin:
+The session's Durable Object is an Agent (Agents SDK); the client connects with the Agents SDK client, which reconnects on its own. On connect the server replays the transcript from after the frame id named in the `after` query parameter (all of it when absent or unknown), sends one `synced` frame, then sends every new frame live for as long as the socket is open. Connections hibernate between frames.
 
-- `subscribe({ after? })`: returns an event iterator. The server replays the transcript from after the frame id `after` (all of it when absent or unknown), yields one `synced` frame, then yields every new frame live for as long as the socket is open. The iterator is a hibernation iterator: the Durable Object sends its events by id, so it can sleep between them.
-- `send({ text })`: a user message. The server stamps the id, timestamp and role, stores it, and broadcasts it to every subscription. Rejected with an oRPC error when the text is blank or the connection is unknown.
+The client sends one frame type, `send`: `{ type: "send", text }`, a user message. The server stamps the id, timestamp and role, stores it, and broadcasts it to every connection. Blank text or an unknown connection get an `error` frame back.
 
 Every frame has a `type`, a session-unique `id`, and a `ts`. The Durable Object stores every frame but `synced` and `error` in the transcript, in order. Three stored frame types:
 
@@ -119,9 +118,7 @@ Every frame has a `type`, a session-unique `id`, and a `ts`. The Durable Object 
 - `progress`: `{ text, kind? }`. Server to client only: what the planner or builder is doing right now: a step (cloning, building, deploying), a thought, the agent's words, a tool call, or with `kind` `log` a run of command output. The client folds consecutive lines into one entry that shows the latest line and expands to all of them.
 - `error`: `{ text }`. Server to client only, not stored.
 
-The client sends a plain `ping` every 25 seconds; the Durable Object answers `pong` through the hibernation auto-response without waking.
-
-The relay between the container and the session uses the same shape: the container's Durable Object forwards the builder's messages into the session and the user's messages into the container.
+The builder's Durable Object posts the builder's messages and progress into the session the same way, and the user's replies reach the builder through it.
 
 ## Builder
 
@@ -129,13 +126,11 @@ Starting the builder:
 
 1. Creates a branch row in the production D1. The branch, its Preview and its database share one slug made from the planner's short name for the change, two plain words as a rule (`shopping-list`); a name a branch had before gets a digit (`shopping-list-2`).
 2. Mints a write token for the code repository through the Artifacts binding.
-3. Starts a container with the repository token, `CLOUDFLARE_API_TOKEN` for AI Gateway and deployment, and the plan.
+3. Starts a container and writes the job into it: the repository token, `CLOUDFLARE_API_TOKEN` for AI Gateway and deployment, and the plan.
 
-The container clones the repository, creates the branch from main, and runs the coding agent.
+The builder's Durable Object runs the job as a sequence of turns in the container, each a step (clone the repository and create the branch from main, install, verify, commit and push, deploy) or a turn of the coding agent. The container harness keeps each turn durable and relays its events into the session's chat; the job itself is checkpointed after every turn, so an evicted object resumes where it was. The agent's model calls leave the container through the harness, which adds the gateway and its credentials outside it. The container never calls the production URL or the Worker.
 
-The container never calls the production URL. Its Durable Object holds an open connection into the container; the builder writes messages and status (waiting, deployed, failed) on it, and the Durable Object relays them to the session's chat Durable Object. Replies travel the same way back.
-
-The builder talks to the planning agent, which talks to the user. Whenever the builder stops for direction it snapshots the container filesystem and waits. If no answer arrives within 5 minutes the container shuts down. When the chat continues after a shutdown, the builder starts from the last snapshot with the new information. The container uses the `durable_object` scheduling policy, which snapshots require.
+The builder talks to the planning agent, which talks to the user. Whenever the builder stops for direction it waits. If no answer arrives within 5 minutes the container filesystem is snapshotted and the container shuts down. When the chat continues after a shutdown, the builder starts from the last snapshot with the new information. The container uses the `durable_object` scheduling policy, which snapshots require.
 
 When development is finished the builder:
 

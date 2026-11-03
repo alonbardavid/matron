@@ -27,12 +27,13 @@ how a request moves through it.
 ## Building
 
 - `POST /api/arch/sessions` creates a session row; the chat is a WebSocket to the session's
-  `BuildSessionObject` (`backend/arch-sessions/src/session-object.ts`), which serves the chat
-  procedures of `shared/contract/src/arch/sessions.ts` on it (`chat-router.ts`: oRPC's WebSocket
-  adapter with the hibernation plugin), keeps the transcript in its SQLite storage and runs the
-  planner (`backend/arch-planner`: `planner.ts`, prompts in `prompts.ts`, the model call in
-  `model.ts`, which runs the SDK's tool runner with the repository tools in `tools.ts` so the
-  planner reads only the files it needs).
+  `BuildSessionObject` (`backend/arch-sessions/src/session-object.ts`), an Agent from the
+  Agents SDK: a connection gets the transcript replayed from the frame it names, then every
+  frame the object broadcasts (`shared/contract/src/arch/sessions.ts`), and the object keeps
+  the transcript in its SQLite storage and runs the planner (`backend/arch-planner`:
+  `planner.ts`, prompts in `prompts.ts`, the model call in `model.ts`, which runs the SDK's
+  tool runner with the repository tools in `tools.ts` so the planner reads only the files it
+  needs). The browser side is `frontend/api/src/socket.ts`, on the Agents SDK client.
 - When a plan is approved the session object creates the branch row
   (`backend/arch-branches/src/service.ts`) and hands a `BuildJob` to the `BuilderObject`
   (`backend/arch-builder/src/builder-object.ts`), the Durable Object that owns the builder
@@ -42,13 +43,18 @@ how a request moves through it.
 - The code repository (Artifacts) is reached only through `backend/arch-repository/src/service.ts`:
   main's head, the file listing, reading and searching behind the planner's tools, and the
   token a builder clones with.
-- The container (`apps/builder`) speaks the protocol in
-  `backend/arch-builder/src/protocol.ts`: the object posts the job over HTTP, then
-  holds one WebSocket into the container; builder events come up it and user messages go down
-  it, and a watchdog alarm reconnects after an eviction. The container clones the Artifacts repository, runs Claude Code, verifies, commits, pushes,
-  clones the production D1, deploys the Preview and reports `deployed`. The object relays
-  every builder message into the chat, snapshots the container filesystem when it pauses or
-  finishes, and restores it on the next user message.
+- The builder object is an Agent whose container harness (Agents SDK) owns the builder
+  container: it starts it from the image, runs every turn the object submits as a durable
+  operation, streams the turn's events, reattaches after an eviction, and snapshots the
+  workspace when the container has idled five minutes. A job is a fiber in the object: a
+  sequence of turns, each a step command or a turn of the coding agent
+  (`backend/arch-builder/src/protocol.ts` lists them), checkpointed after each, so an evicted
+  object resumes the job from its last checkpoint. The image (`apps/builder`) is the
+  harness's daemon with an adapter for both kinds of turn: a step runs `cli.ts`, an agent
+  turn runs the coding agent's CLI in the checkout, with hooks that enforce the runner's
+  rules and model calls routed through the harness's egress, which adds the gateway and its
+  credentials outside the container. A question from the agent parks the job until the user
+  replies.
 - Merge and abandon are jobs for the same container in `merge`/`abandon` mode
   (`backend/arch-builder/src/jobs.ts`).
 

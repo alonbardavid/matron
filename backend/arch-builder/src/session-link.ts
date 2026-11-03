@@ -10,5 +10,4 @@ export interface BuildSessionLink extends Rpc.DurableObjectBranded {
   progress(text: string, kind?: "log"): Promise<void>;
   relay(frame: { role: "builder"; text: string }): Promise<void>;
   builderStatus(status: RelayedStatus, detail?: BuilderStatusDetail): Promise<void>;
-  builderSnapshot(snapshot: ContainerSnapshot | null): Promise<void>;
 }

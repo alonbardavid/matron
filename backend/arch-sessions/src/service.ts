@@ -1,3 +1,4 @@
+import { getAgentByName } from "agents";
 import { desc, eq } from "drizzle-orm";
 import { canBranch } from "@backend/arch-auth/permissions";
 import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
@@ -123,9 +124,10 @@ export async function createSession(principal: Principal): Promise<BuildSession>
 
 /**
  * Upgrades the request to a WebSocket served by the session's Durable Object,
- * which speaks the chat contract on it. The identity travels in headers the
- * Durable Object trusts: only the router can reach it. Called from a plain
- * route, so refusals are answered here rather than thrown.
+ * which replays the transcript on it and then streams every new frame. The
+ * identity travels in headers the Durable Object trusts: only the router can
+ * reach it. Called from a plain route, so refusals are answered here rather
+ * than thrown.
  */
 export async function openSessionSocket(
   principal: Principal,
@@ -155,7 +157,7 @@ export async function openSessionSocket(
   headers.set(SOCKET_HEADERS.userEmail, principal.email);
   headers.set(SOCKET_HEADERS.userRole, principal.role);
   log.info("build session socket opened", { sessionId, userId: principal.userId });
-  const buildSession = sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
+  const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
   return buildSession.fetch(new Request(request, { headers }));
 }
 

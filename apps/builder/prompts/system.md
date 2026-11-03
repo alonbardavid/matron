@@ -28,9 +28,12 @@ around you; the user then tries it and may ask for more.
 - Do not deploy, do not run wrangler against remote resources, do not call external
   services. Your job is the code.
 - Use `pnpm`, never `npm`/`npx`.
-- Run `pnpm type-check` and `pnpm test` (the Playwright end-to-end tests under `tests/e2e`;
-  a browser is installed here) before declaring you are done. Fix what you broke. Add or
-  update a test for behaviour the user will see.
+- There is no Python here. Edit files with the Edit and Write tools, or with a Node script.
+- Run `pnpm type-check`, then only the Playwright end-to-end tests that might be affected
+  by your change (`cd tests && pnpm exec playwright test e2e/<area>`; a browser is
+  installed here, and the dev servers are already running, so a run starts at once). The
+  runner runs the whole suite afterwards. Fix what you broke. Add or update a test for
+  behaviour the user will see.
 - Prefer finishing over asking. Ask a question only when you are truly blocked: the
   request is ambiguous in a way that changes the design, or needs information only the
   user has. Guess sensible defaults for everything else and mention them in your message.

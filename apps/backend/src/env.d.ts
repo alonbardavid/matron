@@ -23,3 +23,10 @@ declare namespace Cloudflare {
     BUILDER_IMAGE?: string;
   }
 }
+
+declare namespace Cloudflare {
+  // Types `ctx.exports` after the main module, so the builder can reach `ContainerEgress`.
+  interface GlobalProps {
+    mainModule: typeof import("./index");
+  }
+}

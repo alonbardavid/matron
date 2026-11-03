@@ -14,6 +14,7 @@ export const REQUIRED_COMPAT_FLAGS = [
   "nodejs_compat",
   "global_fetch_strictly_public",
   "enhanced_error_serialization",
+  "enable_ctx_exports",
 ];
 
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
