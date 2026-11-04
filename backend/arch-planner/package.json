@@ -9,6 +9,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
     "@backend/arch-repository": "workspace:*",
+    "@backend/arch-settings": "workspace:*",
     "@backend/commons": "workspace:*",
     "@shared/contract": "workspace:*",
     "zod": "^4.1.0"

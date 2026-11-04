@@ -1,21 +1,22 @@
 import { expect, type Page } from "@playwright/test";
 import type { SeedUser } from "../seed-sql";
 
-/** Signs in through the UI and waits for the todo list to show. */
+/** Signs in through the UI and waits for the calendar, the first page. */
 export async function signIn(page: Page, user: SeedUser): Promise<void> {
   await page.goto("/");
   await page.getByLabel("Email").fill(user.email);
-  await page.getByLabel("Password").fill(user.password);
+  await page.getByLabel("Password", { exact: true }).fill(user.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(todoInput(page)).toBeVisible();
+  await expect(calendarHeading(page)).toBeVisible();
 }
 
-export function todoInput(page: Page) {
-  return page.getByPlaceholder("Add a todo");
+export function calendarHeading(page: Page) {
+  return page.getByRole("heading", { name: "Calendar", level: 2 });
 }
 
-export async function addTodo(page: Page, text: string): Promise<void> {
-  await todoInput(page).fill(text);
-  await todoInput(page).press("Enter");
-  await expect(page.getByRole("checkbox", { name: text })).toBeVisible();
+/** The navigation link, in the navbar on wide screens. */
+export function navLink(page: Page, name: string) {
+  return page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name, exact: true });
 }

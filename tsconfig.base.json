@@ -14,6 +14,7 @@
     "noEmit": true,
     "verbatimModuleSyntax": true,
     "paths": {
+      "@backend/access/*": ["./backend/access/src/*"],
       "@backend/api/*": ["./backend/api/src/*"],
       "@backend/arch-api/*": ["./backend/arch-api/src/*"],
       "@backend/arch-auth/*": ["./backend/arch-auth/src/*"],
@@ -23,17 +24,25 @@
       "@backend/arch-repository/*": ["./backend/arch-repository/src/*"],
       "@backend/arch-routing/*": ["./backend/arch-routing/src/*"],
       "@backend/arch-sessions/*": ["./backend/arch-sessions/src/*"],
+      "@backend/arch-settings/*": ["./backend/arch-settings/src/*"],
+      "@backend/ask/*": ["./backend/ask/src/*"],
+      "@backend/calendar/*": ["./backend/calendar/src/*"],
       "@backend/commons/*": ["./backend/commons/src/*"],
       "@backend/db-models/*": ["./backend/db-models/src/*"],
-      "@backend/todo/*": ["./backend/todo/src/*"],
-      "@shared/contract/*": ["./shared/contract/src/*"],
+      "@backend/household/*": ["./backend/household/src/*"],
+      "@backend/tasks/*": ["./backend/tasks/src/*"],
       "@frontend/api/*": ["./frontend/api/src/*"],
+      "@frontend/ask/*": ["./frontend/ask/src/*"],
       "@frontend/auth/*": ["./frontend/auth/src/*"],
       "@frontend/branches/*": ["./frontend/branches/src/*"],
       "@frontend/build/*": ["./frontend/build/src/*"],
+      "@frontend/calendar/*": ["./frontend/calendar/src/*"],
+      "@frontend/conversations/*": ["./frontend/conversations/src/*"],
       "@frontend/ds/*": ["./frontend/ds/src/*"],
       "@frontend/root/*": ["./frontend/root/src/*"],
-      "@frontend/todo-list/*": ["./frontend/todo-list/src/*"]
+      "@frontend/settings/*": ["./frontend/settings/src/*"],
+      "@frontend/tasks/*": ["./frontend/tasks/src/*"],
+      "@shared/contract/*": ["./shared/contract/src/*"]
     }
   }
 }

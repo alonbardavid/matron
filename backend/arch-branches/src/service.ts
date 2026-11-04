@@ -1,6 +1,5 @@
 import { env } from "cloudflare:workers";
 import { and, desc, eq, isNull, like } from "drizzle-orm";
-import { canBranch } from "@backend/arch-auth/permissions";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
@@ -12,6 +11,7 @@ import { buildSessions } from "@backend/db-models/arch-sessions";
 import { getDb } from "@backend/db-models/db";
 import type { Branch } from "@shared/contract/arch/branches";
 import { branchNames, branchSlug, uniqueSlug } from "./names";
+import { branchPermissions } from "./permissions";
 
 const log = logger("arch-branches/service");
 
@@ -38,7 +38,7 @@ export async function listBranches(
   principal: Principal,
   mainHead: string | null,
 ): Promise<Branch[]> {
-  if (!canBranch(principal.role, "view")) return [];
+  if (!branchPermissions.can(principal.role, "view")) return [];
   const rows = await getDb()
     .select({ branch: branches, userName: user.name, clearedAt: buildSessions.clearedAt })
     .from(branches)
@@ -95,7 +95,7 @@ export async function createBranch(
   principal: Principal,
   input: { buildSessionId: string; name: string; baseCommit: string },
 ): Promise<BranchRow> {
-  if (!canBranch(principal.role, "create")) {
+  if (!branchPermissions.can(principal.role, "create")) {
     throw new DomainError("FORBIDDEN", "You cannot create branches");
   }
   const id = newEntityId("BRANCH");
@@ -160,7 +160,7 @@ export async function beginMerge(
   id: string,
   mainHead: string,
 ): Promise<BranchRow> {
-  if (!canBranch(principal.role, "merge")) {
+  if (!branchPermissions.can(principal.role, "merge")) {
     throw new DomainError("FORBIDDEN", "You cannot merge branches");
   }
   const branch = await getBranch(id);
@@ -183,7 +183,7 @@ export async function beginMerge(
 }
 
 export async function beginAbandon(principal: Principal, id: string): Promise<BranchRow> {
-  if (!canBranch(principal.role, "merge")) {
+  if (!branchPermissions.can(principal.role, "merge")) {
     throw new DomainError("FORBIDDEN", "You cannot abandon branches");
   }
   const branch = await getBranch(id);

@@ -71,6 +71,7 @@ export function renderPrompt(
 export function agentArgv(
   repo: string,
   promptsDir: string,
+  model: string,
   resumeSessionId?: string,
 ): string[] {
   const args = [
@@ -89,6 +90,8 @@ export function agentArgv(
     JSON.stringify(OUTCOME_SCHEMA),
     "--settings",
     CLAUDE_SETTINGS_FILE,
+    "--model",
+    model,
   ];
   if (resumeSessionId) args.push("--resume", resumeSessionId);
   return ["sh", "-c", 'cd "$0" && exec claude "$@"', repo, ...args];

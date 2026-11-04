@@ -161,7 +161,8 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
   );
   const outputFile = join(ctx.paths.work, "wrangler-output.jsonl");
   // What a Preview must have. It never signs anyone in, so BETTER_AUTH_SECRET
-  // is random.
+  // is random. No account token goes in: the assistant on the branch reaches
+  // its model through the Preview's AI binding.
   writeFileSync(
     secretsFile,
     JSON.stringify({

@@ -8,6 +8,7 @@ import {
 } from "agents/harness/container";
 import { markReady } from "@backend/arch-branches/service";
 import { logger } from "@backend/commons/logger";
+import { getBuilderModel } from "@backend/arch-settings/service";
 import { AI_GATEWAY } from "@backend/commons/names";
 import type {
   AbandonJob,
@@ -65,7 +66,12 @@ type Phase =
 interface JobRun {
   job: BuilderJob;
   phase: Phase;
-  /** Numbers the turns; with the session id it is each turn's operation id. */
+  /**
+   * Tells this run's operations from an earlier job's on the same session: the
+   * harness answers a repeated operation id with the earlier result.
+   */
+  runId: string;
+  /** Numbers the turns; with the run id it is each turn's operation id. */
   turn: number;
   /** What the next agent turn is asked. */
   prompt: AgentPrompt | null;
@@ -279,6 +285,7 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     }
     await this.startRun(state, {
       job,
+      runId: crypto.randomUUID().slice(0, 8),
       phase: "prepare",
       turn: 0,
       prompt: null,
@@ -535,7 +542,12 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
 
   /** One agent turn on `run.prompt`; the structured outcome it ended with. */
   private async agentTurn(run: JobRun): Promise<AgentOutcome> {
-    const request: TurnRequest = { kind: "agent", prompt: run.prompt!, job: run.job };
+    const request: TurnRequest = {
+      kind: "agent",
+      prompt: run.prompt!,
+      job: run.job,
+      model: await getBuilderModel(),
+    };
     const result = await this.turn(run, request, AGENT_TURN_TIMEOUT_MS);
     if (result.status !== "done") {
       throw new Error(`The coding agent failed: ${result.reason ?? "no result"}`);
@@ -547,8 +559,9 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
 
   /**
    * Submits a turn and waits for it, relaying its events to the chat. The
-   * operation id is the run's turn number, so a recovered fiber that submits
-   * the same turn again gets the operation already under way.
+   * operation id is the run's id and turn number, so a recovered fiber that
+   * submits the same turn again gets the operation already under way, while
+   * a later job on the session never meets an earlier job's results.
    */
   private async turn(
     run: JobRun,
@@ -557,7 +570,10 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
   ): Promise<ContainerOperationResult> {
     const harness = this.harness!;
     run.turn += 1;
-    const operationId = `${run.job.sessionId}:${run.turn}`;
+    // A run checkpointed before runs had ids keeps the ids it started with.
+    const operationId = run.runId
+      ? `${run.job.sessionId}:${run.runId}:${run.turn}`
+      : `${run.job.sessionId}:${run.turn}`;
     const session = harness.session();
     const stream = await session.events();
     const relay = new EventRelay(

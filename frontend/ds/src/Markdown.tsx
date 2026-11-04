@@ -1,4 +1,4 @@
-import { Anchor, Box, TypographyStylesProvider } from "@mantine/core";
+import { Anchor, Box, Typography } from "@mantine/core";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./markdown.css";
@@ -38,10 +38,10 @@ export function Markdown({ text, inline = false }: MarkdownProps) {
     );
   }
   return (
-    <TypographyStylesProvider fz="sm" className="matron-markdown">
+    <Typography fz="sm" className="matron-markdown">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>
-    </TypographyStylesProvider>
+    </Typography>
   );
 }

@@ -447,7 +447,18 @@ if (flags["no-container"]) {
     { capture: true },
   );
   process.stdout.write(built.stdout.split("\n").slice(-12).join("\n") + "\n");
-  const digest = /digest:\s*(sha256:[a-f0-9]{64})/.exec(built.stdout + built.stderr)?.[1];
+  let digest = /digest:\s*(sha256:[a-f0-9]{64})/.exec(built.stdout + built.stderr)?.[1];
+  if (!digest) {
+    // A tag that is already in the registry is not pushed again, and then
+    // nothing prints its digest: the registry is asked for it instead.
+    const ref = `registry.cloudflare.com/${accountId}/${imageName}:${tag}`;
+    const inspected = run(
+      "docker",
+      ["buildx", "imagetools", "inspect", ref, "--format", "{{.Manifest.Digest}}"],
+      { capture: true, allowFailure: true },
+    );
+    digest = /sha256:[a-f0-9]{64}/.exec(inspected.stdout)?.[0];
+  }
   if (!digest) fail("the image was pushed but no digest appeared in wrangler's output");
   builderImage = `registry.cloudflare.com/${accountId}/${imageName}@${digest}`;
   console.log(`  pushed ${builderImage}`);

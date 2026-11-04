@@ -14,5 +14,5 @@ const link = new OpenAPILink(contract, {
 /** The raw typed client, for imperative calls outside React Query. */
 export const api: ApiClient = createORPCClient(link);
 
-/** TanStack Query helpers: `orpc.todo.list.queryOptions()`, `orpc.todo.key()`, ... */
+/** TanStack Query helpers: `orpc.tasks.list.queryOptions()`, `orpc.tasks.key()`, ... */
 export const orpc = createTanstackQueryUtils(api);

@@ -21,8 +21,23 @@ how a request moves through it.
    same request sent to the branch's Preview URL. A Preview runs this same Worker with
    `WORKER_ROLE=application`, so its entry skips the router and serves the application only.
 3. The application verifies the signature (`require-handoff.ts`), serves `/api/app/*` through
-   `backend/api` (routes and handler for the `shared/contract/src/app` contract), and everything
-   else from static assets.
+   `backend/api` (routes and handler for the `shared/contract/src/app` contract), upgrades the
+   assistant's chat socket at `/api/app/ask/:id/ws` (`backend/ask/src/socket.ts`), and serves
+   everything else from static assets. The features behind the routes are `backend/tasks`,
+   `backend/calendar` (with the recurrence expansion in `recurrence.ts`), `backend/household`
+   (the member list) and `backend/ask` (the conversations and the assistant).
+
+## The assistant
+
+`AskSessionObject` (`backend/ask/src/ask-object.ts`) is a Think agent, one per conversation,
+named by the ask session id. Its tools (`tools.ts`) wrap the tasks, calendar and household
+services as the connected user, so a tool can do no more than the user could in the app, plus
+`query_database`, one read-only SELECT checked by `sql-guard.ts` against the tables the user's
+role may read. The model is the household's assistant setting (`backend/arch-settings`); the
+planner and the builder's agent turns have their own. Two backends under `models/` reach it:
+`anthropic` is Anthropic's API through the gateway with the Worker's token, `gateway` is a slug
+the agent resolves through its AI binding (Workers AI, or the gateway's catalog). `resolve.ts`
+picks the chosen one, or the gateway where the token is absent, as on a Preview.
 
 ## Building
 

@@ -7,7 +7,12 @@ export const ENTITY_PREFIXES = {
   USER_VERIFICATION: "UV",
   BUILD_SESSION: "BS",
   BRANCH: "BR",
-  TODO: "TD",
+  SETTING: "ST",
+  TASK: "TK",
+  TASK_SHARE: "TS",
+  CALENDAR_EVENT: "CE",
+  CALENDAR_EVENT_SHARE: "CS",
+  ASK_SESSION: "AS",
 } as const satisfies Record<string, Uppercase<string>>;
 
 export type Entity = keyof typeof ENTITY_PREFIXES;

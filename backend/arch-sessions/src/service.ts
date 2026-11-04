@@ -1,6 +1,6 @@
 import { getAgentByName } from "agents";
 import { desc, eq } from "drizzle-orm";
-import { canBranch } from "@backend/arch-auth/permissions";
+import { branchPermissions } from "@backend/arch-branches/permissions";
 import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
 import { DOMAIN_ERROR_STATUS, DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
@@ -26,7 +26,7 @@ export const SOCKET_HEADERS = {
 export type SessionRow = typeof buildSessions.$inferSelect;
 
 function authorize(principal: Principal): void {
-  if (!canBranch(principal.role, "create")) {
+  if (!branchPermissions.can(principal.role, "create")) {
     throw new DomainError("FORBIDDEN", "You cannot start build sessions");
   }
 }

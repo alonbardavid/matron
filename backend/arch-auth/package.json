@@ -7,11 +7,12 @@
     "clean": "rm -rf *.tsbuildinfo"
   },
   "dependencies": {
+    "@backend/access": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
+    "@orpc/contract": "1.15.4",
     "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.1",
-    "@orpc/contract": "1.15.4",
     "zod": "^4.1.0"
   },
   "devDependencies": {

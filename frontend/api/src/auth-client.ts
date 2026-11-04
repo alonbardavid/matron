@@ -1,6 +1,6 @@
 import { adminClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
-import { ac, roles } from "@backend/arch-auth/permissions";
+import { ac, roles } from "@backend/access/registry";
 
 export const AUTH_BASE_PATH = "/api/arch/auth";
 

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
+import { openAskSocket } from "@backend/ask/socket";
 import {
   requireHandoff,
   type ApplicationVariables,
@@ -24,6 +25,13 @@ application.use("/api/app/*", async (c, next) => {
     branch: c.get("branch"),
   });
   return response ?? next();
+});
+
+// The assistant's chat socket, served by the ask session's object.
+application.get("/api/app/ask/:id/ws", async (c) => {
+  const principal = c.get("principal");
+  if (!principal) return c.json({ message: "Not signed in" }, 401);
+  return openAskSocket(principal, c.get("branch"), c.req.param("id"), c.req.raw);
 });
 
 application.all("/api/*", (c) => c.json({ message: "No such application route" }, 404));

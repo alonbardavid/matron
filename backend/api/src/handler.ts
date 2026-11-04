@@ -1,10 +1,13 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { onError } from "@orpc/server";
 import { logUnexpectedError, type ApiContext } from "@backend/commons/api";
-import { todo } from "./routes/todo";
+import { conversations } from "./routes/conversations";
+import { calendar } from "./routes/calendar";
+import { tasks } from "./routes/tasks";
+import { users } from "./routes/users";
 
 const handler = new OpenAPIHandler(
-  { todo },
+  { calendar, conversations, tasks, users },
   { interceptors: [onError(logUnexpectedError)] },
 );
 

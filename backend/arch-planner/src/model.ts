@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getBuilderModel } from "@backend/arch-settings/service";
 import { logger } from "@backend/commons/logger";
 import { AI_GATEWAY } from "@backend/commons/names";
 import { plannerEnv } from "./env";
@@ -11,8 +12,6 @@ export type { ModelMessage } from "./turns";
 const log = logger("arch-planner/model");
 
 const MAX_TOKENS = 16_000;
-/** The planner's model; a setting later, a constant for now. */
-const PLANNER_MODEL = "claude-opus-5-5";
 const CLIP_CHARS = 240;
 /** Tool rounds one planner turn may take before it must answer. */
 const MAX_TOOL_ROUNDS = 16;
@@ -63,7 +62,7 @@ export async function modelReply(
   // One repository handle serves every tool call of the turn.
   return withRepository(async (repo) => {
     const runner = client.beta.messages.toolRunner({
-      model: PLANNER_MODEL,
+      model: await getBuilderModel(),
       max_tokens: MAX_TOKENS,
       // The prompt and the tools are the same on every turn: cached across them.
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],

@@ -1,11 +1,12 @@
-import { useEffect, useRef } from "react";
-import { Center, Drawer, Group, Loader, ScrollArea, Stack, Text } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
+import { Box, Center, Group, Loader, ScrollArea, Stack, Text } from "@mantine/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { useChatSocket } from "@frontend/api/socket";
 import type { ChatFrame } from "@shared/contract/arch/sessions";
 import { EmptyState } from "@frontend/ds/EmptyState";
+import { SidePanel } from "@frontend/ds/SidePanel";
 import { useBuildChat } from "../BuildChatContext";
 import { useCreateSession, useSessions } from "../useSessions";
 import { ChatComposer } from "./ChatComposer";
@@ -33,6 +34,18 @@ function groupProgress(frames: ChatFrame[]): (ChatFrame | ProgressFrame[])[] {
   return out;
 }
 
+/** The session has the message and is working on it. */
+function Thinking() {
+  return (
+    <Group gap="xs">
+      <Loader size={12} />
+      <Text size="xs" c="dimmed">
+        thinking
+      </Text>
+    </Group>
+  );
+}
+
 export function BuildChat() {
   const { opened, sessionId, close, pending, clearPending, openWithMessage } =
     useBuildChat();
@@ -47,19 +60,43 @@ export function BuildChat() {
   const archived = session?.archivedAt != null;
   // A draft has no session yet; the first message creates one and is sent to it.
   const draft = sessionId === null;
+  // The first message, shown while its session is being created.
+  const [starting, setStarting] = useState<string | null>(null);
+  // True from the moment a message is sent until the session answers with anything.
+  const [awaiting, setAwaiting] = useState(false);
 
   const startSession = (text: string): boolean => {
+    setStarting(text);
     create
       .mutateAsync(undefined)
       .then((created) => openWithMessage(created.id, text))
-      .catch((err: unknown) => notifyError(err, "Could not start the session"));
+      .catch((err: unknown) => notifyError(err, "Could not start the session"))
+      .finally(() => setStarting(null));
     return true;
+  };
+
+  const sendAndWait = (text: string): boolean => {
+    const sent = send(text);
+    if (sent) setAwaiting(true);
+    return sent;
   };
 
   useEffect(() => {
     if (status !== "open" || !pending || pending.sessionId !== sessionId) return;
-    if (send(pending.text)) clearPending();
+    if (send(pending.text)) {
+      setAwaiting(true);
+      clearPending();
+    }
   }, [status, pending, sessionId, send, clearPending]);
+
+  useEffect(() => {
+    setAwaiting(false);
+  }, [sessionId]);
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last && !(last.type === "message" && last.role === "user")) setAwaiting(false);
+  }, [messages]);
 
   useEffect(() => {
     viewport.current?.scrollTo({ top: viewport.current.scrollHeight });
@@ -75,30 +112,23 @@ export function BuildChat() {
   }, [messages, queryClient]);
 
   return (
-    <Drawer
+    <SidePanel
       opened={opened}
       onClose={close}
-      position="right"
-      size={440}
-      withOverlay={false}
-      lockScroll={false}
-      trapFocus={false}
-      closeOnClickOutside={false}
-      shadow="xl"
-      padding="md"
       title={
-        <Group gap="sm">
-          <Text fw={600}>{draft ? "New session" : (session?.title ?? "Build")}</Text>
+        // A long title gives way; the status stays whole.
+        <Group gap="sm" wrap="nowrap" preventGrowOverflow={false}>
+          <Text fw={600} c="inherit" miw={0} truncate>
+            {draft ? "New session" : (session?.title ?? "Build")}
+          </Text>
           {session && (
-            // The object's phase arrives as it changes; the row catches up on the next refetch.
-            <SessionStatusBadge status={phase ?? session.status} archived={archived} />
+            <Box style={{ flexShrink: 0 }}>
+              {/* The object's phase arrives as it changes; the row catches up on the next refetch. */}
+              <SessionStatusBadge status={phase ?? session.status} archived={archived} />
+            </Box>
           )}
         </Group>
       }
-      styles={{
-        content: { display: "flex", flexDirection: "column" },
-        body: { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 },
-      }}
     >
       {!archived && !draft && (
         <Group mb="xs">
@@ -110,10 +140,23 @@ export function BuildChat() {
           <Center py="xl">
             <Loader size="sm" />
           </Center>
+        ) : starting ? (
+          <Stack gap="sm" py="xs">
+            <ChatMessage
+              frame={{
+                type: "message",
+                id: "draft",
+                ts: Date.now(),
+                role: "user",
+                text: starting,
+              }}
+            />
+            <Thinking />
+          </Stack>
         ) : messages.length === 0 ? (
           <EmptyState
             title="What would you like to change?"
-            description="Describe the change in plain words. The planner asks questions when it needs to, then hands the plan to the builder."
+            description="Describe the change in plain words. The planner asks questions when it needs to, then hands the plan to the builder, which usually takes five to ten minutes."
           />
         ) : (
           <Stack gap="sm" py="xs">
@@ -132,13 +175,14 @@ export function BuildChat() {
                 <ChatMessage key={item.id} frame={item} />
               ),
             )}
+            {awaiting && <Thinking />}
           </Stack>
         )}
       </ScrollArea>
       <Stack gap={4} pt="sm">
         <ChatComposer
           disabled={draft ? create.isPending : status !== "open" || archived}
-          onSend={draft ? startSession : send}
+          onSend={draft ? startSession : sendAndWait}
         />
         <Text size="xs" c="dimmed">
           {archived
@@ -148,6 +192,6 @@ export function BuildChat() {
               : "Enter sends, Shift+Enter adds a line."}
         </Text>
       </Stack>
-    </Drawer>
+    </SidePanel>
   );
 }

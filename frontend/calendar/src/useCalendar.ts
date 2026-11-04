@@ -1,0 +1,40 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { notifyError } from "@frontend/api/errors";
+import { orpc } from "@frontend/api/orpc";
+
+/** What is on the calendar between two instants, series expanded. */
+export function useOccurrences(from: number, to: number) {
+  return useQuery(
+    orpc.calendar.occurrences.queryOptions({ input: { from, to }, staleTime: 10_000 }),
+  );
+}
+
+export function useEvent(id: string | null) {
+  return useQuery(
+    orpc.calendar.get.queryOptions({ input: { id: id ?? "" }, enabled: id !== null }),
+  );
+}
+
+export function useEventActions() {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.calendar.key() });
+  const create = useMutation(
+    orpc.calendar.create.mutationOptions({ onSuccess: refresh }),
+  );
+  const update = useMutation(
+    orpc.calendar.update.mutationOptions({ onSuccess: refresh }),
+  );
+  const stop = useMutation(
+    orpc.calendar.stop.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not stop the repetition"),
+    }),
+  );
+  const remove = useMutation(
+    orpc.calendar.remove.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not remove the event"),
+    }),
+  );
+  return { create, update, stop, remove };
+}

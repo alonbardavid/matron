@@ -1,0 +1,21 @@
+{
+  "name": "@backend/access",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@backend/arch-branches": "workspace:*",
+    "@backend/ask": "workspace:*",
+    "@backend/calendar": "workspace:*",
+    "@backend/commons": "workspace:*",
+    "@backend/household": "workspace:*",
+    "@backend/tasks": "workspace:*",
+    "better-auth": "^1.7.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1"
+  }
+}

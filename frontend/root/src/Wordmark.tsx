@@ -1,18 +1,40 @@
 import { withBranch } from "@frontend/api/branch";
-import { Text } from "@mantine/core";
+import { Box } from "@mantine/core";
 import { Link } from "react-router-dom";
 
-export function Wordmark() {
+interface WordmarkProps {
+  height?: number;
+  /** On the plum shell the lockup is always white; elsewhere it follows the colour scheme. */
+  onShell?: boolean;
+}
+
+/** The Matron lockup, mark and wordmark, linking home. */
+export function Wordmark({ height = 26, onShell = false }: WordmarkProps) {
   return (
-    <Text
+    <Box
       component={Link}
       to={withBranch("/")}
-      fw={800}
-      fz="lg"
-      c="clay"
-      style={{ letterSpacing: "0.04em", textDecoration: "none" }}
+      aria-label="Matron"
+      style={{ display: "inline-flex" }}
     >
-      Matron
-    </Text>
+      {onShell ? (
+        <img src="/brand/matron-lockup-white.svg" alt="Matron" height={height} />
+      ) : (
+        <>
+          <img
+            src="/brand/matron-lockup.svg"
+            alt="Matron"
+            height={height}
+            data-light-only=""
+          />
+          <img
+            src="/brand/matron-lockup-white.svg"
+            alt=""
+            height={height}
+            data-dark-only=""
+          />
+        </>
+      )}
+    </Box>
   );
 }

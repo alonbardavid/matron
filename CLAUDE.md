@@ -30,23 +30,26 @@ in place, never append history.
 ## Rules
 
 - **Import the file, not the package.** Packages have no `index.ts`; write
-  `import { listTodos } from "@backend/todo/service"`, which is `backend/todo/src/service.ts`.
+  `import { listTasks } from "@backend/tasks/service"`, which is `backend/tasks/src/service.ts`.
   `tsconfig.base.json` `paths` and `tooling/workspace-alias.ts` do the mapping; a new package
   adds its `paths` line. ESLint rejects `export *`. `pnpm type-check` checks the Worker side
   and the browser side as one program each (`tsconfig.worker.json`, `tsconfig.browser.json`);
   a new package under `backend/`, `frontend/` or `shared/` is covered by their globs.
-- **Features are self-contained.** Changing how todos work touches `backend/todo`,
-  `frontend/todo-list` and a migration; nothing else. Cross-feature calls go through the
+- **Features are self-contained.** Changing how tasks work touches `backend/tasks`,
+  `frontend/tasks` and a migration; nothing else. Cross-feature calls go through the
   other feature's `service.ts`.
 - **Contract first.** Declare a procedure in the feature's file under `shared/contract/src/arch`
   (router) or `shared/contract/src/app` (application), add a new feature's contract to that
   side's `contract.ts`, and implement it in `backend/arch-api` or `backend/api` under
   `routes/*`. Backend and frontend both import types from `@shared/contract/...`.
-- **Authorization lives in services**, decided with `canBranch(role, action)` from
-  `@backend/arch-auth/permissions`. Routes and screens only mirror it.
+- **Authorization lives in services.** A feature declares its resource, actions and each role's
+  grants in `src/permissions.ts` with `definePermissions` from `@backend/commons/permissions`, and adds
+  it to the list in `backend/access/src/registry.ts`, which builds the roles. Every action first
+  calls that resource's `require(principal, action)`, then its object rule (creator, shared with).
+  Routes and screens only mirror it.
 - **Every table has an `id`** from `newEntityId("<ENTITY>")` in `@backend/commons/ids`; a new
   table adds its prefix there first and gets a migration.
-- **Log constant messages with props**: `log.info("todo created", { todoId })`, through
+- **Log constant messages with props**: `log.info("task created", { taskId })`, through
   `logger("<package>/<file>")` from `@backend/commons/logger`. Never log secrets or tokens.
 - **Forms go through `@frontend/ds/forms`**, API calls through `@frontend/api/orpc`.
 - Use `pnpm` (and `pnpx`), never `npm`/`npx`.
