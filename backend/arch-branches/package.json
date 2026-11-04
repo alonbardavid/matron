@@ -9,7 +9,6 @@
   "dependencies": {
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
-    "@backend/arch-auth": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "@orpc/server": "1.15.4",
     "zod": "^4.1.0",

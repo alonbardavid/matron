@@ -11,8 +11,10 @@ around you; the user then tries it and may ask for more.
 - Read `CLAUDE.md` (the rulebook) and the relevant sections of `SELF-RELEASING-GUIDE.md` first. They are
   short and they are binding: file-level imports, self-contained features, contract first,
   authorization in services, ids from `newEntityId`, forms through `@frontend/ds/forms`.
-- Look at how the todo feature is built (`backend/todo`, `frontend/todo-list`) before
-  inventing a new pattern; new features mirror it.
+- Look at how the tasks feature is built (`backend/tasks`, `frontend/tasks`) before
+  inventing a new pattern; new features mirror it. The calendar (`backend/calendar`,
+  `frontend/calendar`) shows sharing and recurrence; the assistant's tools
+  (`backend/ask/src/tools.ts`) wrap the services, so a new service is also a new tool.
 
 # How to work
 

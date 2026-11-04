@@ -1,0 +1,135 @@
+/*
+ * The week as a quiet grid rather than a table: thin light lines, the weekday
+ * over a large day number, time labels sitting on their line. On a phone
+ * everything shrinks so all seven days fit across.
+ */
+.weekView.weekView {
+  --week-view-border-color: var(--matron-border-strong);
+  --indicator-color: var(--mantine-primary-color-filled);
+  --week-view-slots-label-width: 3.5rem;
+  --week-view-min-slot-width: 0;
+  --week-view-week-day-height: 4.25rem;
+  --week-view-slot-height: 3.25rem;
+  --week-view-all-day-slots-height: 1.75rem;
+}
+
+.weekViewRoot {
+  border: 0;
+  border-radius: 0;
+}
+
+.weekViewDayLabel {
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-inline-start: 0;
+  border-inline-start-color: transparent;
+}
+
+.weekViewDayLabel[data-weekend] {
+  color: inherit;
+}
+
+.weekViewDayWeekday {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mantine-color-dimmed);
+}
+
+.weekViewDayLabel[data-today] .weekViewDayWeekday {
+  color: var(--mantine-primary-color-filled);
+}
+
+.weekViewDayNumber {
+  width: 2.5rem;
+  font-size: 1.5rem;
+  font-weight: 400;
+}
+
+.weekViewSlotLabel,
+.weekViewAllDaySlotsLabel {
+  font-size: 0.6875rem;
+  color: var(--mantine-color-dimmed);
+  text-transform: none;
+}
+
+.weekViewSlotLabel {
+  border-top-color: transparent;
+  padding-top: 0;
+  line-height: 1;
+  transform: translateY(-0.5em);
+}
+
+/* The first label would sit on the header's edge; the grid starts without one. */
+.weekViewSlotLabel:first-of-type {
+  visibility: hidden;
+}
+
+.weekViewAllDaySlotsLabel {
+  white-space: nowrap;
+  padding-inline-end: 0.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.dayViewSlotLabel[data-all-day] {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.weekViewDaySlot {
+  padding: 0.0625rem;
+}
+
+/* An hour per row, short enough for most of the day to show at once. */
+.dayView.dayView {
+  --day-view-border-color: var(--matron-border-strong);
+  --indicator-color: var(--mantine-primary-color-filled);
+  --day-view-slot-height: 2.75rem;
+}
+
+.dayViewSlotLabel {
+  font-size: 0.6875rem;
+  color: var(--mantine-color-dimmed);
+}
+
+@media (max-width: 48em) {
+  .weekView.weekView {
+    --week-view-slots-label-width: 2.5rem;
+    --week-view-slot-height: 2.75rem;
+    --week-view-week-day-height: 3.25rem;
+    --week-view-all-day-slots-height: 1.5rem;
+  }
+
+  .weekViewDayWeekday {
+    font-size: 0.625rem;
+    letter-spacing: 0.02em;
+  }
+
+  .weekViewDayNumber {
+    width: 1.75rem;
+    font-size: 1rem;
+  }
+
+  .weekViewSlotLabel,
+  .weekViewAllDaySlotsLabel {
+    font-size: 0.625rem;
+    padding-inline-end: 0.25rem;
+  }
+
+  /* An event's chip is the button inside the element that carries its id. */
+  .weekView [data-event-id] > button {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.1875rem;
+  }
+
+  .dayView.dayView {
+    --day-view-slot-labels-width: 2.75rem;
+    --day-view-slot-height: 2.5rem;
+  }
+}

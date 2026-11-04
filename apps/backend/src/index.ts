@@ -3,6 +3,7 @@ import { router } from "./router";
 
 export { BuildSessionObject } from "@backend/arch-sessions/session-object";
 export { BuilderObject } from "@backend/arch-builder/builder-object";
+export { AskSessionObject } from "@backend/ask/ask-object";
 // Adds the coding agent's credentials to its model requests outside the container.
 export { ContainerEgress } from "agents/harness/container";
 

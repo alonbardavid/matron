@@ -44,14 +44,14 @@ export function NewMemberModal({ opened, onClose, onCreate }: NewMemberModalProp
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New household member" centered>
+    <Modal opened={opened} onClose={onClose} title="Add a user" centered>
       <StandardForm form={form} onSubmit={submit}>
         <FormTextInput name="name" label="Name" autoComplete="off" data-autofocus />
         <FormTextInput name="email" label="Email" type="email" autoComplete="off" />
         <FormPasswordInput name="password" label="Password" autoComplete="new-password" />
         <FormSelect name="role" label="Role" data={ROLE_OPTIONS} allowDeselect={false} />
         <FormGeneralErrors />
-        <FormSubmitButton mt="xs">Add member</FormSubmitButton>
+        <FormSubmitButton mt="xs">Add user</FormSubmitButton>
       </StandardForm>
     </Modal>
   );

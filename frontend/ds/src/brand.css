@@ -1,0 +1,59 @@
+/*
+ * The brand's tokens. The shell (navigation, panel headers) is plum in both
+ * colour schemes; the rest follows the scheme, warm in the light one.
+ */
+:root {
+  --matron-primary: #b9086e;
+  --matron-primary-hover: #96055a;
+  --matron-primary-pressed: #6e0441;
+  --matron-on-primary: #ffffff;
+  --matron-primary-tint: #fce7f2;
+  --matron-on-primary-tint: #8a0552;
+  --matron-accent: #f5a524;
+  --matron-on-accent: #2a1a00;
+  --matron-shell: #2b0b1f;
+  --matron-on-shell: #ffffff;
+  --matron-on-shell-muted: #e9dce4;
+  --matron-shell-hover: rgba(255, 255, 255, 0.08);
+  --matron-shell-active: rgba(255, 255, 255, 0.14);
+  --matron-shell-border: rgba(255, 255, 255, 0.1);
+  --matron-bg: #f7f4f6;
+  --matron-surface: #ffffff;
+  --matron-surface-muted: #efe8ec;
+  --matron-chat-bg: #fbf9fa;
+  --matron-weekend: #faf7f9;
+  --matron-border: #e9e2e6;
+  --matron-border-strong: #e2d9de;
+  --matron-gridline: #f0eaed;
+  --matron-text: #241b21;
+  --matron-text-secondary: #4a3e45;
+  --matron-text-muted: #6f6169;
+  --matron-chat-user-bg: #e3eefc;
+  --matron-on-chat-user: #16365f;
+  --matron-chat-assistant-bg: #ffffff;
+  --matron-success-bg: #e3f2e7;
+  --matron-success-fg: #1f6b3a;
+  --matron-success-dot: #5cc98a;
+}
+
+[data-mantine-color-scheme="dark"] {
+  --matron-bg: var(--mantine-color-dark-7);
+  --matron-surface: var(--mantine-color-dark-6);
+  --matron-chat-bg: var(--mantine-color-dark-7);
+  --matron-chat-user-bg: #1b3358;
+  --matron-on-chat-user: #d6e6ff;
+  --matron-chat-assistant-bg: var(--mantine-color-dark-6);
+  --matron-border: var(--mantine-color-dark-5);
+  --matron-border-strong: var(--mantine-color-dark-4);
+  --matron-gridline: var(--mantine-color-dark-5);
+}
+
+body {
+  background-color: var(--matron-bg);
+}
+
+/* The logo comes in a magenta and a white version; one shows per colour scheme. */
+[data-mantine-color-scheme="light"] [data-dark-only],
+[data-mantine-color-scheme="dark"] [data-light-only] {
+  display: none;
+}

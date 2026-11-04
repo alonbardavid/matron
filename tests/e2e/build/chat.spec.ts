@@ -9,7 +9,7 @@ test.describe("build chat", () => {
     await signIn(page, OWNER);
     const response = await page.request.post("/api/arch/sessions", { data: {} });
     expect(response.ok()).toBeTruthy();
-    await page.goto("/sessions");
+    await page.goto("/conversations");
     await page.getByRole("button", { name: "Open" }).click();
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();
     await expect(page.getByText("What would you like to change?")).toBeVisible();

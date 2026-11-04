@@ -5,7 +5,7 @@ import { admin } from "better-auth/plugins";
 import { newEntityId, type Entity } from "@backend/commons/ids";
 import { authSchema } from "@backend/db-models/arch-auth";
 import { getDb } from "@backend/db-models/db";
-import { ac, ADMIN_ROLES, roles } from "./permissions";
+import { ac, ADMIN_ROLES, roles } from "@backend/access/registry";
 
 /** better-auth is mounted here by the router; nothing under it is proxied. */
 export const AUTH_BASE_PATH = "/api/arch/auth";

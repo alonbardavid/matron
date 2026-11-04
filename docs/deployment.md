@@ -69,10 +69,10 @@ Flags (`pnpm run deploy --name home`):
 | `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`                       | Worker secrets (never in config; printed nowhere)                                                                   |
 | `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; everything else is derived from `WORKER_NAME` (`backend/commons/src/names.ts`) |
 | Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)               |
-| Users, branches, sessions, todos                                                  | Production D1 `<name>`                                                                                              |
+| Users, branches, sessions, tasks, events                                          | Production D1 `<name>`                                                                                              |
 | Files                                                                             | R2 bucket `<name>`, one prefix per branch                                                                           |
 | Builder image                                                                     | `registry.cloudflare.com/<account>/<name>-builder@sha256:<digest>`                                                  |
-| Planner model, AI Gateway                                                         | Constants in code (`claude-opus-5-5`, the account's `default` gateway) until there is a settings page               |
+| Planner model, AI Gateway                                                         | App settings (builder model, assistant model and backend); the account's `default` gateway is a constant in code    |
 
 The API token is stored on the Worker on purpose: the router creates branch databases and
 Previews with it and the builder container deploys with it. Scope it to the list above.

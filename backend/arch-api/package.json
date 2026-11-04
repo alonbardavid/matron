@@ -7,11 +7,12 @@
     "clean": "rm -rf *.tsbuildinfo"
   },
   "dependencies": {
-    "@backend/commons": "workspace:*",
     "@backend/arch-branches": "workspace:*",
     "@backend/arch-builder": "workspace:*",
     "@backend/arch-repository": "workspace:*",
     "@backend/arch-sessions": "workspace:*",
+    "@backend/arch-settings": "workspace:*",
+    "@backend/commons": "workspace:*",
     "@orpc/openapi": "1.15.4",
     "@orpc/server": "1.15.4",
     "@shared/contract": "workspace:*"

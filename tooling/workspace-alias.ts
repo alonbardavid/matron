@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 /**
- * `@backend/todo/service` is `backend/todo/src/service.ts`. TypeScript learns
+ * `@backend/tasks/service` is `backend/tasks/src/service.ts`. TypeScript learns
  * this from `paths` in tsconfig.base.json; Vite and Vitest from this alias.
  * Both lists are keyed by scope, so a new package needs a `paths` line only.
  */

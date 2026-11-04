@@ -1,15 +1,19 @@
 import { Center, Loader } from "@mantine/core";
 import { Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
-import { HouseholdScreen } from "@frontend/auth/screens/HouseholdScreen";
+import { AskChatProvider } from "@frontend/ask/AskChatContext";
 import { LoginScreen } from "@frontend/auth/screens/LoginScreen";
+import { UsersScreen } from "@frontend/auth/screens/UsersScreen";
 import { useMe } from "@frontend/auth/useMe";
 import { withBranch } from "@frontend/api/branch";
 import { BranchesScreen } from "@frontend/branches/screens/BranchesScreen";
 import { BuildChatProvider, useBuildChat } from "@frontend/build/BuildChatContext";
 import { useOutOfDateAction } from "@frontend/build/outOfDate";
-import { SessionsScreen } from "@frontend/build/screens/SessionsScreen";
-import { TodoListScreen } from "@frontend/todo-list/screens/TodoListScreen";
+import { CalendarScreen } from "@frontend/calendar/screens/CalendarScreen";
+import { ConversationsScreen } from "@frontend/conversations/screens/ConversationsScreen";
+import { AppSettingsScreen } from "@frontend/settings/screens/AppSettingsScreen";
+import { SettingsScreen } from "@frontend/settings/screens/SettingsScreen";
+import { TasksScreen } from "@frontend/tasks/screens/TasksScreen";
 import { AppLayout } from "./AppLayout";
 
 function Loading() {
@@ -31,43 +35,48 @@ function BranchesRoute() {
 }
 
 export function App() {
-  const { me, isLoading, can, isOwner } = useMe();
+  const { me, isLoading, can, canManage } = useMe();
 
   if (isLoading) return <Loading />;
   if (!me) return <LoginScreen />;
 
   return (
     <BuildChatProvider>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route index element={<TodoListScreen />} />
-          <Route
-            path="branches"
-            element={
-              <Guard allow={can("view")}>
-                <BranchesRoute />
-              </Guard>
-            }
-          />
-          <Route
-            path="sessions"
-            element={
-              <Guard allow={can("create")}>
-                <SessionsScreen />
-              </Guard>
-            }
-          />
-          <Route
-            path="household"
-            element={
-              <Guard allow={isOwner}>
-                <HouseholdScreen />
-              </Guard>
-            }
-          />
-          <Route path="*" element={<Navigate to={withBranch("/")} replace />} />
-        </Route>
-      </Routes>
+      <AskChatProvider>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<CalendarScreen />} />
+            <Route path="tasks" element={<TasksScreen />} />
+            <Route path="conversations" element={<ConversationsScreen />} />
+            <Route
+              path="branches"
+              element={
+                <Guard allow={can("view")}>
+                  <BranchesRoute />
+                </Guard>
+              }
+            />
+            <Route
+              path="users"
+              element={
+                <Guard allow={canManage}>
+                  <UsersScreen />
+                </Guard>
+              }
+            />
+            <Route
+              path="app-settings"
+              element={
+                <Guard allow={canManage}>
+                  <AppSettingsScreen />
+                </Guard>
+              }
+            />
+            <Route path="settings" element={<SettingsScreen />} />
+            <Route path="*" element={<Navigate to={withBranch("/")} replace />} />
+          </Route>
+        </Routes>
+      </AskChatProvider>
     </BuildChatProvider>
   );
 }

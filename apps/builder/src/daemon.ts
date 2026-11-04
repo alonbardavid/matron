@@ -44,7 +44,7 @@ function agentCommand(
 ): CliCommand {
   const sessionId = turn.state.sessionId;
   return {
-    argv: agentArgv(p.repo, p.prompts, sessionId),
+    argv: agentArgv(p.repo, p.prompts, request.model, sessionId),
     stdin: renderPrompt(request.job, request.prompt, p.prompts, !!sessionId),
     env: {
       CLAUDE_CONFIG_DIR: p.claudeConfig,

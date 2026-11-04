@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifyError } from "@frontend/api/errors";
+import { branchParam } from "@frontend/api/branch";
 import { orpc } from "@frontend/api/orpc";
 import { useMe } from "@frontend/auth/useMe";
-import { useBranches } from "@frontend/branches/useBranches";
 import { useBuildChat } from "./BuildChatContext";
 
 export function useSessions() {
@@ -42,30 +42,37 @@ export function useCreateSession() {
   );
 }
 
+const CLOSED = new Set(["closed", "merged", "abandoned"]);
+
 /**
- * What the Build button does: the current branch's session if there is one,
- * otherwise the latest planning session, otherwise an empty chat whose
+ * What the Build button does: on a branch, that branch's session; on main,
+ * the latest session that is still open, otherwise an empty chat whose
  * session is created by the first message.
  */
 export function useStartBuild() {
   const buildChat = useBuildChat();
-  const { currentBranch } = useBranches();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
   const start = async () => {
-    if (currentBranch) {
-      buildChat.open(currentBranch.buildSessionId);
-      return;
-    }
     setBusy(true);
     try {
+      if (branchParam()) {
+        const { current, branches } = await queryClient.fetchQuery(
+          orpc.branches.list.queryOptions(),
+        );
+        const branch = branches.find((item) => item.id === current);
+        if (branch) {
+          buildChat.open(branch.buildSessionId);
+          return;
+        }
+      }
       const sessions = await queryClient.fetchQuery(orpc.sessions.list.queryOptions());
-      const planning = sessions
-        .filter((session) => session.status === "planning" && session.archivedAt === null)
+      const latest = sessions
+        .filter((session) => session.archivedAt === null && !CLOSED.has(session.status))
         .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      if (planning) {
-        buildChat.open(planning.id);
+      if (latest) {
+        buildChat.open(latest.id);
         return;
       }
       buildChat.openNew();

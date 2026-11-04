@@ -40,14 +40,18 @@
     "bindings": [
       { "name": "BUILD_SESSIONS", "class_name": "BuildSessionObject" },
       { "name": "BUILDERS", "class_name": "BuilderObject" },
+      { "name": "ASK_SESSIONS", "class_name": "AskSessionObject" },
     ],
   },
   "exports": {
     "BuildSessionObject": { "type": "durable-object", "storage": "sqlite" },
     "BuilderObject": { "type": "durable-object", "storage": "sqlite" },
+    "AskSessionObject": { "type": "durable-object", "storage": "sqlite" },
   },
   "send_email": [{ "name": "SEND_EMAIL" }],
   "images": { "binding": "IMAGES" },
+  // Workers AI, and the AI Gateway behind it: how the assistant reaches a model.
+  "ai": { "binding": "AI" },
   "vars": {
     "APP_ORIGIN": "http://localhost:5173",
     "BETTER_AUTH_SECRET": "local-dev-secret-please-change-3f9a1c7d8e2b4506",

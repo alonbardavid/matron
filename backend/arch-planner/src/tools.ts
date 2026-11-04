@@ -19,7 +19,7 @@ export function repositoryTools(repo: ArtifactsRepo) {
           .string()
           .optional()
           .describe(
-            "Repository-relative directory, such as 'frontend/todo-list'; omit for the root",
+            "Repository-relative directory, such as 'frontend/tasks'; omit for the root",
           ),
       }),
       run: ({ directory }) =>

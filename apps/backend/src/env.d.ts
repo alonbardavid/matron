@@ -3,6 +3,7 @@ declare namespace Cloudflare {
     DB: D1Database;
     FILES: R2Bucket;
     ASSETS: Fetcher;
+    AI: Ai;
     IMAGES?: ImagesBinding;
     SEND_EMAIL?: SendEmail;
     ARTIFACTS?: Artifacts;
@@ -12,12 +13,16 @@ declare namespace Cloudflare {
     BUILDERS: DurableObjectNamespace<
       import("@backend/arch-builder/builder-object").BuilderObject
     >;
+    ASK_SESSIONS: DurableObjectNamespace<
+      import("@backend/ask/ask-object").AskSessionObject
+    >;
     // "application" on a fork (a Preview); production runs the router.
     WORKER_ROLE?: "router" | "application";
     APP_ORIGIN: string;
     BETTER_AUTH_SECRET: string;
     SIGNING_KEY: string;
-    CLOUDFLARE_API_TOKEN: string;
+    /** Production only: a Preview has none and reaches models through its AI binding. */
+    CLOUDFLARE_API_TOKEN?: string;
     CLOUDFLARE_ACCOUNT_ID?: string;
     WORKER_NAME: string;
     BUILDER_IMAGE?: string;

@@ -3,7 +3,7 @@ import { Button, Group, Menu, Text } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { withBranch } from "@frontend/api/branch";
 import { notifyError } from "@frontend/api/errors";
-import { IconBranch, IconCheck, IconChevronDown } from "@frontend/ds/icons";
+import { IconCheck, IconChevronDown } from "@frontend/ds/icons";
 import { branchLabel, MAIN_BRANCH, switchBranch, useBranches } from "../useBranches";
 import { BranchStatusBadge } from "./BranchStatusBadge";
 
@@ -27,15 +27,19 @@ export function BranchSwitcher() {
     <Menu position="bottom-end" width={260} shadow="md">
       <Menu.Target>
         <Button
-          variant={current === MAIN_BRANCH ? "subtle" : "light"}
-          color={current === MAIN_BRANCH ? "gray" : "clay"}
+          variant="subtle"
+          color="#ffffff"
           size="xs"
+          px="xs"
+          maw="100%"
           aria-label="Branch"
-          leftSection={<IconBranch />}
           rightSection={<IconChevronDown size={14} />}
           loading={switching}
+          styles={{ label: { minWidth: 0 } }}
         >
-          {branchLabel(currentBranch, current)}
+          <Text component="span" size="xs" fw={600} c="inherit" miw={0} truncate>
+            {branchLabel(currentBranch, current)}
+          </Text>
         </Button>
       </Menu.Target>
       <Menu.Dropdown>

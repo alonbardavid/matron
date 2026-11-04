@@ -7,7 +7,6 @@
     "clean": "rm -rf *.tsbuildinfo"
   },
   "dependencies": {
-    "@backend/arch-auth": "workspace:*",
     "@backend/arch-branches": "workspace:*",
     "@backend/arch-builder": "workspace:*",
     "@backend/arch-planner": "workspace:*",

@@ -1,0 +1,32 @@
+/* A panel sliding in from the right: a plum header over a soft body. */
+.header.header {
+  background-color: var(--matron-shell);
+  color: var(--matron-on-shell);
+}
+
+.title.title {
+  color: var(--matron-on-shell);
+  min-width: 0;
+  flex: 1;
+}
+
+.close.close {
+  color: var(--matron-on-shell);
+
+  @mixin hover {
+    background-color: var(--matron-shell-hover);
+  }
+}
+
+.content.content {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--matron-chat-bg);
+}
+
+.body.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

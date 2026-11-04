@@ -3,9 +3,10 @@ import { onError } from "@orpc/server";
 import { logUnexpectedError, type ApiContext } from "@backend/commons/api";
 import { branches } from "./routes/branches";
 import { sessions } from "./routes/sessions";
+import { settings } from "./routes/settings";
 
 const handler = new OpenAPIHandler(
-  { branches, sessions },
+  { branches, sessions, settings },
   { interceptors: [onError(logUnexpectedError)] },
 );
 

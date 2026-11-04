@@ -8,7 +8,7 @@ export interface Logger {
 }
 
 /**
- * `logger("todo/service")`. Log a constant message and put everything that
+ * `logger("tasks/service")`. Log a constant message and put everything that
  * varies in props; never put secrets, passwords or tokens in a prop.
  */
 export function logger(module: string): Logger {

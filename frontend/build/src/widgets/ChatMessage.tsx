@@ -43,8 +43,12 @@ export function ChatMessage({ frame }: ChatMessageProps) {
         <Group justify="flex-end" mb={2}>
           {stamp}
         </Group>
-        <Paper bg={palette.bubbleUser} px="sm" py="xs">
-          <Text size="sm" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        <Paper bg={palette.bubbleUser} c={palette.bubbleUserText} px="sm" py="xs">
+          <Text
+            size="sm"
+            c="inherit"
+            style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+          >
             {frame.text}
           </Text>
         </Paper>

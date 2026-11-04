@@ -6,6 +6,10 @@ const persistTo = process.env.WORKER_PERSIST_TO;
 // Artifacts has no local simulator. With this set, local dev binds the real
 // namespace (wrangler login, or CLOUDFLARE_API_TOKEN).
 const artifactsNamespace = process.env.ARTIFACTS_NAMESPACE;
+// The builder's container holds no Cloudflare credentials, so its dev server
+// keeps every binding local; Workers AI is remote by default and would ask
+// for a token before the server even starts.
+const localOnly = process.env.WORKER_LOCAL_ONLY === "1";
 
 export default defineConfig(({ command }) => ({
   // The Worker's assets. A build serves apps/backend/public, which
@@ -18,6 +22,7 @@ export default defineConfig(({ command }) => ({
       // Pins the output to dist/worker regardless of the worker name.
       viteEnvironment: { name: "worker" },
       persistState: persistTo ? { path: persistTo } : true,
+      remoteBindings: !localOnly,
       config: {
         ...(artifactsNamespace && {
           artifacts: [

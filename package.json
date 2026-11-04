@@ -40,7 +40,8 @@
   "pnpm": {
     "overrides": {
       "kysely": "0.28.17",
-      "drizzle-orm>@opentelemetry/api": "-"
+      "drizzle-orm>@opentelemetry/api": "-",
+      "drizzle-orm>sql.js": "-"
     },
     "onlyBuiltDependencies": [
       "esbuild",

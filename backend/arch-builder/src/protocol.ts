@@ -161,7 +161,7 @@ export interface StepInput {
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
 export type TurnRequest =
   | { kind: "step"; step: StepName; job: BuilderJob; input?: StepInput }
-  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob };
+  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob; model: string };
 
 export type StepLine =
   | { type: "progress"; text: string }

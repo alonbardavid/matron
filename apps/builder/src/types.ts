@@ -62,7 +62,7 @@ export type StepInput = { summary: string; reasoning: string; request: string };
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
 export type TurnRequest =
   | { kind: "step"; step: StepName; job: BuilderJob; input?: StepInput }
-  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob };
+  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob; model: string };
 
 /** One line of a step's output; anything that is not JSON is a log line. */
 export type StepLine =

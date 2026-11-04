@@ -63,7 +63,8 @@ const DEV_SERVERS: {
     url: "http://localhost:8301/api/arch/health",
     command: ["pnpm", "exec", "vite", "dev"],
     cwd: "apps/backend",
-    env: { WORKER_PERSIST_TO: ".wrangler-test" },
+    // No remote bindings: the container holds no Cloudflare credentials.
+    env: { WORKER_PERSIST_TO: ".wrangler-test", WORKER_LOCAL_ONLY: "1" },
   },
   {
     name: "frontend",
