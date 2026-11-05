@@ -34,10 +34,10 @@ named by the ask session id. Its tools (`tools.ts`) wrap the tasks, calendar and
 services as the connected user, so a tool can do no more than the user could in the app, plus
 `query_database`, one read-only SELECT checked by `sql-guard.ts` against the tables the user's
 role may read. The model is the household's assistant setting (`backend/arch-settings`); the
-planner and the builder's agent turns have their own. Two backends under `models/` reach it:
-`anthropic` is Anthropic's API through the gateway with the Worker's token, `gateway` is a slug
-the agent resolves through its AI binding (Workers AI, or the gateway's catalog). `resolve.ts`
-picks the chosen one, or the gateway where the token is absent, as on a Preview.
+planner and the builder's agent turns have their own. `models/gateway.ts` reaches it: an
+`anthropic/` slug is Anthropic's API through the gateway with the Worker's token, so the
+household's stored provider key applies, and a `@cf/` slug is Workers AI through the AI binding.
+A Preview holds the token too, so its assistant takes the same route.
 
 ## Building
 

@@ -161,13 +161,14 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
   );
   const outputFile = join(ctx.paths.work, "wrangler-output.jsonl");
   // What a Preview must have. It never signs anyone in, so BETTER_AUTH_SECRET
-  // is random. No account token goes in: the assistant on the branch reaches
-  // its model through the Preview's AI binding.
+  // is random. The account token lets the assistant on the branch reach its
+  // model through the gateway, with the household's stored provider key.
   writeFileSync(
     secretsFile,
     JSON.stringify({
       SIGNING_KEY: job.signingKey,
       BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
+      CLOUDFLARE_API_TOKEN: job.cloudflare.apiToken,
     }),
     { mode: 0o600 },
   );

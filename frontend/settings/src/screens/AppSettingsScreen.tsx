@@ -105,9 +105,10 @@ export function AppSettingsScreen() {
           <Stack gap="sm">
             <Text fw={600}>Assistant</Text>
             <Text size="sm" c="dimmed">
-              The model the assistant answers with, through the account&apos;s AI Gateway.
-              The list holds the models known to work with the assistant&apos;s tools; any
-              other model the gateway serves can be typed in as provider/model.
+              The model the assistant answers with: an Anthropic model through the
+              account&apos;s AI Gateway, or a Workers AI model. The list holds the ones
+              known to work with the assistant&apos;s tools; another can be typed in as
+              anthropic/model or @cf/model.
             </Text>
             {settings.isLoading ? (
               <Loader size="sm" />
@@ -115,7 +116,7 @@ export function AppSettingsScreen() {
               <>
                 <Autocomplete
                   label="Assistant model"
-                  placeholder="provider/model"
+                  placeholder="anthropic/model or @cf/model"
                   data={groupedCatalog(catalog.data)}
                   value={draft}
                   onChange={setDraft}

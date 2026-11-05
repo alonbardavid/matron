@@ -14,6 +14,7 @@ import { ConversationsScreen } from "@frontend/conversations/screens/Conversatio
 import { AppSettingsScreen } from "@frontend/settings/screens/AppSettingsScreen";
 import { SettingsScreen } from "@frontend/settings/screens/SettingsScreen";
 import { TasksScreen } from "@frontend/tasks/screens/TasksScreen";
+import { TroubleshootingScreen } from "@frontend/troubleshooting/screens/TroubleshootingScreen";
 import { AppLayout } from "./AppLayout";
 
 function Loading() {
@@ -35,7 +36,7 @@ function BranchesRoute() {
 }
 
 export function App() {
-  const { me, isLoading, can, canManage } = useMe();
+  const { me, isLoading, can, canManage, canTroubleshoot } = useMe();
 
   if (isLoading) return <Loading />;
   if (!me) return <LoginScreen />;
@@ -69,6 +70,14 @@ export function App() {
               element={
                 <Guard allow={canManage}>
                   <AppSettingsScreen />
+                </Guard>
+              }
+            />
+            <Route
+              path="troubleshooting"
+              element={
+                <Guard allow={canTroubleshoot}>
+                  <TroubleshootingScreen />
                 </Guard>
               }
             />

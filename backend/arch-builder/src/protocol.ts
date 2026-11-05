@@ -64,7 +64,8 @@ export type BuilderStatus =
   | "merged"
   | "abandoning"
   | "abandoned"
-  | "failed";
+  | "failed"
+  | "timed_out";
 
 /** The branch a job works on; names come from the branch row. */
 export interface BuilderBranch {

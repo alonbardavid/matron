@@ -11,7 +11,7 @@ export type SocketStatus = "connecting" | "open" | "closed";
 
 /** The session's phase, as the session object syncs it. */
 export type SessionPhase =
-  "planning" | "building" | "waiting" | "deployed" | "failed" | "closed";
+  "planning" | "building" | "waiting" | "deployed" | "failed" | "timed_out" | "closed";
 
 function readPhase(state: unknown): SessionPhase | null {
   if (typeof state !== "object" || state === null) return null;

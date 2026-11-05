@@ -8,6 +8,7 @@ export const BUILD_SESSION_STATUSES = [
   "waiting",
   "deployed",
   "failed",
+  "timed_out",
   "closed",
   "merged",
   "abandoned",

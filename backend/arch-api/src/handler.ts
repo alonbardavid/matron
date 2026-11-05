@@ -4,9 +4,10 @@ import { logUnexpectedError, type ApiContext } from "@backend/commons/api";
 import { branches } from "./routes/branches";
 import { sessions } from "./routes/sessions";
 import { settings } from "./routes/settings";
+import { troubleshooting } from "./routes/troubleshooting";
 
 const handler = new OpenAPIHandler(
-  { branches, sessions, settings },
+  { branches, sessions, settings, troubleshooting },
   { interceptors: [onError(logUnexpectedError)] },
 );
 
