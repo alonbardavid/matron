@@ -12,11 +12,18 @@ export type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
 export const DEFAULT_BUILDER_MODEL: AnthropicModel = "claude-opus-5-5";
 
 /**
- * The assistant's model, as the account's AI Gateway names it: `@cf/...` for
- * Workers AI, or `provider/model` for anything in the gateway's catalog,
- * Anthropic included.
+ * The assistant's model: `anthropic/<model>`, reached through the account's AI
+ * Gateway with the household's stored key, or `@cf/<model>` on Workers AI.
  */
-export const askModelSchema = z.string().trim().min(1).max(200);
+export const askModelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(
+    /^(anthropic|@cf)\/.+/,
+    "An Anthropic model (anthropic/...) or a Workers AI model (@cf/...)",
+  );
 export type AskModel = z.infer<typeof askModelSchema>;
 export const DEFAULT_ASK_MODEL: AskModel = `anthropic/${DEFAULT_BUILDER_MODEL}`;
 

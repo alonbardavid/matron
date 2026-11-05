@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Center, Group, Loader, ScrollArea, Stack, Text } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Center,
+  Group,
+  Loader,
+  ScrollArea,
+  Stack,
+  Text,
+} from "@mantine/core";
 import { useAgentChat } from "@cloudflare/think/react";
 import { useAgent } from "agents/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -50,7 +59,7 @@ export function AskConversation({
     host: window.location.host,
     basePath: askSocketPath(sessionId).replace(/^\//, ""),
   });
-  const { messages, sendMessage, status, isStreaming } = useAgentChat({
+  const { messages, sendMessage, status, isStreaming, error, clearError } = useAgentChat({
     agent,
     body: { timeZone: TIME_ZONE },
   });
@@ -60,18 +69,36 @@ export function AskConversation({
   const [awaiting, setAwaiting] = useState(pending !== null);
   useEffect(() => {
     const last = messages[messages.length - 1];
-    if (isStreaming || status === "error" || (last && last.role === "assistant"))
-      setAwaiting(false);
-  }, [isStreaming, status, messages]);
+    if (isStreaming || error || (last && last.role === "assistant")) setAwaiting(false);
+  }, [isStreaming, error, messages]);
   const thinking = awaiting || isStreaming;
   const ask = (text: string) => {
+    clearError();
     setAwaiting(true);
     void sendMessage({ text });
   };
+  // The turn failed before an answer came: say so, and offer the last question again.
+  const lastQuestion = [...messages]
+    .reverse()
+    .find((message) => message.role === "user")
+    ?.parts.map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
+  const failure = error ? (
+    <Alert color="red" title="Failed to contact the assistant" py="xs">
+      <Stack gap="xs">
+        <Text size="xs">{error.message}</Text>
+        {lastQuestion && (
+          <Button size="xs" variant="light" color="red" onClick={() => ask(lastQuestion)}>
+            Try again
+          </Button>
+        )}
+      </Stack>
+    </Alert>
+  ) : null;
 
   useEffect(() => {
     viewport.current?.scrollTo({ top: viewport.current.scrollHeight });
-  }, [messages, thinking]);
+  }, [messages, thinking, error]);
 
   // The first message of a new conversation, sent once the socket is ready.
   const sentPending = useRef(false);
@@ -99,9 +126,9 @@ export function AskConversation({
           <Center py="xl">
             <Loader size="sm" />
           </Center>
-        ) : messages.length === 0 && thinking ? (
+        ) : messages.length === 0 && (thinking || failure) ? (
           <Stack gap="sm" py="xs">
-            <Thinking />
+            {failure ?? <Thinking />}
           </Stack>
         ) : messages.length === 0 ? (
           <EmptyState
@@ -113,7 +140,7 @@ export function AskConversation({
             {messages.map((message) => (
               <AskMessage key={message.id} message={message} />
             ))}
-            {thinking && <Thinking />}
+            {failure ?? (thinking && <Thinking />)}
           </Stack>
         )}
       </ScrollArea>
@@ -124,8 +151,7 @@ export function AskConversation({
           </Text>
         ) : (
           <AskComposer
-            disabled={isStreaming || status === "error"}
-            placeholder={status === "error" ? "Disconnected" : undefined}
+            disabled={isStreaming}
             onSend={(text) => {
               ask(text);
               return true;

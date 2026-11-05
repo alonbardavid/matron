@@ -21,7 +21,7 @@ declare namespace Cloudflare {
     APP_ORIGIN: string;
     BETTER_AUTH_SECRET: string;
     SIGNING_KEY: string;
-    /** Production only: a Preview has none and reaches models through its AI binding. */
+    /** The account token: the router's API calls, and every model call through the gateway. */
     CLOUDFLARE_API_TOKEN?: string;
     CLOUDFLARE_ACCOUNT_ID?: string;
     WORKER_NAME: string;

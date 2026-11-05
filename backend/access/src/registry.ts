@@ -1,6 +1,7 @@
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements, userAc } from "better-auth/plugins/admin/access";
 import { branchPermissions } from "@backend/arch-branches/permissions";
+import { troubleshootingPermissions } from "@backend/arch-troubleshooting/permissions";
 import { conversationPermissions, databasePermissions } from "@backend/ask/permissions";
 import { eventPermissions } from "@backend/calendar/permissions";
 import type { Role } from "@backend/commons/principal";
@@ -22,6 +23,7 @@ const features: Permissions<string, string>[] = [
   eventPermissions,
   conversationPermissions,
   databasePermissions,
+  troubleshootingPermissions,
 ];
 
 type Statements = Record<string, readonly string[]>;

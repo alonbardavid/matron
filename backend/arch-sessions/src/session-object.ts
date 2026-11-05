@@ -35,7 +35,8 @@ import { Transcript } from "./transcript";
 
 const log = logger("arch-sessions/session-object");
 
-type Phase = "planning" | "building" | "waiting" | "deployed" | "failed" | "closed";
+type Phase =
+  "planning" | "building" | "waiting" | "deployed" | "failed" | "timed_out" | "closed";
 
 /** Synced to every connected client as it changes. */
 export interface SessionState {
@@ -187,6 +188,11 @@ export class BuildSessionObject extends Agent<Cloudflare.Env, SessionState> {
           BUILD_FAILED_MESSAGE.replace("{error}", detail?.error ?? "unknown error"),
         );
         return;
+      case "timed_out":
+        // The builder explained itself in the chat; the next message resumes the run.
+        this.setPhase("timed_out");
+        await setSessionStatus(sessionId, "timed_out");
+        return;
       case "merged":
       case "abandoned": {
         const branchId = await this.branchId(sessionId);
@@ -230,6 +236,7 @@ export class BuildSessionObject extends Agent<Cloudflare.Env, SessionState> {
       case "waiting":
       case "deployed":
       case "failed":
+      case "timed_out":
         await this.env.BUILDERS.getByName(sessionId).continueWith(text);
         this.setPhase("building");
         await setSessionStatus(sessionId, "building");

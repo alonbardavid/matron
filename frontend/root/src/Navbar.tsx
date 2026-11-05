@@ -14,6 +14,7 @@ import {
   IconSettings,
   IconSliders,
   IconUsers,
+  IconWrench,
 } from "@frontend/ds/icons";
 import classes from "./Navbar.module.css";
 import { PAGE_TITLES } from "./pages";
@@ -27,7 +28,7 @@ interface Item {
 
 /** The app's navigation: the household's pages, then its management, with the account at the bottom. */
 export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
-  const { can, canManage } = useMe();
+  const { can, canManage, canTroubleshoot } = useMe();
   const logout = useLogout();
   const { pathname } = useLocation();
 
@@ -40,6 +41,7 @@ export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
     { to: "/branches", icon: <IconBranch size={20} />, show: can("view") },
     { to: "/users", icon: <IconUsers size={20} />, show: canManage },
     { to: "/app-settings", icon: <IconSliders size={20} />, show: canManage },
+    { to: "/troubleshooting", icon: <IconWrench size={20} />, show: canTroubleshoot },
   ].filter((item) => item.show !== false);
 
   const link = (item: Item) => (

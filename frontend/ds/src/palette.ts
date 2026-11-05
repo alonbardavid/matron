@@ -21,6 +21,7 @@ const STATUS_COLORS: Record<string, string> = {
   waiting: "yellow",
   deployed: "sage",
   failed: "red",
+  timed_out: "yellow",
   closed: "gray",
   merged: "sage",
   abandoned: "gray",

@@ -13,6 +13,7 @@ export const RELAYED_STATUSES = [
   "deploying",
   "deployed",
   "failed",
+  "timed_out",
   "merged",
   "abandoned",
 ] as const;
@@ -38,6 +39,8 @@ export function sessionStatusFor(status: RelayedStatus): BuildSessionStatus {
       return "deployed";
     case "failed":
       return "failed";
+    case "timed_out":
+      return "timed_out";
     case "merged":
       return "merged";
     case "abandoned":

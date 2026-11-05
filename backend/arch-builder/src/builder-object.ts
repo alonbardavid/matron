@@ -46,6 +46,14 @@ const AGENT_TURN_TIMEOUT_MS = 40 * 60_000;
  * once it has idled this long. The next turn restores it.
  */
 const WAITING_GRACE_MS = 5 * 60_000;
+/**
+ * The longest a job runs without a word from the user. Past it the run is
+ * halted and parked, the container snapshotted and stopped, and the chat told;
+ * the next message picks the work up again.
+ */
+const USER_SILENCE_LIMIT_MS = 30 * 60_000;
+const TIMED_OUT_TEXT =
+  "The builder stopped: thirty minutes passed without a message from you. Reply here to pick the work up where it left off, or abandon the branch from the branch menu.";
 /** The host the coding agent calls for its model; the harness adds the gateway and credentials outside the container. */
 const MODEL_HOST = "anthropic.harness.internal";
 const PLACEHOLDER_KEY = "cf-aig-placeholder";
@@ -92,6 +100,14 @@ interface BuilderState {
   waiting: JobRun | null;
   /** User messages that arrived while a turn ran; the next agent turn gets them. */
   pending: string[];
+  /** When the first job began. */
+  createdAt: number | null;
+  /** When the user last spoke; the silence limit counts from here. */
+  lastUserMessageAt: number | null;
+  /** The silence limit hit while a run was active: the run parks instead of failing. */
+  timedOut: boolean;
+  /** The scheduled silence check, replaced on every user message. */
+  watchdogId: string | null;
 }
 
 const EMPTY_STATE: BuilderState = {
@@ -99,6 +115,10 @@ const EMPTY_STATE: BuilderState = {
   active: false,
   waiting: null,
   pending: [],
+  createdAt: null,
+  lastUserMessageAt: null,
+  timedOut: false,
+  watchdogId: null,
 };
 
 /** Where a run goes next: on with the next phase, parked, or finished. */
@@ -184,15 +204,15 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     await this.serial(() => this.begin(job));
   }
 
-  /** Cleared with its session: the container, the harness's record and the state are dropped. */
+  /** Cleared with its session: the container, the harness's record, the state and every alarm are dropped. */
   async clear(): Promise<void> {
     await this.serial(async () => {
       if (this.harness) {
         await this.harness.abort().catch(() => false);
         await this.harness.stop().catch(() => undefined);
       }
-      await this.ctx.storage.deleteAll();
-      log.info("builder cleared");
+      log.info("builder cleared", { sessionId: this.ctx.id.name ?? null });
+      await this.destroy();
     });
   }
 
@@ -201,11 +221,13 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     await this.serial(async () => {
       const state = await this.load();
       if (state.active) {
+        await this.heard(state);
         state.pending.push(text);
         await this.save(state);
         return;
       }
       if (state.waiting) {
+        await this.heard(state);
         const run = state.waiting;
         state.waiting = null;
         run.phase = "agent";
@@ -246,6 +268,22 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     };
   }
 
+  /** Stops the container by hand: a running job parks, as when the silence limit hits. */
+  async stopContainer(): Promise<void> {
+    await this.serial(async () => this.halt(await this.load()));
+  }
+
+  /** The silence check: nothing heard since it was set, so the run is halted. */
+  async onSilence(payload: { at: number }): Promise<void> {
+    await this.serial(async () => {
+      const state = await this.load();
+      // A later message restarted the clock.
+      if (state.lastUserMessageAt !== payload.at) return;
+      state.watchdogId = null;
+      await this.halt(state);
+    });
+  }
+
   // ── Fibers ────────────────────────────────────────────────────────────────
 
   /** An evicted object picks the job up from its last checkpoint. */
@@ -271,6 +309,8 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
       throw new Error("The builder is already running a job for this session");
     state.sessionId = job.sessionId;
     state.waiting = null;
+    state.createdAt ??= Date.now();
+    await this.heard(state);
     if (!this.harness) {
       log.warn("no container in this deployment", {
         sessionId: job.sessionId,
@@ -327,9 +367,14 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
         if (next === "end") break;
       }
     } catch (err) {
+      const state = await this.load();
+      if (state.timedOut) {
+        await this.timedOut(run, state);
+        return;
+      }
       log.error("job failed", { err, sessionId: run.job.sessionId, phase: run.phase });
       const text = messageOf(err);
-      await this.session(await this.load()).relay({ role: "builder", text });
+      await this.session(state).relay({ role: "builder", text });
       await this.finish(run, "failed", { error: firstLine(text) });
     } finally {
       const state = await this.load();
@@ -521,8 +566,85 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     const state = await this.load();
     state.waiting = null;
     state.pending = [];
+    await this.forgetSilenceCheck(state);
     await this.save(state);
     await this.session(state).builderStatus(status, detail);
+    // Nothing more comes for a deployed, merged or abandoned job: the container
+    // goes now, its workspace snapshotted. A failed job is left to the idle
+    // stop, like a question: a fix may follow within minutes.
+    if (status !== "failed" && this.harness) {
+      await this.harness
+        .stop()
+        .catch((err) =>
+          log.warn("container stop failed", { err, sessionId: job.sessionId }),
+        );
+    }
+  }
+
+  // ── The silence limit ─────────────────────────────────────────────────────
+
+  /** A user message arrived: the silence clock restarts. The caller saves the state. */
+  private async heard(state: BuilderState): Promise<void> {
+    await this.forgetSilenceCheck(state);
+    const at = Date.now();
+    state.lastUserMessageAt = at;
+    state.timedOut = false;
+    const check = await this.schedule(USER_SILENCE_LIMIT_MS / 1000, "onSilence", { at });
+    state.watchdogId = check.id;
+  }
+
+  private async forgetSilenceCheck(state: BuilderState): Promise<void> {
+    if (!state.watchdogId) return;
+    await this.cancelSchedule(state.watchdogId).catch(() => false);
+    state.watchdogId = null;
+  }
+
+  /**
+   * Halts whatever runs and puts the container away, its workspace
+   * snapshotted. An active run is aborted and marked timed out, so its fiber
+   * parks it instead of failing it.
+   */
+  private async halt(state: BuilderState): Promise<void> {
+    if (!this.harness) return;
+    if (state.active) {
+      state.timedOut = true;
+      await this.save(state);
+      await this.harness.abort().catch(() => false);
+    }
+    await this.harness
+      .stop()
+      .catch((err) =>
+        log.warn("container stop failed", { err, sessionId: state.sessionId }),
+      );
+    log.info("builder halted", { sessionId: state.sessionId, active: state.active });
+  }
+
+  /**
+   * The silence limit hit mid-run. A build parks, to resume on the next
+   * message; a merge or an abandon cannot resume, so it fails.
+   */
+  private async timedOut(run: JobRun, state: BuilderState): Promise<void> {
+    const { job } = run;
+    state.timedOut = false;
+    log.info("job timed out", {
+      sessionId: job.sessionId,
+      mode: job.mode,
+      phase: run.phase,
+    });
+    if (job.mode === "merge" || job.mode === "abandon") {
+      await this.save(state);
+      await this.session(state).relay({
+        role: "builder",
+        text: `The ${job.mode} stopped: thirty minutes passed without a message. Start it again from the branch menu.`,
+      });
+      await this.finish(run, "failed", { error: "timed out" });
+      return;
+    }
+    state.waiting = run;
+    await this.save(state);
+    const session = this.session(state);
+    await session.relay({ role: "builder", text: TIMED_OUT_TEXT });
+    await session.builderStatus("timed_out");
   }
 
   // ── Turns ─────────────────────────────────────────────────────────────────

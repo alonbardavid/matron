@@ -1,11 +1,17 @@
 import { Think, type TurnConfig, type TurnContext } from "@cloudflare/think";
 import type { Connection, ConnectionContext } from "agents";
+import type { LanguageModel } from "ai";
 import { getAskModel } from "@backend/arch-settings/service";
 import { logger } from "@backend/commons/logger";
 import { ROLES, type Principal, type Role } from "@backend/commons/principal";
 import { DEFAULT_ASK_MODEL } from "@shared/contract/arch/settings";
 import { touchConversation } from "./conversations";
-import { gatewayOptions, type AskModelMetadata } from "./models/gateway";
+import {
+  gatewayModel,
+  gatewayOptions,
+  isWorkersAIModel,
+  type AskModelMetadata,
+} from "./models/gateway";
 import { askSystemPrompt } from "./prompt";
 import { householdTools } from "./tools";
 
@@ -71,6 +77,29 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
   /** A slug the agent resolves itself goes through the household's gateway, with the same log metadata. */
   override getGateway() {
     return gatewayOptions(this.modelMetadata());
+  }
+
+  /**
+   * An Anthropic slug goes to the gateway's Anthropic endpoint, authenticated
+   * with the account token, where the household's stored provider key applies.
+   * A Workers AI slug goes through the AI binding. Nothing else is served.
+   */
+  override resolveModel(model: string | LanguageModel = this.getModel()): LanguageModel {
+    if (typeof model !== "string" || isWorkersAIModel(model))
+      return super.resolveModel(model);
+    const { CLOUDFLARE_ACCOUNT_ID: accountId, CLOUDFLARE_API_TOKEN: token } = this.env;
+    if (!accountId || !token) {
+      throw new Error(
+        "The assistant has no account token for the gateway: set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
+      );
+    }
+    const direct = gatewayModel(model, { accountId, token }, this.modelMetadata());
+    if (!direct) {
+      throw new Error(
+        `The assistant runs Anthropic models (anthropic/...) or Workers AI models (@cf/...), not "${model}"`,
+      );
+    }
+    return direct;
   }
 
   private modelMetadata(): AskModelMetadata {

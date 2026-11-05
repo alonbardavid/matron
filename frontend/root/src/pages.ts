@@ -6,6 +6,7 @@ export const PAGE_TITLES: Record<string, string> = {
   "/branches": "Branches",
   "/users": "Users",
   "/app-settings": "App settings",
+  "/troubleshooting": "Troubleshooting",
   "/settings": "Settings",
 };
 
