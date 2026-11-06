@@ -84,6 +84,70 @@ export async function listOccurrences(
   return out.sort((a, b) => a.startAt - b.startAt);
 }
 
+/** An occurrence that is about to start, and who attends it. */
+export interface StartingOccurrence {
+  /** The occurrence's id: the event's own, or `<event id>:<day>` in a series. */
+  id: string;
+  title: string;
+  allDay: boolean;
+  startAt: number;
+  timeZone: string;
+  attendeeIds: string[];
+}
+
+/**
+ * Every occurrence, on anyone's calendar, that starts in [from, to), for the
+ * reminder sweep. It acts for no one: the sweep runs on a schedule, not for a
+ * principal.
+ */
+export async function occurrencesStartingBetween(
+  from: number,
+  to: number,
+): Promise<StartingOccurrence[]> {
+  if (to <= from) return [];
+  const rows = await getDb()
+    .select()
+    .from(calendarEvent)
+    .where(
+      and(
+        lt(calendarEvent.startAt, new Date(to)),
+        or(
+          gte(calendarEvent.startAt, new Date(from)),
+          inArray(calendarEvent.recurrenceFrequency, ["weekly", "monthly"]),
+        ),
+      ),
+    );
+  const starting: { row: EventRow; id: string; startAt: number }[] = [];
+  for (const row of rows) {
+    const recurrence = toRecurrence(row);
+    if (!recurrence) {
+      starting.push({ row, id: row.id, startAt: row.startAt.getTime() });
+      continue;
+    }
+    const series = {
+      startAt: row.startAt.getTime(),
+      endAt: row.endAt.getTime(),
+      timeZone: row.timeZone,
+      recurrence,
+    };
+    for (const window of expandSeries(series, from, to)) {
+      if (window.startAt < from) continue;
+      starting.push({ row, id: `${row.id}:${window.day}`, startAt: window.startAt });
+    }
+  }
+  const shares = await sharesOf([...new Set(starting.map(({ row }) => row.id))]);
+  return starting.map(({ row, id, startAt }) => ({
+    id,
+    title: row.title,
+    allDay: row.allDay,
+    startAt,
+    timeZone: row.timeZone,
+    attendeeIds: (shares.get(row.id) ?? [])
+      .filter((s) => s.attendee)
+      .map((s) => s.userId),
+  }));
+}
+
 /** The event, when the caller created it or was given it. */
 export async function getEvent(principal: Principal, id: string): Promise<CalendarEvent> {
   eventPermissions.require(principal, "view");

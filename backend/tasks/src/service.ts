@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, between, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
@@ -32,6 +32,40 @@ export async function listTasks(principal: Principal): Promise<Task[]> {
     .orderBy(desc(task.createdAt));
   const shares = await sharesOf(rows.map((row) => row.id));
   return rows.map((row) => toTask(row, shares.get(row.id) ?? [])).sort(byOrder);
+}
+
+/** An open task with a due day, and who is reminded of it. */
+export interface DueTask {
+  id: string;
+  title: string;
+  dueDate: string;
+  /** Its assignees, or its creator when nobody is assigned. */
+  remindUserIds: string[];
+}
+
+/**
+ * Open tasks due on a day between `fromDay` and `toDay` (inclusive,
+ * `YYYY-MM-DD`), for the reminder sweep. It acts for no one: the sweep runs
+ * on a schedule, not for a principal.
+ */
+export async function openTasksDueBetween(
+  fromDay: string,
+  toDay: string,
+): Promise<DueTask[]> {
+  const rows = await getDb()
+    .select()
+    .from(task)
+    .where(and(isNull(task.completedAt), between(task.dueDate, fromDay, toDay)));
+  const shares = await sharesOf(rows.map((row) => row.id));
+  return rows.map((row) => {
+    const { assignees } = toTask(row, shares.get(row.id) ?? []);
+    return {
+      id: row.id,
+      title: row.title,
+      dueDate: row.dueDate!,
+      remindUserIds: assignees.length > 0 ? assignees : [row.creatorId],
+    };
+  });
 }
 
 export async function createTask(principal: Principal, input: TaskCreate): Promise<Task> {

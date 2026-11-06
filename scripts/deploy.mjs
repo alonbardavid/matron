@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createUserSql } from "./lib/owner-sql.mjs";
 import { deploymentNames } from "./lib/names.mjs";
+import { generateVapidKeys } from "./lib/vapid.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backendDir = join(root, "apps/backend");
@@ -524,6 +525,12 @@ let firstDeploy = false;
   for (const generated of ["BETTER_AUTH_SECRET", "SIGNING_KEY"]) {
     if (!existing.includes(generated))
       secrets[generated] = randomBytes(32).toString("hex");
+  }
+  // The push key pair, generated once: a new pair would unsubscribe every device.
+  if (!existing.includes("VAPID_PUBLIC_KEY") || !existing.includes("VAPID_PRIVATE_KEY")) {
+    const vapid = await generateVapidKeys();
+    secrets.VAPID_PUBLIC_KEY = vapid.publicKey;
+    secrets.VAPID_PRIVATE_KEY = vapid.privateKey;
   }
   writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
   console.log(`  setting: ${Object.keys(secrets).join(", ") || "nothing new"}`);

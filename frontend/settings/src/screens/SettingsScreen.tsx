@@ -17,6 +17,7 @@ import { FormPasswordInput, FormTextInput } from "@frontend/ds/forms/FormInputs"
 import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
 import { StandardForm } from "@frontend/ds/forms/StandardForm";
 import { Page } from "@frontend/ds/Page";
+import { RemindersCard } from "@frontend/notifications/widgets/RemindersCard";
 
 const profileSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(80),
@@ -41,7 +42,7 @@ const SCHEMES = [
   { value: "auto", label: "System" },
 ];
 
-/** Your own account: name, password and appearance. The email is fixed. */
+/** Your own account: name, password, appearance and reminders. The email is fixed. */
 export function SettingsScreen() {
   const { me } = useMe();
   const queryClient = useQueryClient();
@@ -122,6 +123,7 @@ export function SettingsScreen() {
           />
         </Stack>
       </Card>
+      <RemindersCard />
     </Page>
   );
 }

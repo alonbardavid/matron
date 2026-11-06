@@ -13,6 +13,8 @@ export const ENTITY_PREFIXES = {
   CALENDAR_EVENT: "CE",
   CALENDAR_EVENT_SHARE: "CS",
   ASK_SESSION: "AS",
+  PUSH_SUBSCRIPTION: "PS",
+  REMINDER: "RM",
 } as const satisfies Record<string, Uppercase<string>>;
 
 export type Entity = keyof typeof ENTITY_PREFIXES;

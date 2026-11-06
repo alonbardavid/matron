@@ -82,6 +82,7 @@ The resources so far:
 - `task` and `event`: `view`, `create`, `update`, `share`, `remove`; everyone. The object's own rule (its creator, who it is shared with) decides which ones.
 - `conversation`: `view`, `create`, `chat`, `rename`, `archive`; everyone, on their own conversations.
 - `database` (the assistant's read-only queries): `read` for everyone, `read_router` for owners and admins.
+- `push`: `view`, `subscribe`, `unsubscribe`; everyone, on their own devices.
 
 A service action first calls its resource's `require(principal, action)`, then its object rule. Routes and screens only mirror these checks. The owner is created by the deploy script.
 
@@ -93,7 +94,8 @@ Application routes live under `/api/app/`. The household starts with a calendar,
 - Tasks: a title, an optional description, a creator, the users it is shared with and, among those, the assignees. A task may have a due date and can be completed.
 - Conversations: the user's ask sessions and, for builders, their build sessions. An ask session records the branch it was started on and is continued only there: a Preview's database begins as a copy of production, so main's conversations are listed on a branch but cannot be opened, and the Ask button always starts a new one. The chat socket names its branch in the URL, since a socket carries no referer.
 - Ask: an assistant on the Agents SDK's Think harness, under the application. Its tools wrap the services the user could use themselves, so the same permissions apply, plus one read-only query on the database: a single SELECT, checked against the tables the user may read (the household's own tables and `user` for everyone; the router's tables for owners and admins only).
-- Settings: a member changes their name and password, not their email. Owners and admins manage users (add, remove, change roles) and the app settings: the Anthropic model the planner and builder use, and the assistant's model, which is either an Anthropic model or anything the AI Gateway serves.
+- Reminders: Matron installs as a PWA (a web manifest and a service worker that only shows notifications), and each device can turn on Web Push. An hourly cron pushes a reminder about an hour before an event starts, to its attendees, and before an open task's due day ends, to its assignees (its creator when nobody is assigned), in the time zone of the person's latest subscribed device. Each reminder goes out once. Only production sends them: a Preview holds no push keys and runs no cron.
+- Settings: a member changes their name and password, not their email, and turns reminders on or off for the device they are on. Owners and admins manage users (add, remove, change roles) and the app settings: the Anthropic model the planner and builder use, and the assistant's model, which is either an Anthropic model or anything the AI Gateway serves.
 
 ## Database
 

@@ -1,6 +1,13 @@
 {
+  "id": "/",
   "name": "Matron",
   "short_name": "Matron",
+  "description": "The household's calendar, tasks and assistant.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#2B0B1F",
+  "background_color": "#FFFFFF",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -18,8 +25,5 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "theme_color": "#2B0B1F",
-  "background_color": "#FFFFFF",
-  "display": "standalone"
+  ]
 }

@@ -26,6 +26,9 @@ declare namespace Cloudflare {
     CLOUDFLARE_ACCOUNT_ID?: string;
     WORKER_NAME: string;
     BUILDER_IMAGE?: string;
+    /** The push key pair; absent on a Preview, which sends no push. */
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_PRIVATE_KEY?: string;
   }
 }
 

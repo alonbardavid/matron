@@ -18,7 +18,13 @@ export const REQUIRED_COMPAT_FLAGS = [
 ];
 
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
-export const SECRET_VARS = ["BETTER_AUTH_SECRET", "SIGNING_KEY", "CLOUDFLARE_API_TOKEN"];
+export const SECRET_VARS = [
+  "BETTER_AUTH_SECRET",
+  "SIGNING_KEY",
+  "CLOUDFLARE_API_TOKEN",
+  "VAPID_PUBLIC_KEY",
+  "VAPID_PRIVATE_KEY",
+];
 
 /**
  * @typedef {object} Options
@@ -120,6 +126,8 @@ export function generateWranglerConfig(emitted, options) {
       };
     }
   } else {
+    // A Preview sends no reminders: its database is a copy of production's.
+    delete config.triggers;
     // A Preview inherits nothing from the Worker: repeat everything it binds.
     // No containers here, so `wrangler preview` never needs Docker.
     config.previews = {

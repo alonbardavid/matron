@@ -40,6 +40,19 @@ planner and the builder's agent turns have their own. `models/gateway.ts` reache
 household's stored provider key applies, and a `@cf/` slug is Workers AI through the AI binding.
 A Preview holds the token too, so its assistant takes the same route.
 
+## Reminders
+
+`apps/frontend/public/site.webmanifest` and `sw.js` make the SPA installable; the service
+worker handles no fetch, only `push` and `notificationclick`. `frontend/notifications` holds
+the install prompt, the device's subscription and the settings card. A subscription is a row
+in `push_subscription` (`backend/notifications/src/service.ts`), with the device's time zone.
+The Worker's `scheduled` entry (`apps/backend/src/index.ts`, cron `0 * * * *`) runs
+`sendDueReminders` (`reminders.ts`): it asks the calendar and tasks services for what is due in
+the next 90 minutes, claims a `reminder` row per person and subject so a reminder goes out
+once, and sends it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`). Locally, `curl
+"localhost:8301/cdn-cgi/handler/scheduled?cron=0+*+*+*+*"` runs one sweep.
+
 ## Building
 
 - `POST /api/arch/sessions` creates a session row; the chat is a WebSocket to the session's

@@ -1,5 +1,6 @@
 import { conversationsContract } from "./conversations";
 import { calendarContract } from "./calendar";
+import { notificationsContract } from "./notifications";
 import { tasksContract } from "./tasks";
 import { usersContract } from "./users";
 
@@ -7,6 +8,7 @@ import { usersContract } from "./users";
 export const appContract = {
   conversations: conversationsContract,
   calendar: calendarContract,
+  notifications: notificationsContract,
   tasks: tasksContract,
   users: usersContract,
 };
