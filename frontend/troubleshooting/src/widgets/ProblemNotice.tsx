@@ -2,7 +2,14 @@ import { Alert, Code, Text } from "@mantine/core";
 import type { ApiProblem } from "@shared/contract/arch/troubleshooting";
 
 /** Why a section could not be read, and what would let it be. */
-export function ProblemNotice({ problem }: { problem: ApiProblem }) {
+export function ProblemNotice({
+  problem,
+  title = "Cloudflare did not answer",
+}: {
+  problem: ApiProblem;
+  /** The heading for an error that is not about the token. */
+  title?: string;
+}) {
   if (problem.kind === "permission") {
     return (
       <Alert color="yellow" title="The API token cannot read this">
@@ -22,7 +29,7 @@ export function ProblemNotice({ problem }: { problem: ApiProblem }) {
     );
   }
   return (
-    <Alert color="red" title="Cloudflare did not answer">
+    <Alert color="red" title={title}>
       <Text size="sm">{problem.message}</Text>
     </Alert>
   );

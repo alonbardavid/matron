@@ -24,7 +24,8 @@
  * step's data or `error` with a readable message (exit code 1). Anything
  * that is not JSON is treated as a log line.
  *
- *   prepare-build      clone `repository.remote`, cut `branch.name` from `branch.baseCommit`
+ *   prepare-build      clone `repository.remote`, cut `branch.name` from `branch.baseCommit`;
+ *                      for an origin update, fetch `upstream` and merge it in → {@link PrepareBuildResult}
  *   prepare-continue   reuse the restored checkout (or clone the branch), fetch main → {@link PrepareContinueResult}
  *   prepare-cleanup    make sure the repository's dependencies exist for a cleanup
  *   install            pnpm install, skipped when the lockfile is already installed
@@ -112,10 +113,22 @@ interface BuilderJobBase {
   builderImage?: string;
 }
 
+/** For an origin update: the upstream commit the branch merges in. */
+export interface BuilderUpstream {
+  /** Public git remote of the upstream repository; fetched without credentials. */
+  remote: string;
+  /** The upstream branch, for messages. */
+  branch: string;
+  /** The commit to merge, the upstream head when the update was started. */
+  commit: string;
+}
+
 export interface BuildJob extends BuilderJobBase {
   mode: "build";
   /** The plan the user agreed to. */
   plan: string;
+  /** Set for an origin update: prepare-build merges this commit into the new branch. */
+  upstream?: BuilderUpstream;
 }
 
 export interface ContinueJob extends BuilderJobBase {
@@ -149,6 +162,7 @@ export type StepName =
 /** How the agent's prompt for one turn is built; the templates live in the image. */
 export type AgentPrompt =
   | { kind: "build"; extra: string }
+  | { kind: "upstream"; extra: string; sync: string }
   | { kind: "continue"; message: string; sync: string }
   | { kind: "fix"; command: string; output: string };
 
@@ -178,6 +192,10 @@ export interface AgentOutcome {
   message: string;
 }
 
+export interface PrepareBuildResult {
+  /** For an origin update: how the merge went, for the agent's prompt; null otherwise. */
+  sync: string | null;
+}
 export interface PrepareContinueResult {
   sync: string;
 }

@@ -2,12 +2,18 @@ import { inArray } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
+import { liveUpstreamBranch, listBranches } from "@backend/arch-branches/service";
+import { mainHead, mainHistoryHas } from "@backend/arch-repository/service";
+import { startUpstreamSession } from "@backend/arch-sessions/service";
+import { UPSTREAM, upstreamRemote } from "@backend/commons/names";
 import { branches } from "@backend/db-models/arch-branches";
 import { user } from "@backend/db-models/arch-auth";
 import { buildSessions } from "@backend/db-models/arch-sessions";
 import { getDb } from "@backend/db-models/db";
 import type {
   ApiProblem,
+  OriginStatus,
+  TroubleshootingBranch,
   TroubleshootingContainer,
   TroubleshootingDatabase,
 } from "@shared/contract/arch/troubleshooting";
@@ -20,9 +26,18 @@ import {
   WORKERS_PERMISSION,
 } from "./cloudflare";
 import { troubleshootingEnv } from "./env";
+import {
+  UPSTREAM_PAGE,
+  upstreamCommits,
+  upstreamFilesChanged,
+  upstreamUrl,
+} from "./github";
 import { troubleshootingPermissions } from "./permissions";
 
 const log = logger("arch-troubleshooting/service");
+
+/** How many of an origin update's commits its plan lists. */
+const ORIGIN_PLAN_COMMITS = 30;
 
 /** What a D1 database may hold. */
 const D1_MAX_BYTES = 10 * 1024 ** 3;
@@ -96,6 +111,155 @@ async function databaseRows(worker: string): Promise<D1Row[]> {
     { permission: D1_PERMISSION },
   );
   return result.filter((row) => row.name === worker || row.name.startsWith(`${worker}-`));
+}
+
+// ── Branches ──────────────────────────────────────────────────────────────────
+
+/** Every branch, archived ones included, with who made it and the session behind it. */
+export async function listAllBranches(
+  principal: Principal,
+): Promise<Listing<TroubleshootingBranch>> {
+  troubleshootingPermissions.require(principal, "manage");
+  const head = await mainHead().catch(() => null);
+  const rows = await listBranches(principal, head);
+  const people = await sessionPeople(rows.map((row) => row.buildSessionId));
+  const items = rows.map((row): TroubleshootingBranch => ({
+    ...row,
+    sessionTitle: people.get(row.buildSessionId)?.title ?? null,
+  }));
+  return { items, problem: null };
+}
+
+// ── Origin updates ────────────────────────────────────────────────────────────
+
+/** Where main stands against upstream, or the problem that kept it from being read. */
+export async function checkOrigin(
+  principal: Principal,
+): Promise<{ status: OriginStatus | null; problem: ApiProblem | null }> {
+  troubleshootingPermissions.require(principal, "manage");
+  try {
+    return { status: await originStatus(), problem: null };
+  } catch (err) {
+    log.warn("origin check failed", { err });
+    return { status: null, problem: problemOf(err) };
+  }
+}
+
+/**
+ * Starts a build session that merges upstream `commit` into a new branch.
+ * The commit must still be upstream's head and main must lack it; one origin
+ * update is open at a time.
+ */
+export async function mergeOrigin(
+  principal: Principal,
+  commit: string,
+): Promise<{ sessionId: string; branchId: string }> {
+  troubleshootingPermissions.require(principal, "manage");
+  const open = await liveUpstreamBranch();
+  if (open) {
+    throw new DomainError(
+      "CONFLICT",
+      `An origin update is already open on branch ${open.name}; merge or abandon it first`,
+    );
+  }
+  let status: OriginStatus;
+  try {
+    status = await originStatus();
+  } catch (err) {
+    throw new DomainError("UNAVAILABLE", problemOf(err).message);
+  }
+  if (status.head.sha !== commit) {
+    throw new DomainError("CONFLICT", "Upstream has moved since the check; check again");
+  }
+  if (status.state === "up-to-date") {
+    throw new DomainError(
+      "CONFLICT",
+      "This deployment already has every upstream commit",
+    );
+  }
+  const short = commit.slice(0, 7);
+  const started = await startUpstreamSession(principal, {
+    title: `Origin update to ${short}`,
+    request: `Merge the updates from ${status.repository} ${status.branch} (${short}) into this deployment.`,
+    plan: originPlan(status),
+    upstream: { remote: upstreamRemote(), branch: UPSTREAM.branch, commit },
+  });
+  log.info("origin update started", {
+    ...started,
+    upstreamCommit: commit,
+    userId: principal.userId,
+  });
+  return started;
+}
+
+async function originStatus(): Promise<OriginStatus> {
+  // The deployment's own repository first: without it there is nothing to compare.
+  await mainHead();
+  const upstream = await upstreamCommits();
+  const head = upstream[0];
+  if (!head) throw new Error(`GitHub lists no commits on ${UPSTREAM.branch}`);
+  const pending = await liveUpstreamBranch();
+  const history = await mainHistoryHas(upstream.map((commit) => commit.sha));
+  // Newest first: the new commits run until the first one main already has.
+  const known = upstream.findIndex((commit) => history.has.has(commit.sha));
+  const commits = known === -1 ? upstream : upstream.slice(0, known);
+  const base = known === -1 ? null : upstream[known]!;
+  const files =
+    base && commits.length ? await upstreamFilesChanged(base.sha, head.sha) : null;
+  return {
+    repository: `${UPSTREAM.owner}/${UPSTREAM.repository}`,
+    branch: UPSTREAM.branch,
+    url: upstreamUrl(),
+    checkedAt: Date.now(),
+    head,
+    mainHead: history.head,
+    state: commits.length === 0 ? "up-to-date" : history.complete ? "behind" : "unknown",
+    commits,
+    moreCommits: known === -1 && upstream.length >= UPSTREAM_PAGE,
+    filesChanged: files?.length ?? null,
+    touchesBuilderImage: files?.some((file) => file.startsWith("apps/builder/")) ?? false,
+    pending:
+      pending && pending.upstreamCommit
+        ? {
+            branchId: pending.id,
+            branchName: pending.name,
+            buildSessionId: pending.buildSessionId,
+            status: pending.status,
+            upstreamCommit: pending.upstreamCommit,
+          }
+        : null,
+  };
+}
+
+/** The plan the origin update's chat shows and its builder works from. */
+function originPlan(status: OriginStatus): string {
+  const count = status.commits.length;
+  const lines = [
+    `**Origin update**: merge ${count}${status.moreCommits ? "+" : ""} new commit${count === 1 ? "" : "s"} from [${status.repository}](${status.url}) \`${status.branch}\` at \`${status.head.sha.slice(0, 7)}\` into this deployment.`,
+    "",
+    ...status.commits
+      .slice(0, ORIGIN_PLAN_COMMITS)
+      .map(
+        (commit) =>
+          `- [\`${commit.sha.slice(0, 7)}\`](${commit.url}) ${commit.title}${commit.author ? ` (${commit.author})` : ""}`,
+      ),
+  ];
+  if (count > ORIGIN_PLAN_COMMITS || status.moreCommits) lines.push("- …and more");
+  lines.push("");
+  if (status.filesChanged !== null) {
+    lines.push(
+      `Upstream changed ${status.filesChanged} file${status.filesChanged === 1 ? "" : "s"}.`,
+    );
+  }
+  if (status.touchesBuilderImage) {
+    lines.push(
+      "Some of it changes the builder itself (`apps/builder/`): that part applies after the next `pnpm run deploy` from a terminal, since deploys from here reuse the published builder image.",
+    );
+  }
+  lines.push(
+    "The builder merges this on a new branch, reconciles it with this household's own changes, runs the checks and deploys a Preview to try. Merge it from the branch menu once it works.",
+  );
+  return lines.join("\n");
 }
 
 // ── Containers ────────────────────────────────────────────────────────────────
@@ -291,4 +455,3 @@ async function mustCall<T>(call: () => Promise<T>): Promise<T> {
     throw err;
   }
 }
-

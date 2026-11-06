@@ -43,6 +43,14 @@ export function renderPrompt(
   switch (prompt.kind) {
     case "build":
       return buildContext(job.plan ?? "(no plan was written; work from the request)");
+    case "upstream":
+      return renderTemplate(loadPrompt(promptsDir, "upstream"), {
+        request: job.request,
+        plan: job.plan ?? "",
+        branch: job.branch.name,
+        sync: prompt.sync,
+        extra: prompt.extra,
+      });
     case "fix":
       return renderTemplate(loadPrompt(promptsDir, "fix"), {
         command: prompt.command,

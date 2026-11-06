@@ -7,6 +7,7 @@ import type {
   BuildJob,
   BuilderBranch,
   BuilderJob,
+  BuilderUpstream,
   ContinueJob,
   MergeJob,
 } from "./protocol";
@@ -66,11 +67,13 @@ export async function buildJob(input: {
   branch: BranchRow;
   request: string;
   plan: string;
+  upstream?: BuilderUpstream;
 }): Promise<BuildJob> {
   return {
     ...(await jobCommon(input.sessionId, input.branch, input.request)),
     mode: "build",
     plan: input.plan,
+    ...(input.upstream ? { upstream: input.upstream } : {}),
   };
 }
 

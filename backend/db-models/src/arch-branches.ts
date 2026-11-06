@@ -33,6 +33,8 @@ export const branches = sqliteTable(
     // Main's head when the branch was cut; merge compares it with main's head.
     baseCommit: text("base_commit").notNull(),
     headCommit: text("head_commit"),
+    // The upstream commit the branch merges in, for an origin update; null otherwise.
+    upstreamCommit: text("upstream_commit"),
     status: text("status", { enum: BRANCH_STATUSES }).default("deploying").notNull(),
     archivedAt: timestamp("archived_at"),
     createdAt: createdAt(),

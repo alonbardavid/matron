@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { and, desc, eq, isNull, like } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, like } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
@@ -26,6 +26,7 @@ export interface BranchRow {
   userId: string;
   baseCommit: string;
   headCommit: string | null;
+  upstreamCommit: string | null;
   status: BranchStatus;
   archivedAt: Date | null;
 }
@@ -93,7 +94,13 @@ export async function branchForSession(
  */
 export async function createBranch(
   principal: Principal,
-  input: { buildSessionId: string; name: string; baseCommit: string },
+  input: {
+    buildSessionId: string;
+    name: string;
+    baseCommit: string;
+    /** For an origin update: the upstream commit the branch merges in. */
+    upstreamCommit?: string;
+  },
 ): Promise<BranchRow> {
   if (!branchPermissions.can(principal.role, "create")) {
     throw new DomainError("FORBIDDEN", "You cannot create branches");
@@ -122,10 +129,22 @@ export async function createBranch(
       buildSessionId: input.buildSessionId,
       userId: principal.userId,
       baseCommit: input.baseCommit,
+      upstreamCommit: input.upstreamCommit ?? null,
     })
     .returning();
   log.info("branch created", { branchId: id, buildSessionId: input.buildSessionId });
   return row!;
+}
+
+/** The live branch that merges upstream commits in, if one is open. */
+export async function liveUpstreamBranch(): Promise<BranchRow | null> {
+  const [row] = await getDb()
+    .select()
+    .from(branches)
+    .where(and(isNotNull(branches.upstreamCommit), isNull(branches.archivedAt)))
+    .orderBy(desc(branches.createdAt))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function markDeployed(
@@ -236,6 +255,7 @@ function toBranch(
     buildSessionId: row.buildSessionId,
     sessionViewable: derived.sessionViewable,
     behindMain: derived.behindMain,
+    upstreamCommit: row.upstreamCommit,
     userId: row.userId,
     userName,
     status: row.status,

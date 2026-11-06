@@ -25,6 +25,7 @@ import {
   type CommitPushResult,
   type DeployResult,
   type MergeMainResult,
+  type PrepareBuildResult,
   type PrepareContinueResult,
   type VerifyResult,
 } from "./types.js";
@@ -36,6 +37,26 @@ export function describeFetch(behind: number): string {
   return (
     `origin/main has ${behind} commit${behind === 1 ? "" : "s"} that the branch lacks. ` +
     "Merge them first with `git merge origin/main`."
+  );
+}
+
+/** What the agent is told about the upstream merge prepare-build did. */
+export function describeUpstreamMerge(
+  missing: number,
+  ref: string,
+  commit: string,
+  conflicts: string[],
+): string {
+  const head =
+    `\`${ref}\` (${commit.slice(0, 12)}) had ${missing} commit${missing === 1 ? "" : "s"} ` +
+    "this deployment lacked; the runner merged it into the branch.";
+  if (!conflicts.length) {
+    return `${head} The merge was clean and is committed.`;
+  }
+  return (
+    `${head} The merge stopped with conflicts in:\n` +
+    conflicts.map((path) => `- \`${path}\``).join("\n") +
+    "\n\nThe merge is still in progress: resolve these files, `git add` them and finish with `git commit --no-edit`."
   );
 }
 
@@ -120,10 +141,36 @@ export class Steps {
     return g;
   }
 
-  /** A build: a fresh clone with the branch cut from main. */
-  async prepareBuild(): Promise<void> {
+  /**
+   * A build: a fresh clone with the branch cut from main. An origin update
+   * then merges the upstream commit in; conflicts are left for the agent.
+   */
+  async prepareBuild(): Promise<PrepareBuildResult> {
     const g = await this.clone();
     await git.checkoutNewBranch(g, this.job.branch.name, this.job.branch.baseCommit);
+    const { upstream } = this.job;
+    if (!upstream) return { sync: null };
+    progress(`fetching ${upstream.remote} ${upstream.branch}`);
+    const ref = await git.fetchUpstream(g, upstream);
+    const missing = await git.countMissing(g, upstream.commit);
+    if (missing === 0) {
+      const sync = `The branch already contains upstream ${upstream.commit.slice(0, 7)}; there was nothing to merge.`;
+      progress(sync);
+      return { sync };
+    }
+    progress(`merging ${missing} upstream commit${missing === 1 ? "" : "s"}`);
+    const { conflicts } = await git.mergeCommit(
+      g,
+      upstream.commit,
+      `Merge ${upstream.branch} of ${upstream.remote} at ${upstream.commit.slice(0, 12)}`,
+    );
+    const sync = describeUpstreamMerge(missing, ref, upstream.commit, conflicts);
+    progress(
+      conflicts.length
+        ? `the merge has conflicts in ${conflicts.length} file${conflicts.length === 1 ? "" : "s"}`
+        : "merged without conflicts",
+    );
+    return { sync };
   }
 
   /**

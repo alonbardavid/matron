@@ -4,10 +4,14 @@ import {
   createBranch,
   markDeployed,
   archiveBranch,
+  type BranchRow,
 } from "@backend/arch-branches/service";
 import { logger } from "@backend/commons/logger";
 import { ROLES, type Principal, type Role } from "@backend/commons/principal";
-import type { BuilderStatusDetail } from "@backend/arch-builder/protocol";
+import type {
+  BuilderStatusDetail,
+  BuilderUpstream,
+} from "@backend/arch-builder/protocol";
 import { sessionStatusFor, type RelayedStatus } from "@backend/arch-builder/events";
 import { buildJob } from "@backend/arch-builder/jobs";
 import { mainHead } from "@backend/arch-repository/service";
@@ -133,6 +137,38 @@ export class BuildSessionObject extends Agent<Cloudflare.Env, SessionState> {
   /** A builder message for the chat. */
   async relay(frame: { role: "builder"; text: string }): Promise<void> {
     this.post(frame.role, frame.text);
+  }
+
+  /**
+   * An origin update: started by the owner from troubleshooting rather than
+   * typed, so the request and the plan come written and the build starts at
+   * once. From then on it is a build session like any other: its chat takes
+   * follow-ups, and its branch merges from the branch menu.
+   */
+  async startUpstreamBuild(
+    who: Principal,
+    input: {
+      sessionId: string;
+      title: string;
+      request: string;
+      plan: string;
+      upstream: BuilderUpstream;
+    },
+  ): Promise<{ branchId: string }> {
+    this.transcript.set("sessionId", input.sessionId);
+    if (this.transcript.firstUserMessage() !== null) {
+      throw new Error("This session has already started");
+    }
+    this.transcript.set("title", input.title);
+    await setSessionTitle(input.sessionId, input.title);
+    this.broadcastFrame(this.transcript.append("user", input.request));
+    this.transcript.set("plan", input.plan);
+    this.post("planner", input.plan);
+    const branch = await this.startBuild(who, input.plan, {
+      name: "origin update",
+      upstream: input.upstream,
+    });
+    return { branchId: branch.id };
   }
 
   /** Archived by hand: the chat stays readable and answers nothing but the closed notice. */
@@ -275,22 +311,38 @@ export class BuildSessionObject extends Agent<Cloudflare.Env, SessionState> {
     }
   }
 
-  private async startBuild(who: Principal, planText: string): Promise<void> {
+  private async startBuild(
+    who: Principal,
+    planText: string,
+    options: { name?: string; upstream?: BuilderUpstream } = {},
+  ): Promise<BranchRow> {
     const sessionId = this.sessionId();
     const title = this.transcript.get<string>("title") ?? "Untitled change";
     const request = this.transcript.firstUserMessage() ?? title;
     const branch = await createBranch(who, {
       buildSessionId: sessionId,
-      name: this.transcript.get<string>("branchName") ?? title,
+      name: options.name ?? this.transcript.get<string>("branchName") ?? title,
       baseCommit: await mainHead(),
+      upstreamCommit: options.upstream?.commit,
     });
     this.transcript.set("branchId", branch.id);
     this.setPhase("building");
     await setSessionStatus(sessionId, "building");
-    const job = await buildJob({ sessionId, branch, request, plan: planText });
+    const job = await buildJob({
+      sessionId,
+      branch,
+      request,
+      plan: planText,
+      upstream: options.upstream,
+    });
     await this.env.BUILDERS.getByName(sessionId).startBuild(job);
-    log.info("build started", { sessionId, branchId: branch.id });
+    log.info("build started", {
+      sessionId,
+      branchId: branch.id,
+      upstream: options.upstream?.commit ?? null,
+    });
     this.post("planner", BUILD_STARTED_MESSAGE.replace("{title}", title));
+    return branch;
   }
 
   private async onDeployed(

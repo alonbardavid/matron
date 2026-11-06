@@ -24,6 +24,8 @@ export const branchSchema = z.object({
   archivedAt: z.number().nullable(),
   /** Main has moved since the branch last took it in: it must update before it can merge. */
   behindMain: z.boolean(),
+  /** The upstream commit the branch merges in, for an origin update; null for a requested change. */
+  upstreamCommit: z.string().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

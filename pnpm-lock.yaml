@@ -555,6 +555,9 @@ importers:
       '@backend/arch-builder':
         specifier: workspace:*
         version: link:../arch-builder
+      '@backend/arch-repository':
+        specifier: workspace:*
+        version: link:../arch-repository
       '@backend/arch-sessions':
         specifier: workspace:*
         version: link:../arch-sessions
@@ -1362,6 +1365,12 @@ importers:
       '@frontend/api':
         specifier: workspace:*
         version: link:../api
+      '@frontend/branches':
+        specifier: workspace:*
+        version: link:../branches
+      '@frontend/build':
+        specifier: workspace:*
+        version: link:../build
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds

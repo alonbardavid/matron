@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export type PromptName = "system" | "build" | "fix" | "continue";
+export type PromptName = "system" | "build" | "upstream" | "fix" | "continue";
 
 /**
  * Replaces `{{name}}` placeholders. Unknown placeholders are left in place so

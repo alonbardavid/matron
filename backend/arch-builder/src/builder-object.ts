@@ -22,6 +22,7 @@ import type {
   DeployResult,
   MergeJob,
   MergeMainResult,
+  PrepareBuildResult,
   PrepareContinueResult,
   StepInput,
   StepName,
@@ -86,7 +87,7 @@ interface JobRun {
   /** The agent's description of the change, kept across fix rounds. */
   outcome: AgentOutcome | null;
   fixRound: number;
-  /** What prepare-continue said about main, for the agent's prompt. */
+  /** What prepare-continue said about main, or prepare-build about the upstream merge, for the agent's prompt. */
   sync: string | null;
   /** Main's head after a merge, for the merged report. */
   mergedHead: string | null;
@@ -390,10 +391,12 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     switch (run.phase) {
       case "prepare": {
         switch (job.mode) {
-          case "build":
-            await this.step(run, "prepare-build");
+          case "build": {
+            const result = await this.step<PrepareBuildResult>(run, "prepare-build");
+            run.sync = result.sync ?? null;
             run.phase = "install";
             return "continue";
+          }
           case "continue": {
             const result = await this.step<PrepareContinueResult>(
               run,
@@ -425,7 +428,9 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
         const state = await this.load();
         run.prompt =
           job.mode === "build"
-            ? { kind: "build", extra: this.takePending(state) }
+            ? job.upstream
+              ? { kind: "upstream", extra: this.takePending(state), sync: run.sync ?? "" }
+              : { kind: "build", extra: this.takePending(state) }
             : {
                 kind: "continue",
                 message: this.takePending(
