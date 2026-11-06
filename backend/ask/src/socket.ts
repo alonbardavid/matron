@@ -26,7 +26,14 @@ export async function openAskSocket(
 ): Promise<Response> {
   try {
     conversationPermissions.require(principal, "chat");
-    await getConversation(principal, sessionId);
+    const conversation = await getConversation(principal, sessionId);
+    // Its messages live on the branch it was started on; another branch's object holds nothing of it.
+    if (conversation.branch !== branch) {
+      throw new DomainError(
+        "FORBIDDEN",
+        "This conversation was started on another branch",
+      );
+    }
   } catch (err) {
     if (err instanceof DomainError) {
       return new Response(err.message, { status: DOMAIN_ERROR_STATUS[err.code] });

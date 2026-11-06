@@ -24,7 +24,7 @@ export function FloatingActions() {
           leftSection={<IconSparkles />}
           onClick={() => {
             buildChat.close();
-            void ask.start();
+            ask.start();
           }}
         >
           Ask

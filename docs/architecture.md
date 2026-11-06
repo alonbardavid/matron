@@ -30,7 +30,8 @@ how a request moves through it.
 ## The assistant
 
 `AskSessionObject` (`backend/ask/src/ask-object.ts`) is a Think agent, one per conversation,
-named by the ask session id. Its tools (`tools.ts`) wrap the tasks, calendar and household
+named by the ask session id, on the branch the conversation was started on (the socket's URL
+names the branch; `socket.ts` refuses another branch's conversation). Its tools (`tools.ts`) wrap the tasks, calendar and household
 services as the connected user, so a tool can do no more than the user could in the app, plus
 `query_database`, one read-only SELECT checked by `sql-guard.ts` against the tables the user's
 role may read. The model is the household's assistant setting (`backend/arch-settings`); the

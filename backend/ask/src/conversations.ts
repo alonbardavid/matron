@@ -23,13 +23,21 @@ export async function listConversations(principal: Principal): Promise<Conversat
   return rows.map(toSession);
 }
 
-export async function createConversation(principal: Principal): Promise<Conversation> {
+/** A conversation on the branch it is started from; it is continued only there. */
+export async function createConversation(
+  principal: Principal,
+  branch: string,
+): Promise<Conversation> {
   conversationPermissions.require(principal, "create");
   const [row] = await getDb()
     .insert(askSession)
-    .values({ id: newEntityId("ASK_SESSION"), userId: principal.userId })
+    .values({ id: newEntityId("ASK_SESSION"), userId: principal.userId, branch })
     .returning();
-  log.info("ask session created", { askSessionId: row!.id, userId: principal.userId });
+  log.info("ask session created", {
+    askSessionId: row!.id,
+    userId: principal.userId,
+    branch,
+  });
   return toSession(row!);
 }
 
@@ -99,6 +107,7 @@ function toSession(row: Row): Conversation {
     id: row.id,
     userId: row.userId,
     title: row.title,
+    branch: row.branch,
     archivedAt: row.archivedAt?.getTime() ?? null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),

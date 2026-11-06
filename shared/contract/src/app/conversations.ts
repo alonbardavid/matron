@@ -6,6 +6,8 @@ export const conversationSchema = z.object({
   id: z.string(),
   userId: z.string(),
   title: z.string().nullable(),
+  /** The branch it was started on, "main" or a branch id: it is continued only there. */
+  branch: z.string(),
   /** Set once archived: readable, never continued. */
   archivedAt: z.number().nullable(),
   createdAt: z.number(),

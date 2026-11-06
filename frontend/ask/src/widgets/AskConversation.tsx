@@ -13,6 +13,7 @@ import { useAgentChat } from "@cloudflare/think/react";
 import { useAgent } from "agents/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { askSocketPath } from "@shared/contract/app/conversations";
+import { branchParam } from "@frontend/api/branch";
 import { orpc } from "@frontend/api/orpc";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { AskComposer } from "./AskComposer";
@@ -58,6 +59,8 @@ export function AskConversation({
     name: sessionId,
     host: window.location.host,
     basePath: askSocketPath(sessionId).replace(/^\//, ""),
+    // A socket has no referer to read the branch from: it goes on the URL.
+    query: branchParam() ? { branch: branchParam() } : undefined,
   });
   const { messages, sendMessage, status, isStreaming, error, clearError } = useAgentChat({
     agent,
