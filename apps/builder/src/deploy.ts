@@ -168,6 +168,8 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
     secretsFile,
     JSON.stringify({
       SIGNING_KEY: run.signingKey,
+      // The branch's database is a copy of production's, sealed values included.
+      SECRETS_KEY: run.secretsKey,
       BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
       CLOUDFLARE_API_TOKEN: run.cloudflare.apiToken,
     }),

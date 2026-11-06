@@ -2,19 +2,33 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { dayString } from "./tasks";
 
-export const RECURRENCE_FREQUENCIES = ["weekly", "monthly"] as const;
-
 /**
- * How an event repeats: weekly on weekdays (0 Sunday to 6 Saturday) or monthly
- * on days of the month, until a day or for a number of occurrences, or open-ended.
+ * How an event repeats: an iCalendar RRULE value (RFC 5545), without the
+ * `RRULE:` prefix: `FREQ=WEEKLY;BYDAY=MO,WE`, `FREQ=MONTHLY;BYDAY=-1FR`,
+ * `FREQ=YEARLY;INTERVAL=2;COUNT=5`. The event's start is its first occurrence.
+ * UNTIL may be given as a day (`UNTIL=20271231`), the last day it occurs on;
+ * it is stored as the standard wants it. Daily, weekly, monthly and yearly.
  */
-export const recurrenceSchema = z.object({
-  frequency: z.enum(RECURRENCE_FREQUENCIES),
-  days: z.array(z.number().int().min(0).max(31)).min(1).max(31),
-  until: dayString.nullable(),
-  count: z.number().int().min(1).max(1000).nullable(),
+export const rruleString = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .regex(
+    /^(RRULE:)?FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)(;|$)/i,
+    "An RRULE such as FREQ=WEEKLY;BYDAY=MO",
+  );
+
+/** One occurrence of a series cancelled or changed, keyed by when it was due. */
+export const occurrenceExceptionSchema = z.object({
+  originalStartAt: z.number(),
+  cancelled: z.boolean(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  startAt: z.number().nullable(),
+  endAt: z.number().nullable(),
 });
-export type Recurrence = z.infer<typeof recurrenceSchema>;
+export type OccurrenceException = z.infer<typeof occurrenceExceptionSchema>;
 
 /** Where a calendar's events come from: made in Matron, or imported from its owner's Google Calendar. */
 export const CALENDAR_SOURCES = ["matron", "google"] as const;
@@ -78,7 +92,10 @@ export const calendarEventSchema = z.object({
   endAt: z.number(),
   /** The IANA zone the event's wall-clock times and its recurrence are reckoned in. */
   timeZone: z.string(),
-  recurrence: recurrenceSchema.nullable(),
+  /** How it repeats, or null for a single event. */
+  rrule: z.string().nullable(),
+  /** Occurrences of the series cancelled or changed. */
+  exceptions: z.array(occurrenceExceptionSchema),
   /** User ids the event is shared with, besides the creator. */
   sharedWith: z.array(z.string()),
   /** User ids attending; by default everyone the event is shared with, and the creator. */
@@ -102,9 +119,13 @@ export type CalendarEvent = z.infer<typeof calendarEventSchema>;
 
 /** One thing on the calendar: a single event, or one occurrence of a series. */
 export const occurrenceSchema = z.object({
-  /** The event id, or `<eventId>:<YYYY-MM-DD>` for an occurrence of a series. */
+  /** The event id, or `<eventId>:<originalStartAt>` for an occurrence of a series. */
   id: z.string(),
   eventId: z.string(),
+  /** For an occurrence of a series: when the series had it due, which names it. */
+  originalStartAt: z.number().nullable(),
+  /** Whether this occurrence was changed on its own. */
+  changed: z.boolean(),
   title: z.string(),
   allDay: z.boolean(),
   startAt: z.number(),
@@ -132,7 +153,7 @@ export const calendarEventCreateSchema = z.object({
   timeZone: z.string().min(1).max(64),
   /** One of the caller's Matron calendars; their default one when left out. */
   calendarId: z.string().optional(),
-  recurrence: recurrenceSchema.nullable().optional(),
+  rrule: rruleString.nullable().optional(),
   sharedWith: userIds.optional(),
   attendees: userIds.optional(),
 });
@@ -140,6 +161,15 @@ export type CalendarEventCreate = z.infer<typeof calendarEventCreateSchema>;
 
 export const calendarEventUpdateSchema = calendarEventCreateSchema.partial();
 export type CalendarEventUpdate = z.infer<typeof calendarEventUpdateSchema>;
+
+/** What one occurrence of a series changes; left out keeps the series' own. */
+export const occurrenceUpdateSchema = z.object({
+  title: title.optional(),
+  description: description.optional(),
+  startAt: z.number().optional(),
+  endAt: z.number().optional(),
+});
+export type OccurrenceUpdate = z.infer<typeof occurrenceUpdateSchema>;
 
 /** Where Google sends a member back after they allow access; registered on the OAuth client. */
 export const GOOGLE_CALLBACK_PATH = "/api/app/calendar/google/callback";
@@ -252,6 +282,27 @@ export const calendarContract = {
   update: oc
     .route({ method: "PUT", path: "/api/app/calendar/events/{id}" })
     .input(calendarEventUpdateSchema.extend({ id: z.string() }))
+    .output(calendarEventSchema),
+  /** Changes one occurrence of a series; the rest keep the series' own. */
+  editOccurrence: oc
+    .route({
+      method: "PUT",
+      path: "/api/app/calendar/events/{id}/occurrences/{originalStartAt}",
+    })
+    .input(
+      occurrenceUpdateSchema.extend({
+        id: z.string(),
+        originalStartAt: z.coerce.number(),
+      }),
+    )
+    .output(calendarEventSchema),
+  /** Removes one occurrence of a series. */
+  cancelOccurrence: oc
+    .route({
+      method: "DELETE",
+      path: "/api/app/calendar/events/{id}/occurrences/{originalStartAt}",
+    })
+    .input(z.object({ id: z.string(), originalStartAt: z.coerce.number() }))
     .output(calendarEventSchema),
   /** Ends a series before `from`: occurrences before that day stay, later ones go. */
   stop: oc

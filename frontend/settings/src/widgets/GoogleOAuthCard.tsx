@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Anchor,
   Badge,
@@ -9,6 +9,7 @@ import {
   Loader,
   Stack,
   Text,
+  TextInput,
   Button,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -40,6 +41,8 @@ export function GoogleOAuthCard() {
     schema: formSchema,
   });
   const { setValues } = form;
+  // A stored secret shows only as its hint; Replace opens an empty field for a new one.
+  const [replacing, setReplacing] = useState(false);
   useEffect(() => {
     if (google.data)
       setValues({ clientId: google.data.clientId ?? "", clientSecret: "" });
@@ -68,6 +71,7 @@ export function GoogleOAuthCard() {
       clientSecret: values.clientSecret || undefined,
     });
     form.setFieldValue("clientSecret", "");
+    setReplacing(false);
     notifications.show({ message: "Google Calendar app saved" });
   };
 
@@ -79,10 +83,10 @@ export function GoogleOAuthCard() {
           <Text fw={600}>Google Calendar</Text>
           {data && (
             <Badge
-              color={data.clientId && data.clientSecretSet ? "sage" : "gray"}
+              color={data.clientId && data.clientSecretHint ? "sage" : "gray"}
               variant="light"
             >
-              {data.clientId && data.clientSecretSet ? "Set up" : "Not set up"}
+              {data.clientId && data.clientSecretHint ? "Set up" : "Not set up"}
             </Badge>
           )}
         </Group>
@@ -135,15 +139,33 @@ export function GoogleOAuthCard() {
                 autoComplete="off"
                 maw={480}
               />
-              <FormPasswordInput
-                name="clientSecret"
-                label="Client secret"
-                placeholder={
-                  data.clientSecretSet ? "Saved; enter a new one to replace it" : ""
-                }
-                autoComplete="new-password"
-                maw={480}
-              />
+              {data.clientSecretHint && !replacing ? (
+                <Group gap="xs" align="flex-end" wrap="nowrap">
+                  <TextInput
+                    label="Client secret"
+                    value={data.clientSecretHint}
+                    readOnly
+                    disabled
+                    maw={360}
+                    style={{ flex: 1 }}
+                  />
+                  <Button variant="light" onClick={() => setReplacing(true)}>
+                    Replace
+                  </Button>
+                </Group>
+              ) : (
+                <FormPasswordInput
+                  name="clientSecret"
+                  label={data.clientSecretHint ? "New client secret" : "Client secret"}
+                  description={
+                    data.clientSecretHint
+                      ? `Replaces ${data.clientSecretHint}; leave it empty to keep that one.`
+                      : undefined
+                  }
+                  autoComplete="new-password"
+                  maw={480}
+                />
+              )}
               <FormGeneralErrors />
               <Group>
                 <FormSubmitButton w="fit-content">Save Google app</FormSubmitButton>

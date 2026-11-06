@@ -21,7 +21,12 @@ export const REQUIRED_COMPAT_FLAGS = [
 export const GOOGLE_SYNC_CRON = "*/30 * * * *";
 
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
-export const SECRET_VARS = ["BETTER_AUTH_SECRET", "SIGNING_KEY", "CLOUDFLARE_API_TOKEN"];
+export const SECRET_VARS = [
+  "BETTER_AUTH_SECRET",
+  "SIGNING_KEY",
+  "SECRETS_KEY",
+  "CLOUDFLARE_API_TOKEN",
+];
 
 /**
  * @typedef {object} Options

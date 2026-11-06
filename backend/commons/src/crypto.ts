@@ -47,39 +47,65 @@ async function importKey(secret: string): Promise<CryptoKey> {
   );
 }
 
+/** A SECRETS_KEY value: its version, then a dash, then the key material: `v1-<hex>`. */
+const SECRETS_KEY_PATTERN = /^(v[0-9]+)-./;
+/** Between a sealed value's key version and its body: `v1::<iv>.<ciphertext>`. */
+const VERSION_SEPARATOR = "::";
+
+/** The version a SECRETS_KEY value names (`v1` for `v1-...`); throws on a malformed key. */
+export function secretsKeyVersion(key: string): string {
+  const match = SECRETS_KEY_PATTERN.exec(key);
+  if (!match) throw new Error("SECRETS_KEY must start with its version, like v1-");
+  return match[1]!;
+}
+
 /**
- * Encrypts `plaintext` with AES-GCM under a key derived from `secret` for
- * `purpose`, for values kept at rest (OAuth secrets and tokens). The result is
- * `v1.<iv>.<ciphertext>`, base64url. A different purpose derives another key,
- * so one ciphertext never decrypts as another kind of value.
+ * Encrypts `plaintext` with AES-GCM under a key derived from the SECRETS_KEY
+ * value `key` for `purpose`. The result starts with the key's version
+ * (`v1::<iv>.<ciphertext>`, base64url), so every stored value says which key
+ * sealed it. A different purpose derives another key, so one value never
+ * decrypts as another kind.
  */
-export async function encryptText(
-  secret: string,
+export async function sealWithKey(
+  key: string,
   purpose: string,
   plaintext: string,
 ): Promise<string> {
-  const key = await deriveAesKey(secret, purpose);
+  const version = secretsKeyVersion(key);
+  const aes = await deriveAesKey(key, purpose);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const sealed = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
-    key,
+    aes,
     encoder.encode(plaintext),
   );
-  return `v1.${base64url(iv)}.${base64url(new Uint8Array(sealed))}`;
+  return `${version}${VERSION_SEPARATOR}${base64url(iv)}.${base64url(new Uint8Array(sealed))}`;
 }
 
-/** Reverses `encryptText`; throws when the value was not sealed with this secret and purpose. */
-export async function decryptText(
-  secret: string,
+/** The key version a sealed value names, or null when it is not one. */
+export function sealedVersion(sealed: string): string | null {
+  const at = sealed.indexOf(VERSION_SEPARATOR);
+  return at > 0 ? sealed.slice(0, at) : null;
+}
+
+/**
+ * Reverses `sealWithKey`, with the key among `keys` whose version the value
+ * names; throws when none matches or the value was sealed for another purpose.
+ */
+export async function openWithKeys(
+  keys: readonly string[],
   purpose: string,
   sealed: string,
 ): Promise<string> {
-  const [version, iv, body] = sealed.split(".");
-  if (version !== "v1" || !iv || !body) throw new Error("Not an encrypted value");
-  const key = await deriveAesKey(secret, purpose);
+  const version = sealedVersion(sealed);
+  const key = keys.find((k) => secretsKeyVersion(k) === version);
+  if (!version || !key) throw new Error(`No SECRETS_KEY for version ${version ?? "?"}`);
+  const [iv, body] = sealed.slice(version.length + VERSION_SEPARATOR.length).split(".");
+  if (!iv || !body) throw new Error("Not a sealed value");
+  const aes = await deriveAesKey(key, purpose);
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: fromBase64url(iv) },
-    key,
+    aes,
     fromBase64url(body),
   );
   return new TextDecoder().decode(plain);

@@ -72,9 +72,9 @@ test.describe("calendars", () => {
     await expect(page.getByText("Calendars", { exact: true })).toBeVisible();
     await page.getByLabel("New calendar").fill("Work");
     await page.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Calendar title" }).last()).toHaveValue(
-      "Work",
-    );
+    await expect(
+      page.getByRole("textbox", { name: "Calendar title" }).last(),
+    ).toHaveValue("Work");
     await page.getByRole("button", { name: "Remove Work" }).click();
     await page
       .getByRole("dialog")

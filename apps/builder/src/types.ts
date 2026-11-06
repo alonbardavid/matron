@@ -31,6 +31,7 @@ export type BuilderRun = {
     aiGateway: string;
   };
   signingKey: string;
+  secretsKey: string;
   request: string;
   plan?: string;
   message?: string;

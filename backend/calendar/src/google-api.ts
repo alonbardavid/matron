@@ -144,18 +144,23 @@ export interface GoogleEvent {
   summary?: string;
   description?: string;
   location?: string;
+  /** On a repeating event: its iCalendar lines, `RRULE:...`, `EXDATE...`, `RDATE...`. */
+  recurrence?: string[];
   /** Set on an instance of a repeating event: the series' id. */
   recurringEventId?: string;
+  /** On an instance: when the series had it due, which names the occurrence it changes or cancels. */
+  originalStartTime?: GoogleEventTime;
   htmlLink?: string;
   start?: GoogleEventTime;
   end?: GoogleEventTime;
 }
 
 /**
- * The calendar's events overlapping [timeMin, timeMax), repeating ones expanded
- * into single instances by Google (`singleEvents`): each instance names its
- * series in `recurringEventId`, and moved or cancelled instances come right. Also returns the calendar's own zone, which
- * all-day events are reckoned in.
+ * The calendar's events overlapping [timeMin, timeMax), repeating ones as
+ * their series (`recurrence` set) with the instances changed or cancelled
+ * there (`recurringEventId` and `originalStartTime` set; a cancelled one has
+ * status `cancelled`). Also returns the calendar's own zone, which all-day
+ * events are reckoned in.
  */
 export async function listEvents(
   accessToken: string,
@@ -163,15 +168,46 @@ export async function listEvents(
   timeMin: number,
   timeMax: number,
 ): Promise<{ timeZone: string | null; events: GoogleEvent[] }> {
+  return listPaged(
+    accessToken,
+    `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`,
+    { singleEvents: "false", showDeleted: "false" },
+    timeMin,
+    timeMax,
+  );
+}
+
+/** One series' occurrences in the window, expanded by Google: for a series Matron cannot expand itself. */
+export async function listInstances(
+  accessToken: string,
+  calendarId: string,
+  eventId: string,
+  timeMin: number,
+  timeMax: number,
+): Promise<GoogleEvent[]> {
+  const { events } = await listPaged(
+    accessToken,
+    `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}/instances`,
+    { showDeleted: "false" },
+    timeMin,
+    timeMax,
+  );
+  return events;
+}
+
+async function listPaged(
+  accessToken: string,
+  endpoint: string,
+  params: Record<string, string>,
+  timeMin: number,
+  timeMax: number,
+): Promise<{ timeZone: string | null; events: GoogleEvent[] }> {
   const events: GoogleEvent[] = [];
   let timeZone: string | null = null;
   let pageToken: string | undefined;
   do {
-    const url = new URL(
-      `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`,
-    );
-    url.searchParams.set("singleEvents", "true");
-    url.searchParams.set("showDeleted", "false");
+    const url = new URL(endpoint);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     url.searchParams.set("maxResults", "2500");
     url.searchParams.set("timeMin", new Date(timeMin).toISOString());
     url.searchParams.set("timeMax", new Date(timeMax).toISOString());

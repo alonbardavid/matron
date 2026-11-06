@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { navLink, signIn } from "../helpers";
 import { MEMBER, OWNER } from "../users";
@@ -17,10 +19,33 @@ test.describe("google calendar", () => {
     await page.getByRole("button", { name: "Save Google app" }).click();
     await expect(page.getByText("Google Calendar app saved")).toBeVisible();
 
-    // The secret is write-only.
     const google = await (await page.request.get("/api/arch/settings/google")).json();
-    expect(google).toMatchObject({ clientId: CLIENT_ID, clientSecretSet: true });
+    // The secret is write-only: only its first few characters come back.
+    expect(google).toMatchObject({ clientId: CLIENT_ID, clientSecretHint: "test-c****" });
     expect(JSON.stringify(google)).not.toContain("test-client-secret");
+    await expect(page.getByLabel("Client secret")).toHaveValue("test-c****");
+
+    // At rest it is sealed with SECRETS_KEY, prefixed with that key's version.
+    const stored = spawnSync(
+      "pnpm",
+      [
+        "exec",
+        "wrangler",
+        "d1",
+        "execute",
+        "DB",
+        "--local",
+        "--persist-to",
+        ".wrangler-test",
+        "--json",
+        "--command",
+        "SELECT value FROM secret_settings WHERE key = 'google_client_secret'",
+      ],
+      { cwd: resolve(import.meta.dirname, "../../../apps/backend"), encoding: "utf8" },
+    );
+    const [{ results }] = JSON.parse(stored.stdout) as [{ results: { value: string }[] }];
+    expect(results[0]!.value).toMatch(/^v1::/);
+    expect(results[0]!.value).not.toContain("test-client-secret");
     expect(google.redirectUri).toMatch(/\/api\/app\/calendar\/google\/callback$/);
 
     const member = await browser.newContext();

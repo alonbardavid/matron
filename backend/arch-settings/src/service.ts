@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { householdPermissions } from "@backend/household/permissions";
-import { decryptText, encryptText } from "@backend/commons/crypto";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
+import { decryptSecret, encryptSecret } from "@backend/commons/secrets";
 import type { Principal } from "@backend/commons/principal";
 import { secretSettings, settings } from "@backend/db-models/arch-settings";
 import { getDb } from "@backend/db-models/db";
@@ -27,7 +27,7 @@ const BUILDER_MODEL_KEY = "builder_model";
 const ASK_MODEL_KEY = "ask_model";
 const GOOGLE_CLIENT_ID_KEY = "google_client_id";
 const GOOGLE_CLIENT_SECRET_KEY = "google_client_secret";
-/** The key derivation label for secret settings; tokens elsewhere use their own. */
+/** The purpose secret settings are sealed for, under SECRETS_KEY; tokens elsewhere use their own. */
 const SECRET_PURPOSE = "secret-settings";
 
 async function readValue(key: string): Promise<string | undefined> {
@@ -50,10 +50,6 @@ async function deleteValue(key: string): Promise<void> {
   await getDb().delete(settings).where(eq(settings.key, key));
 }
 
-function signingKey(): string {
-  return (env as unknown as { SIGNING_KEY: string }).SIGNING_KEY;
-}
-
 async function readSecret(key: string): Promise<string | undefined> {
   const row = await getDb()
     .select({ value: secretSettings.value })
@@ -62,16 +58,16 @@ async function readSecret(key: string): Promise<string | undefined> {
     .get();
   if (!row) return undefined;
   try {
-    return await decryptText(signingKey(), `${SECRET_PURPOSE}:${key}`, row.value);
+    return await decryptSecret(`${SECRET_PURPOSE}:${key}`, row.value);
   } catch {
-    // Sealed under another SIGNING_KEY: as good as unset, so it is entered again.
+    // Sealed under a SECRETS_KEY version this Worker lacks: as good as unset, so it is entered again.
     log.warn("secret setting unreadable", { key });
     return undefined;
   }
 }
 
 async function writeSecret(key: string, plaintext: string): Promise<void> {
-  const value = await encryptText(signingKey(), `${SECRET_PURPOSE}:${key}`, plaintext);
+  const value = await encryptSecret(`${SECRET_PURPOSE}:${key}`, plaintext);
   await getDb()
     .insert(secretSettings)
     .values({ id: newEntityId("SECRET_SETTING"), key, value })
@@ -132,6 +128,14 @@ export async function updateSettings(
   return getSettings();
 }
 
+/**
+ * A stored secret as the settings page may show it: its first few characters,
+ * never more than a third of it, then asterisks.
+ */
+function secretHint(secret: string): string {
+  return `${secret.slice(0, Math.min(10, Math.floor(secret.length / 3)))}****`;
+}
+
 /** The URI Google returns members to; it must be registered on the OAuth client as is. */
 export function googleRedirectUri(): string {
   const origin = (env as unknown as { APP_ORIGIN: string }).APP_ORIGIN.replace(/\/$/, "");
@@ -149,7 +153,7 @@ export async function getGoogleOAuthSettings(
   ]);
   return {
     clientId: clientId ?? null,
-    clientSecretSet: clientSecret !== undefined,
+    clientSecretHint: clientSecret === undefined ? null : secretHint(clientSecret),
     redirectUri: googleRedirectUri(),
   };
 }
