@@ -17,6 +17,9 @@ export const REQUIRED_COMPAT_FLAGS = [
   "enable_ctx_exports",
 ];
 
+/** How often production syncs members' imported Google calendars. */
+export const GOOGLE_SYNC_CRON = "*/30 * * * *";
+
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
 export const SECRET_VARS = ["BETTER_AUTH_SECRET", "SIGNING_KEY", "CLOUDFLARE_API_TOKEN"];
 
@@ -94,8 +97,11 @@ export function generateWranglerConfig(emitted, options) {
 
   delete config.containers;
   delete config.previews;
+  delete config.triggers;
 
   if (isProduction) {
+    // The scheduled sync of members' imported Google calendars.
+    config.triggers = { crons: [GOOGLE_SYNC_CRON] };
     if (options.appOrigin.endsWith(".workers.dev")) config.workers_dev = true;
     // Previews are reached by URL from the router, so they need their URLs on.
     config.preview_urls = true;

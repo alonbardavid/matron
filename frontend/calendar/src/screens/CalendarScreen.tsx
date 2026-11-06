@@ -24,7 +24,13 @@ import {
   localTimeZone,
   toDayString,
 } from "../times";
-import { useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import {
+  useCalendars,
+  useEvent,
+  useEventActions,
+  useGoogleAutoSync,
+  useOccurrences,
+} from "../useCalendar";
 import { EventModal, type EventSubmit } from "../widgets/EventModal";
 import classes from "./CalendarScreen.module.css";
 
@@ -70,6 +76,8 @@ export function CalendarScreen() {
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
   const { create, update, stop, remove } = useEventActions();
+  const calendars = useCalendars();
+  useGoogleAutoSync();
 
   const events: ScheduleEventData[] = (occurrences.data ?? []).map(
     (item: Occurrence) => ({
@@ -77,7 +85,8 @@ export function CalendarScreen() {
       title: item.title,
       start: new Date(item.startAt),
       end: new Date(item.endAt),
-      color: item.creatorId === me?.id ? "rose" : "sage",
+      // Your own events in their calendar's colour; others' shared with you in one colour.
+      color: item.creatorId === me?.id ? item.color : "sage",
       payload: { eventId: item.eventId, day: toDayString(item.startAt) },
     }),
   );
@@ -97,6 +106,15 @@ export function CalendarScreen() {
     });
 
   const save = async (values: EventSubmit) => {
+    if (opening?.eventId && event.data?.source === "google") {
+      // An imported event is Google's; only who it is shared with is Matron's.
+      await update.mutateAsync({
+        id: opening.eventId,
+        sharedWith: values.sharedWith,
+        attendees: values.attendees,
+      });
+      return;
+    }
     const input = { ...values, timeZone: localTimeZone() };
     if (opening?.eventId) await update.mutateAsync({ id: opening.eventId, ...input });
     else await create.mutateAsync(input);
@@ -230,6 +248,7 @@ export function CalendarScreen() {
         event={opening?.eventId ? (event.data ?? null) : null}
         loading={opening?.eventId ? event.isLoading : false}
         initial={opening?.initial ?? null}
+        calendars={calendars.data ?? []}
         occurrenceDay={opening?.occurrenceDay ?? null}
         onSave={save}
         onRemove={

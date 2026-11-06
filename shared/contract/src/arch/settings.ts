@@ -47,6 +47,33 @@ export type CatalogModel = z.infer<typeof catalogModelSchema>;
 export const modelCatalogSchema = z.array(catalogModelSchema);
 export type ModelCatalog = z.infer<typeof modelCatalogSchema>;
 
+/**
+ * The household's own Google OAuth app, which members connect their Google
+ * Calendar through. The secret is write-only: reading tells only whether one is set.
+ */
+export const googleOAuthSettingsSchema = z.object({
+  clientId: z.string().nullable(),
+  clientSecretSet: z.boolean(),
+  /** The redirect URI to register on the OAuth client in the Google Cloud console. */
+  redirectUri: z.string(),
+});
+export type GoogleOAuthSettings = z.infer<typeof googleOAuthSettingsSchema>;
+
+export const googleOAuthUpdateSchema = z.object({
+  clientId: z
+    .string()
+    .trim()
+    .min(1, "Enter the client ID")
+    .max(300)
+    .regex(
+      /\.apps\.googleusercontent\.com$/,
+      "A Google client ID ends in .apps.googleusercontent.com",
+    ),
+  /** Left out to keep the stored secret. */
+  clientSecret: z.string().trim().min(1, "Enter the client secret").max(300).optional(),
+});
+export type GoogleOAuthUpdate = z.infer<typeof googleOAuthUpdateSchema>;
+
 export const settingsContract = {
   get: oc.route({ method: "GET", path: "/api/arch/settings" }).output(appSettingsSchema),
   /** Owners and admins only. */
@@ -58,4 +85,16 @@ export const settingsContract = {
   models: oc
     .route({ method: "GET", path: "/api/arch/settings/models" })
     .output(modelCatalogSchema),
+  /** The Google OAuth app; owners and admins only. */
+  google: oc
+    .route({ method: "GET", path: "/api/arch/settings/google" })
+    .output(googleOAuthSettingsSchema),
+  updateGoogle: oc
+    .route({ method: "PUT", path: "/api/arch/settings/google" })
+    .input(googleOAuthUpdateSchema)
+    .output(googleOAuthSettingsSchema),
+  /** Forgets the app; members' connections stop syncing until it is set again. */
+  removeGoogle: oc
+    .route({ method: "DELETE", path: "/api/arch/settings/google" })
+    .output(googleOAuthSettingsSchema),
 };

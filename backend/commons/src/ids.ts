@@ -8,10 +8,13 @@ export const ENTITY_PREFIXES = {
   BUILD_SESSION: "BS",
   BRANCH: "BR",
   SETTING: "ST",
+  SECRET_SETTING: "SS",
   TASK: "TK",
   TASK_SHARE: "TS",
+  CALENDAR: "CL",
   CALENDAR_EVENT: "CE",
   CALENDAR_EVENT_SHARE: "CS",
+  GOOGLE_CALENDAR_CONNECTION: "GC",
   ASK_SESSION: "AS",
 } as const satisfies Record<string, Uppercase<string>>;
 

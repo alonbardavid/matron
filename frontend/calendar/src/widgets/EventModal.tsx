@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Badge,
   Button,
   Chip,
   Group,
@@ -7,6 +8,7 @@ import {
   Modal,
   NumberInput,
   SegmentedControl,
+  Select,
   Stack,
   Switch,
   Text,
@@ -15,7 +17,7 @@ import {
 } from "@mantine/core";
 import { DateInput, DateTimePicker } from "@mantine/dates";
 import dayjs from "dayjs";
-import type { CalendarEvent, Recurrence } from "@shared/contract/app/calendar";
+import type { Calendar, CalendarEvent, Recurrence } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
@@ -36,6 +38,8 @@ export interface EventDraft {
   count: number;
   sharedWith: string[];
   attendees: string[];
+  /** One of the creator's Matron calendars; null for their default. */
+  calendarId: string | null;
 }
 
 export interface EventSubmit {
@@ -47,6 +51,7 @@ export interface EventSubmit {
   recurrence: Recurrence | null;
   sharedWith: string[];
   attendees: string[];
+  calendarId?: string;
 }
 
 interface EventModalProps {
@@ -57,6 +62,8 @@ interface EventModalProps {
   loading?: boolean;
   /** For a new event: where the user clicked. */
   initial?: { allDay: boolean; startAt: number; endAt: number } | null;
+  /** The caller's own calendars, to pick where the event goes. */
+  calendars?: Calendar[];
   /** The occurrence that was opened, for "stop repeating from here". */
   occurrenceDay?: string | null;
   onSave: (values: EventSubmit) => Promise<void>;
@@ -87,6 +94,7 @@ function draftOf(
     count: recurrence?.count ?? 10,
     sharedWith: event?.sharedWith ?? [],
     attendees: event?.attendees ?? [],
+    calendarId: event?.calendarId ?? null,
   };
 }
 
@@ -97,6 +105,7 @@ export function EventModal({
   event,
   loading = false,
   initial = null,
+  calendars = [],
   occurrenceDay = null,
   onSave,
   onRemove,
@@ -115,6 +124,16 @@ export function EventModal({
 
   const creatorId = event?.creatorId ?? me?.id ?? "";
   const mine = !event || event.creatorId === me?.id || me?.role === "owner";
+  // An event imported from Google changes there; here only who it is shared with.
+  const imported = event?.source === "google";
+  const ownCalendar = event
+    ? calendars.find((c) => c.id === event.calendarId)
+    : undefined;
+  const writable = calendars.filter((c) => c.source === "matron");
+  const defaultCalendar = writable.find((c) => c.isDefault) ?? writable[0];
+  // Moving between calendars is the creator's, among their own Matron calendars.
+  const pickCalendar =
+    !imported && writable.length > 1 && (!event || event.creatorId === me?.id);
   const set = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
 
@@ -170,6 +189,7 @@ export function EventModal({
         recurrence,
         sharedWith: draft.sharedWith,
         attendees: draft.attendees,
+        ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
       });
       onClose();
     } catch (err) {
@@ -188,7 +208,7 @@ export function EventModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      title={event ? "Edit event" : "New event"}
+      title={imported ? "Google Calendar event" : event ? "Edit event" : "New event"}
       centered
       size="lg"
     >
@@ -198,148 +218,182 @@ export function EventModal({
         </Group>
       ) : (
         <Stack gap="sm">
-          <TextInput
-            label="Title"
-            value={draft.title}
-            onChange={(e) => set("title", e.currentTarget.value)}
-            data-autofocus
-          />
-          <Switch
-            label="All day"
-            checked={draft.allDay}
-            onChange={(e) => toggleAllDay(e.currentTarget.checked)}
-          />
-          <Group grow align="flex-start">
-            {draft.allDay ? (
-              <>
-                <DateInput
-                  label="From"
-                  value={draft.start}
-                  onChange={(v) => v && set("start", v)}
-                  valueFormat="ddd D MMM YYYY"
-                />
-                <DateInput
-                  label="To"
-                  value={draft.end}
-                  onChange={(v) => v && set("end", v)}
-                  valueFormat="ddd D MMM YYYY"
-                  minDate={draft.start}
-                />
-              </>
-            ) : (
-              <>
-                <DateTimePicker
-                  label="Starts"
-                  value={draft.start}
-                  onChange={(v) => v && set("start", v)}
-                  valueFormat="ddd D MMM, HH:mm"
-                />
-                <DateTimePicker
-                  label="Ends"
-                  value={draft.end}
-                  onChange={(v) => v && set("end", v)}
-                  valueFormat="ddd D MMM, HH:mm"
-                />
-              </>
-            )}
-          </Group>
-          <Textarea
-            label="Description"
-            autosize
-            minRows={2}
-            value={draft.description}
-            onChange={(e) => set("description", e.currentTarget.value)}
-          />
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              Repeats
-            </Text>
-            <SegmentedControl
-              value={draft.repeat}
-              onChange={(value) => {
-                const repeat = value as EventDraft["repeat"];
-                setDraft((prev) => ({
-                  ...prev,
-                  repeat,
-                  days:
-                    repeat === "weekly"
-                      ? [
-                          dayjs(
-                            prev.allDay ? prev.start : fromDateTimeString(prev.start),
-                          ).day(),
-                        ]
-                      : repeat === "monthly"
-                        ? [
-                            dayjs(
-                              prev.allDay ? prev.start : fromDateTimeString(prev.start),
-                            ).date(),
-                          ]
-                        : prev.days,
-                }));
-              }}
-              data={[
-                { value: "none", label: "Never" },
-                { value: "weekly", label: "Weekly" },
-                { value: "monthly", label: "Monthly" },
-              ]}
-            />
-          </div>
-          {draft.repeat !== "none" && (
-            <>
-              <Chip.Group
-                multiple
-                value={draft.days.map(String)}
-                onChange={(values) =>
-                  set(
-                    "days",
-                    values.map(Number).sort((a, b) => a - b),
-                  )
-                }
+          {imported && (
+            <Group gap="xs">
+              <Badge
+                variant="light"
+                color={ownCalendar?.color ?? "gray"}
+                styles={{ root: { textTransform: "none" } }}
               >
-                <Group gap={4}>
-                  {dayChips.map((chip) => (
-                    <Chip
-                      key={chip.value}
-                      value={String(chip.value)}
-                      size="xs"
-                      radius="xl"
-                    >
-                      {chip.label}
-                    </Chip>
-                  ))}
-                </Group>
-              </Chip.Group>
-              <Group align="flex-end" gap="sm">
-                <SegmentedControl
-                  value={draft.ends}
-                  onChange={(value) => set("ends", value as EventDraft["ends"])}
-                  data={[
-                    { value: "never", label: "Forever" },
-                    { value: "on", label: "Until a day" },
-                    { value: "after", label: "A number of times" },
-                  ]}
+                {ownCalendar?.name ?? "Google Calendar"}
+              </Badge>
+              <Text size="sm" c="dimmed">
+                From Google Calendar: change it there. Here you can share it.
+              </Text>
+            </Group>
+          )}
+          <fieldset disabled={imported} style={{ border: 0, padding: 0, margin: 0 }}>
+            <Stack gap="sm">
+              <TextInput
+                label="Title"
+                value={draft.title}
+                onChange={(e) => set("title", e.currentTarget.value)}
+                data-autofocus
+              />
+              {pickCalendar && (
+                <Select
+                  label="Calendar"
+                  data={writable.map((c) => ({ value: c.id, label: c.name }))}
+                  value={draft.calendarId ?? defaultCalendar?.id ?? null}
+                  onChange={(value) => value && set("calendarId", value)}
+                  allowDeselect={false}
+                  maw={280}
                 />
-                {draft.ends === "on" && (
-                  <DateInput
-                    label="Until"
-                    value={draft.until}
-                    onChange={(v) => set("until", v)}
-                    valueFormat="ddd D MMM YYYY"
-                  />
-                )}
-                {draft.ends === "after" && (
-                  <NumberInput
-                    label="Times"
-                    min={1}
-                    max={1000}
-                    value={draft.count}
-                    onChange={(v) => set("count", typeof v === "number" ? v : 1)}
-                    w={110}
-                  />
+              )}
+              <Switch
+                label="All day"
+                checked={draft.allDay}
+                onChange={(e) => toggleAllDay(e.currentTarget.checked)}
+              />
+              <Group grow align="flex-start">
+                {draft.allDay ? (
+                  <>
+                    <DateInput
+                      label="From"
+                      value={draft.start}
+                      onChange={(v) => v && set("start", v)}
+                      valueFormat="ddd D MMM YYYY"
+                    />
+                    <DateInput
+                      label="To"
+                      value={draft.end}
+                      onChange={(v) => v && set("end", v)}
+                      valueFormat="ddd D MMM YYYY"
+                      minDate={draft.start}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <DateTimePicker
+                      label="Starts"
+                      value={draft.start}
+                      onChange={(v) => v && set("start", v)}
+                      valueFormat="ddd D MMM, HH:mm"
+                    />
+                    <DateTimePicker
+                      label="Ends"
+                      value={draft.end}
+                      onChange={(v) => v && set("end", v)}
+                      valueFormat="ddd D MMM, HH:mm"
+                    />
+                  </>
                 )}
               </Group>
-            </>
-          )}
+              <Textarea
+                label="Description"
+                autosize
+                minRows={2}
+                value={draft.description}
+                onChange={(e) => set("description", e.currentTarget.value)}
+              />
+              {!imported && (
+                <div>
+                  <Text size="sm" fw={500} mb={4}>
+                    Repeats
+                  </Text>
+                  <SegmentedControl
+                    value={draft.repeat}
+                    onChange={(value) => {
+                      const repeat = value as EventDraft["repeat"];
+                      setDraft((prev) => ({
+                        ...prev,
+                        repeat,
+                        days:
+                          repeat === "weekly"
+                            ? [
+                                dayjs(
+                                  prev.allDay
+                                    ? prev.start
+                                    : fromDateTimeString(prev.start),
+                                ).day(),
+                              ]
+                            : repeat === "monthly"
+                              ? [
+                                  dayjs(
+                                    prev.allDay
+                                      ? prev.start
+                                      : fromDateTimeString(prev.start),
+                                  ).date(),
+                                ]
+                              : prev.days,
+                      }));
+                    }}
+                    data={[
+                      { value: "none", label: "Never" },
+                      { value: "weekly", label: "Weekly" },
+                      { value: "monthly", label: "Monthly" },
+                    ]}
+                  />
+                </div>
+              )}
+              {!imported && draft.repeat !== "none" && (
+                <>
+                  <Chip.Group
+                    multiple
+                    value={draft.days.map(String)}
+                    onChange={(values) =>
+                      set(
+                        "days",
+                        values.map(Number).sort((a, b) => a - b),
+                      )
+                    }
+                  >
+                    <Group gap={4}>
+                      {dayChips.map((chip) => (
+                        <Chip
+                          key={chip.value}
+                          value={String(chip.value)}
+                          size="xs"
+                          radius="xl"
+                        >
+                          {chip.label}
+                        </Chip>
+                      ))}
+                    </Group>
+                  </Chip.Group>
+                  <Group align="flex-end" gap="sm">
+                    <SegmentedControl
+                      value={draft.ends}
+                      onChange={(value) => set("ends", value as EventDraft["ends"])}
+                      data={[
+                        { value: "never", label: "Forever" },
+                        { value: "on", label: "Until a day" },
+                        { value: "after", label: "A number of times" },
+                      ]}
+                    />
+                    {draft.ends === "on" && (
+                      <DateInput
+                        label="Until"
+                        value={draft.until}
+                        onChange={(v) => set("until", v)}
+                        valueFormat="ddd D MMM YYYY"
+                      />
+                    )}
+                    {draft.ends === "after" && (
+                      <NumberInput
+                        label="Times"
+                        min={1}
+                        max={1000}
+                        value={draft.count}
+                        onChange={(v) => set("count", typeof v === "number" ? v : 1)}
+                        w={110}
+                      />
+                    )}
+                  </Group>
+                </>
+              )}
+            </Stack>
+          </fieldset>
           <PeoplePicker
             label="Shared with"
             placeholder="Only you"
@@ -374,7 +428,7 @@ export function EventModal({
           )}
           <Group justify="space-between" mt="xs">
             <Group gap="xs">
-              {event && onRemove && mine && (
+              {event && onRemove && mine && !imported && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
@@ -392,7 +446,7 @@ export function EventModal({
                   Remove
                 </ConfirmButton>
               )}
-              {event?.recurrence && onStop && occurrenceDay && mine && (
+              {event?.recurrence && onStop && occurrenceDay && mine && !imported && (
                 <ConfirmButton
                   variant="subtle"
                   message="Stop repeating from this one on? Earlier ones stay."

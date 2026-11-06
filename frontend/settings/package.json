@@ -16,6 +16,7 @@
     "@frontend/ds": "workspace:*",
     "@frontend/api": "workspace:*",
     "@frontend/auth": "workspace:*",
+    "@frontend/calendar": "workspace:*",
     "@shared/contract": "workspace:*",
     "@tanstack/react-query": "^5.96.2",
     "react-router-dom": "^7.13.1",

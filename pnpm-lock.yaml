@@ -635,6 +635,9 @@ importers:
 
   backend/calendar:
     dependencies:
+      '@backend/arch-settings':
+        specifier: workspace:*
+        version: link:../arch-settings
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
@@ -1255,6 +1258,9 @@ importers:
       '@frontend/auth':
         specifier: workspace:*
         version: link:../auth
+      '@frontend/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds

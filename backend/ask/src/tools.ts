@@ -74,7 +74,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
     }),
     list_events: tool({
       description:
-        "What is on the user's calendar between two instants (milliseconds since the epoch), repeating events expanded into occurrences.",
+        "What is on the user's calendar between two instants (milliseconds since the epoch), repeating events expanded into occurrences. Each names its calendar and source; source \"google\" is imported from the user's Google Calendar and is read-only here.",
       inputSchema: z.object({ from: z.number(), to: z.number() }),
       execute: ({ from, to }) => listOccurrences(principal, from, to),
     }),
@@ -94,7 +94,8 @@ export function householdTools(ctx: ToolContext): ToolSet {
         createEvent(principal, { ...input, timeZone: input.timeZone ?? ctx.timeZone }),
     }),
     update_event: tool({
-      description: "Change an event or its whole series.",
+      description:
+        "Change an event or its whole series. An imported (Google) event only changes who it is shared with; anything else is changed in Google Calendar.",
       inputSchema: calendarEventUpdateSchema.extend({ id: z.string() }),
       execute: ({ id, ...changes }) => updateEvent(principal, id, changes),
     }),

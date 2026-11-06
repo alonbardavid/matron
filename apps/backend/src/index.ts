@@ -1,3 +1,4 @@
+import { syncAllGoogleConnections } from "@backend/calendar/google";
 import { application } from "./application";
 import { router } from "./router";
 
@@ -17,5 +18,15 @@ export default {
     return env.WORKER_ROLE === "application"
       ? application.fetch(request, env, ctx)
       : router.fetch(request, env, ctx);
+  },
+  // Production's cron: keeps every member's imported Google calendars fresh.
+  // Previews have no cron; their copies sync when a member opens the calendar.
+  scheduled(
+    _controller: ScheduledController,
+    env: Cloudflare.Env,
+    ctx: ExecutionContext,
+  ) {
+    if (env.WORKER_ROLE === "application") return;
+    ctx.waitUntil(syncAllGoogleConnections());
   },
 };
