@@ -4,7 +4,11 @@ import { notifyError } from "@frontend/api/errors";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { SidePanel } from "@frontend/ds/SidePanel";
 import { useAskChat } from "../AskChatContext";
-import { useConversationActions, useConversations } from "../useConversations";
+import {
+  onThisBranch,
+  useConversationActions,
+  useConversations,
+} from "../useConversations";
 import { AskComposer } from "./AskComposer";
 import { AskConversation, Thinking } from "./AskConversation";
 import { AskMessage } from "./AskMessage";
@@ -76,7 +80,15 @@ export function AskChat() {
         </>
       ) : (
         opened &&
-        sessionId && (
+        sessionId &&
+        (session && !onThisBranch(session) ? (
+          <Stack flex={1} justify="center">
+            <EmptyState
+              title="Started on another branch"
+              description="A conversation is continued where it was started. Ask here to begin a new one."
+            />
+          </Stack>
+        ) : (
           <AskConversation
             key={sessionId}
             sessionId={sessionId}
@@ -87,7 +99,7 @@ export function AskChat() {
             onPendingSent={clearPending}
             onNew={openNew}
           />
-        )
+        ))
       )}
     </SidePanel>
   );

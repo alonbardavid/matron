@@ -2,6 +2,7 @@ import { Button, Divider, Group, Loader, Stack, Switch, Text } from "@mantine/co
 import { useState } from "react";
 import { useAskChat } from "@frontend/ask/AskChatContext";
 import {
+  onThisBranch,
   useConversationActions,
   useConversations,
   useStartAsk,
@@ -52,34 +53,46 @@ function AskSessions() {
   const archivedCount = all.filter((session) => session.archivedAt !== null).length;
   const items = all.filter((session) => (session.archivedAt !== null) === showArchived);
 
-  const rows = items.map((session) => (
-    <Group key={session.id} justify="space-between" px="md" py="sm" wrap="wrap">
-      <div style={{ minWidth: 0, flex: "1 1 200px" }}>
-        <Text size="sm" fw={500} truncate>
-          {session.title ?? "New conversation"}
-        </Text>
-        <Text size="xs" c="dimmed">
-          {when(session.updatedAt)}
-        </Text>
-      </div>
-      <Group gap="xs" wrap="nowrap">
-        {session.archivedAt === null && (
-          <ConfirmButton
+  const rows = items.map((session) => {
+    const here = onThisBranch(session);
+    return (
+      <Group key={session.id} justify="space-between" px="md" py="sm" wrap="wrap">
+        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+          <Text size="sm" fw={500} truncate>
+            {session.title ?? "New conversation"}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {when(session.updatedAt)}
+            {!here &&
+              (session.branch === "main"
+                ? " · started on main"
+                : " · started on another branch")}
+          </Text>
+        </div>
+        <Group gap="xs" wrap="nowrap">
+          {session.archivedAt === null && here && (
+            <ConfirmButton
+              size="xs"
+              variant="subtle"
+              message="Archive this conversation? It stays readable."
+              confirmLabel="Archive"
+              onConfirm={() => archive.mutateAsync({ id: session.id })}
+            >
+              Archive
+            </ConfirmButton>
+          )}
+          <Button
             size="xs"
-            variant="subtle"
-            message="Archive this conversation? It stays readable."
-            confirmLabel="Archive"
-            onConfirm={() => archive.mutateAsync({ id: session.id })}
+            variant="light"
+            disabled={!here}
+            onClick={() => askChat.open(session.id)}
           >
-            Archive
-          </ConfirmButton>
-        )}
-        <Button size="xs" variant="light" onClick={() => askChat.open(session.id)}>
-          {session.archivedAt === null ? "Open" : "View"}
-        </Button>
+            {session.archivedAt === null ? "Open" : "View"}
+          </Button>
+        </Group>
       </Group>
-    </Group>
-  ));
+    );
+  });
   return (
     <Stack gap="xs">
       <Group justify="space-between">

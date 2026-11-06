@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifyError } from "@frontend/api/errors";
+import { branchParam, MAIN_BRANCH } from "@frontend/api/branch";
 import { orpc } from "@frontend/api/orpc";
+import type { Conversation } from "@shared/contract/app/conversations";
 import { useAskChat } from "./AskChatContext";
 
 export function useConversations() {
@@ -23,29 +25,16 @@ export function useConversationActions() {
   return { create, archive };
 }
 
+/** A conversation is continued only on the branch it was started on. */
+export function onThisBranch(conversation: Conversation): boolean {
+  return conversation.branch === (branchParam() ?? MAIN_BRANCH);
+}
+
 /**
- * What the Ask button does: open the latest conversation that is not
- * archived, or an empty panel whose conversation is created by the first
- * message.
+ * What the Ask button does: open an empty panel, whose conversation is
+ * created by the first message. Earlier conversations are on the Conversations page.
  */
 export function useStartAsk() {
   const askChat = useAskChat();
-  const queryClient = useQueryClient();
-
-  const start = async () => {
-    try {
-      const sessions = await queryClient.fetchQuery(
-        orpc.conversations.list.queryOptions(),
-      );
-      const latest = sessions
-        .filter((session) => session.archivedAt === null)
-        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      if (latest) askChat.open(latest.id);
-      else askChat.openNew();
-    } catch (err) {
-      notifyError(err, "Could not open the assistant");
-    }
-  };
-
-  return { start, startNew: askChat.openNew };
+  return { start: askChat.openNew, startNew: askChat.openNew };
 }

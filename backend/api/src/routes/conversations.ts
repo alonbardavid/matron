@@ -11,7 +11,7 @@ export const conversations = app.conversations.router({
     listConversations(context.principal),
   ),
   create: app.conversations.create.handler(({ context }) =>
-    createConversation(context.principal),
+    createConversation(context.principal, context.branch),
   ),
   rename: app.conversations.rename.handler(({ context, input }) =>
     renameConversation(context.principal, input.id, input.title),
