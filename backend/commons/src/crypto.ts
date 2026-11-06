@@ -46,3 +46,63 @@ async function importKey(secret: string): Promise<CryptoKey> {
     ["sign", "verify"],
   );
 }
+
+/**
+ * Encrypts `plaintext` with AES-GCM under a key derived from `secret` for
+ * `purpose`, for values kept at rest (OAuth secrets and tokens). The result is
+ * `v1.<iv>.<ciphertext>`, base64url. A different purpose derives another key,
+ * so one ciphertext never decrypts as another kind of value.
+ */
+export async function encryptText(
+  secret: string,
+  purpose: string,
+  plaintext: string,
+): Promise<string> {
+  const key = await deriveAesKey(secret, purpose);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const sealed = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    encoder.encode(plaintext),
+  );
+  return `v1.${base64url(iv)}.${base64url(new Uint8Array(sealed))}`;
+}
+
+/** Reverses `encryptText`; throws when the value was not sealed with this secret and purpose. */
+export async function decryptText(
+  secret: string,
+  purpose: string,
+  sealed: string,
+): Promise<string> {
+  const [version, iv, body] = sealed.split(".");
+  if (version !== "v1" || !iv || !body) throw new Error("Not an encrypted value");
+  const key = await deriveAesKey(secret, purpose);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromBase64url(iv) },
+    key,
+    fromBase64url(body),
+  );
+  return new TextDecoder().decode(plain);
+}
+
+async function deriveAesKey(secret: string, purpose: string): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    "HKDF",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: encoder.encode("matron"),
+      info: encoder.encode(purpose),
+    },
+    base,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}

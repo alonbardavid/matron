@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
 import { openAskSocket } from "@backend/ask/socket";
+import { finishGoogleConnect } from "@backend/calendar/google";
 import { answerError } from "@backend/commons/errors";
 import {
   requireHandoff,
   type ApplicationVariables,
 } from "@backend/arch-routing/require-handoff";
 import { logger } from "@backend/commons/logger";
+import { GOOGLE_CALLBACK_PATH } from "@shared/contract/app/calendar";
 
 const log = logger("backend/application");
 
@@ -20,6 +22,19 @@ export const application = new Hono<{ Variables: ApplicationVariables }>();
 application.onError(answerError);
 
 application.use("*", requireHandoff);
+
+// Google sends the browser back here after the member allowed calendar access:
+// a navigation, so it answers with a redirect rather than a procedure's JSON.
+application.get(GOOGLE_CALLBACK_PATH, async (c) => {
+  const principal = c.get("principal");
+  if (!principal) return c.redirect("/");
+  try {
+    return c.redirect(await finishGoogleConnect(principal, new URL(c.req.url)));
+  } catch (err) {
+    log.error("google callback failed", { err, userId: principal.userId });
+    return c.redirect("/settings?google=failed");
+  }
+});
 
 application.use("/api/app/*", async (c, next) => {
   // A signed-out visitor reaches the SPA but not the API, which requires a principal.

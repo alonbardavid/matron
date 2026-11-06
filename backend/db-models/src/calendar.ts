@@ -1,27 +1,75 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createdAt, timestamp, updatedAt } from "./columns";
 
 export const RECURRENCE_FREQUENCIES = ["weekly", "monthly"] as const;
 export type RecurrenceFrequency = (typeof RECURRENCE_FREQUENCIES)[number];
 
-export const calendarEvent = sqliteTable("calendar_event", {
-  id: text("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
-  creatorId: text("creator_id").notNull(),
-  allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
-  startAt: timestamp("start_at").notNull(),
-  endAt: timestamp("end_at").notNull(),
-  timeZone: text("time_zone").notNull(),
-  recurrenceFrequency: text("recurrence_frequency", { enum: RECURRENCE_FREQUENCIES }),
-  /** JSON array of weekdays (0 Sunday to 6 Saturday) or days of the month. */
-  recurrenceDays: text("recurrence_days"),
-  /** The last day an occurrence may fall on, `YYYY-MM-DD`. */
-  recurrenceUntil: text("recurrence_until"),
-  recurrenceCount: integer("recurrence_count"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+/** Where a calendar's events come from: made in Matron, or imported from the owner's Google Calendar. */
+export const CALENDAR_SOURCES = ["matron", "google"] as const;
+export type CalendarSource = (typeof CALENDAR_SOURCES)[number];
+
+/**
+ * A member's calendar: every event belongs to one. Each member has a default
+ * Matron calendar; each Google calendar they import is a calendar of its own.
+ */
+export const calendar = sqliteTable(
+  "calendar",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    name: text("name").notNull(),
+    /** A CSS hex colour, `#rrggbb`. */
+    color: text("color").notNull(),
+    source: text("source", { enum: CALENDAR_SOURCES }).notNull().default("matron"),
+    /** For an imported calendar: its id at the source (a Google calendar id). */
+    externalId: text("external_id"),
+    /** The owner's calendar new events go to; one per owner. */
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("calendar_owner_idx").on(table.ownerId),
+    uniqueIndex("calendar_owner_source_external").on(
+      table.ownerId,
+      table.source,
+      table.externalId,
+    ),
+  ],
+);
+
+export const calendarEvent = sqliteTable(
+  "calendar_event",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    creatorId: text("creator_id").notNull(),
+    allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
+    startAt: timestamp("start_at").notNull(),
+    endAt: timestamp("end_at").notNull(),
+    timeZone: text("time_zone").notNull(),
+    recurrenceFrequency: text("recurrence_frequency", { enum: RECURRENCE_FREQUENCIES }),
+    /** JSON array of weekdays (0 Sunday to 6 Saturday) or days of the month. */
+    recurrenceDays: text("recurrence_days"),
+    /** The last day an occurrence may fall on, `YYYY-MM-DD`. */
+    recurrenceUntil: text("recurrence_until"),
+    recurrenceCount: integer("recurrence_count"),
+    /** The calendar it belongs to, always one of the creator's. */
+    calendarId: text("calendar_id").notNull(),
+    /** For an imported event: its id at the source, unique within its calendar. */
+    externalId: text("external_id"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("calendar_event_calendar_idx").on(table.calendarId),
+    uniqueIndex("calendar_event_calendar_external").on(
+      table.calendarId,
+      table.externalId,
+    ),
+  ],
+);
 
 export const calendarEventShare = sqliteTable(
   "calendar_event_share",
@@ -36,3 +84,29 @@ export const calendarEventShare = sqliteTable(
     uniqueIndex("calendar_event_share_event_user").on(table.eventId, table.userId),
   ],
 );
+
+export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const;
+export type GoogleConnectionStatus = (typeof GOOGLE_CONNECTION_STATUSES)[number];
+
+/**
+ * A member's link to their own Google Calendar: the OAuth tokens, encrypted.
+ * Which Google calendars are imported is the member's `google` calendars. One
+ * per user; left off the assistant's readable tables.
+ */
+export const googleCalendarConnection = sqliteTable("google_calendar_connection", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  /** The Google account's email, to show which account is connected. */
+  googleEmail: text("google_email").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  accessToken: text("access_token"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  status: text("status", { enum: GOOGLE_CONNECTION_STATUSES })
+    .notNull()
+    .default("active"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  /** Why the last sync failed, cleared by the next one that succeeds. */
+  lastError: text("last_error"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});

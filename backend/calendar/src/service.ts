@@ -6,13 +6,15 @@ import type { Principal } from "@backend/commons/principal";
 import { calendarEvent, calendarEventShare } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
-import type {
-  CalendarEvent,
-  CalendarEventCreate,
-  CalendarEventUpdate,
-  Occurrence,
-  Recurrence,
+import {
+  CALENDAR_COLORS,
+  type CalendarEvent,
+  type CalendarEventCreate,
+  type CalendarEventUpdate,
+  type Occurrence,
+  type Recurrence,
 } from "@shared/contract/app/calendar";
+import { calendarsById, writableCalendarOf, type CalendarRow } from "./calendars";
 import { dayBefore, expandSeries } from "./recurrence";
 import { eventPermissions } from "./permissions";
 
@@ -57,12 +59,14 @@ export async function listOccurrences(
         ),
       ),
     );
+  const calendars = await calendarsById(rows.map((row) => row.calendarId));
   const out: Occurrence[] = [];
   for (const row of rows) {
+    const cal = calendars.get(row.calendarId);
     const recurrence = toRecurrence(row);
     if (!recurrence) {
       out.push(
-        toOccurrence(row, row.id, row.startAt.getTime(), row.endAt.getTime(), false),
+        toOccurrence(row, cal, row.id, row.startAt.getTime(), row.endAt.getTime(), false),
       );
       continue;
     }
@@ -77,7 +81,14 @@ export async function listOccurrences(
       to,
     )) {
       out.push(
-        toOccurrence(row, `${row.id}:${window.day}`, window.startAt, window.endAt, true),
+        toOccurrence(
+          row,
+          cal,
+          `${row.id}:${window.day}`,
+          window.startAt,
+          window.endAt,
+          true,
+        ),
       );
     }
   }
@@ -93,7 +104,7 @@ export async function getEvent(principal: Principal, id: string): Promise<Calend
     .where(eq(calendarEvent.id, id))
     .get();
   if (!row) throw new DomainError("NOT_FOUND", "Event not found");
-  const item = toEvent(row, (await sharesOf([id])).get(id) ?? []);
+  const item = await withShares(row);
   if (!canSee(principal, item)) throw new DomainError("NOT_FOUND", "Event not found");
   return item;
 }
@@ -104,6 +115,7 @@ export async function createEvent(
 ): Promise<CalendarEvent> {
   eventPermissions.require(principal, "create");
   checkTimes(input.startAt, input.endAt);
+  const target = await writableCalendarOf(principal.userId, input.calendarId);
   const id = newEntityId("CALENDAR_EVENT");
   const { sharedWith, attendees } = await resolvePeople(
     principal.userId,
@@ -121,12 +133,17 @@ export async function createEvent(
       startAt: new Date(input.startAt),
       endAt: new Date(input.endAt),
       timeZone: input.timeZone,
+      calendarId: target.id,
       ...recurrenceColumns(input.recurrence ?? null),
     })
     .returning();
   await writeShares(id, sharedWith, attendees);
-  log.info("event created", { eventId: id, userId: principal.userId });
-  return toEvent(row!, (await sharesOf([id])).get(id) ?? []);
+  log.info("event created", {
+    eventId: id,
+    calendarId: target.id,
+    userId: principal.userId,
+  });
+  return withShares(row!);
 }
 
 export async function updateEvent(
@@ -144,6 +161,23 @@ export async function updateEvent(
       "Only the event's creator changes who it is shared with",
     );
   }
+  if (current.source !== "matron") {
+    // An imported event is the source's: only who it is shared with is Matron's own.
+    const { sharedWith: _shared, attendees: _attending, ...rest } = changes;
+    if (Object.values(rest).some((value) => value !== undefined)) {
+      throw new DomainError(
+        "BAD_REQUEST",
+        "This event comes from Google Calendar; change it there",
+      );
+    }
+  }
+  let calendarId: string | undefined;
+  if (changes.calendarId !== undefined && changes.calendarId !== current.calendarId) {
+    if (!canManage(principal, current)) {
+      throw new DomainError("FORBIDDEN", "Only the event's creator moves it");
+    }
+    calendarId = (await writableCalendarOf(current.creatorId, changes.calendarId)).id;
+  }
   const startAt = changes.startAt ?? current.startAt;
   const endAt = changes.endAt ?? current.endAt;
   checkTimes(startAt, endAt);
@@ -157,6 +191,7 @@ export async function updateEvent(
       startAt: new Date(startAt),
       endAt: new Date(endAt),
       ...(changes.timeZone !== undefined && { timeZone: changes.timeZone }),
+      ...(calendarId !== undefined && { calendarId }),
       ...(changes.recurrence !== undefined && recurrenceColumns(changes.recurrence)),
       updatedAt: new Date(),
     })
@@ -172,7 +207,7 @@ export async function updateEvent(
     await writeShares(id, sharedWith, attendees);
   }
   log.info("event updated", { eventId: id, userId: principal.userId });
-  return toEvent(row!, (await sharesOf([id])).get(id) ?? []);
+  return withShares(row!);
 }
 
 /** Ends a series before `from`: what happened before that day stays on the calendar. */
@@ -183,6 +218,7 @@ export async function stopRecurrence(
 ): Promise<CalendarEvent> {
   eventPermissions.require(principal, "update");
   const current = await getEvent(principal, id);
+  refuseImported(current);
   if (!current.recurrence)
     throw new DomainError("CONFLICT", "This event does not repeat");
   const until = dayBefore(from);
@@ -192,12 +228,13 @@ export async function stopRecurrence(
     .where(eq(calendarEvent.id, id))
     .returning();
   log.info("recurrence stopped", { eventId: id, until, userId: principal.userId });
-  return toEvent(row!, (await sharesOf([id])).get(id) ?? []);
+  return withShares(row!);
 }
 
 export async function removeEvent(principal: Principal, id: string): Promise<void> {
   eventPermissions.require(principal, "remove");
   const current = await getEvent(principal, id);
+  refuseImported(current);
   if (!canManage(principal, current)) {
     throw new DomainError("FORBIDDEN", "Only the event's creator removes it");
   }
@@ -205,6 +242,23 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
   await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
   await db.delete(calendarEvent).where(eq(calendarEvent.id, id));
   log.info("event removed", { eventId: id, userId: principal.userId });
+}
+
+function refuseImported(item: CalendarEvent): void {
+  if (item.source !== "matron") {
+    throw new DomainError(
+      "BAD_REQUEST",
+      "This event comes from Google Calendar; change it there",
+    );
+  }
+}
+
+async function withShares(row: EventRow): Promise<CalendarEvent> {
+  const [shares, calendars] = await Promise.all([
+    sharesOf([row.id]),
+    calendarsById([row.calendarId]),
+  ]);
+  return toEvent(row, shares.get(row.id) ?? [], calendars.get(row.calendarId));
 }
 
 function checkTimes(startAt: number, endAt: number): void {
@@ -303,7 +357,11 @@ function toRecurrence(row: EventRow): Recurrence | null {
   };
 }
 
-function toEvent(row: EventRow, shares: ShareRow[]): CalendarEvent {
+function toEvent(
+  row: EventRow,
+  shares: ShareRow[],
+  cal: CalendarRow | undefined,
+): CalendarEvent {
   return {
     id: row.id,
     title: row.title,
@@ -316,6 +374,8 @@ function toEvent(row: EventRow, shares: ShareRow[]): CalendarEvent {
     recurrence: toRecurrence(row),
     sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
     attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
+    calendarId: row.calendarId,
+    source: cal?.source ?? "matron",
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };
@@ -323,6 +383,7 @@ function toEvent(row: EventRow, shares: ShareRow[]): CalendarEvent {
 
 function toOccurrence(
   row: EventRow,
+  cal: CalendarRow | undefined,
   id: string,
   startAt: number,
   endAt: number,
@@ -337,5 +398,8 @@ function toOccurrence(
     endAt,
     recurring,
     creatorId: row.creatorId,
+    calendarId: row.calendarId,
+    color: cal?.color ?? CALENDAR_COLORS[0],
+    source: cal?.source ?? "matron",
   };
 }
