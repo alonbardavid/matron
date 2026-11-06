@@ -7,6 +7,7 @@ import { UsersScreen } from "@frontend/auth/screens/UsersScreen";
 import { useMe } from "@frontend/auth/useMe";
 import { withBranch } from "@frontend/api/branch";
 import { BranchesScreen } from "@frontend/branches/screens/BranchesScreen";
+import { MergeButton } from "@frontend/branches/widgets/BranchRow";
 import { BuildChatProvider, useBuildChat } from "@frontend/build/BuildChatContext";
 import { useOutOfDateAction } from "@frontend/build/outOfDate";
 import { CalendarScreen } from "@frontend/calendar/screens/CalendarScreen";
@@ -14,6 +15,7 @@ import { ConversationsScreen } from "@frontend/conversations/screens/Conversatio
 import { AppSettingsScreen } from "@frontend/settings/screens/AppSettingsScreen";
 import { SettingsScreen } from "@frontend/settings/screens/SettingsScreen";
 import { TasksScreen } from "@frontend/tasks/screens/TasksScreen";
+import { ReviewScreen } from "@frontend/review/screens/ReviewScreen";
 import { TroubleshootingScreen } from "@frontend/troubleshooting/screens/TroubleshootingScreen";
 import { AppLayout } from "./AppLayout";
 
@@ -35,8 +37,20 @@ function BranchesRoute() {
   return <BranchesScreen onOutOfDate={onOutOfDate} onViewSession={buildChat.open} />;
 }
 
+function ReviewRoute() {
+  const onOutOfDate = useOutOfDateAction();
+  const { can } = useMe();
+  return (
+    <ReviewScreen
+      actions={(branch) =>
+        can("merge") ? <MergeButton branch={branch} onOutOfDate={onOutOfDate} /> : null
+      }
+    />
+  );
+}
+
 export function App() {
-  const { me, isLoading, can, canManage, canTroubleshoot } = useMe();
+  const { me, isLoading, can, canManage, canTroubleshoot, canReview } = useMe();
 
   if (isLoading) return <Loading />;
   if (!me) return <LoginScreen />;
@@ -54,6 +68,14 @@ export function App() {
               element={
                 <Guard allow={can("view")}>
                   <BranchesRoute />
+                </Guard>
+              }
+            />
+            <Route
+              path="branches/:id/review"
+              element={
+                <Guard allow={canReview}>
+                  <ReviewRoute />
                 </Guard>
               }
             />

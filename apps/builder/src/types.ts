@@ -56,8 +56,39 @@ export type AgentPrompt =
   | { kind: "continue"; message: string; sync: string }
   | { kind: "fix"; command: string; output: string };
 
+/** Mirrors BRACKET_KINDS in `shared/contract/src/arch/review.ts`. */
+export const BRACKET_KINDS = [
+  "flow",
+  "schema",
+  "refactor",
+  "move",
+  "tests",
+  "config",
+  "docs",
+  "other",
+] as const;
+
+/**
+ * The agent's review of the whole branch, stored in the commit's
+ * `Matron-Review` trailer; mirrors `reviewTrailerSchema` on the Worker side.
+ */
+export type ReviewTrailer = {
+  summary: string;
+  brackets: {
+    title: string;
+    kind: (typeof BRACKET_KINDS)[number];
+    description: string;
+    ranges: { path: string; start: number; end: number; note: string }[];
+  }[];
+};
+
 /** What a step reads besides the job, when it needs more. */
-export type StepInput = { summary: string; reasoning: string; request: string };
+export type StepInput = {
+  summary: string;
+  reasoning: string;
+  request: string;
+  review?: ReviewTrailer;
+};
 
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
 export type TurnRequest =
@@ -77,6 +108,7 @@ export type AgentOutcome = {
   summary: string;
   reasoning: string;
   message: string;
+  review?: ReviewTrailer;
 };
 
 export type PrepareContinueResult = { sync: string };

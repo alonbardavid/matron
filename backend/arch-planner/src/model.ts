@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { BetaRunnableTool } from "@anthropic-ai/sdk/lib/tools/BetaRunnableTool";
 import { getBuilderModel } from "@backend/arch-settings/service";
 import { logger } from "@backend/commons/logger";
 import { AI_GATEWAY } from "@backend/commons/names";
@@ -21,7 +22,7 @@ export type ProgressSink = (text: string) => void;
 
 /** What the gateway's log says about a request: which agent, the app host, the branch and the session. */
 export type GatewayMetadata = {
-  agent: "planner";
+  agent: "planner" | "reviewer";
   host: string;
   branch: string;
   sessionId: string;
@@ -32,10 +33,13 @@ function clip(text: string, max = CLIP_CHARS): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+/** The tools of one turn, made with the turn's repository handle. */
+export type ToolsFor = (repo: ArtifactsRepo) => BetaRunnableTool[];
+
 /**
  * One planner turn: Claude, through the account's AI Gateway, with the
- * repository tools; the model reads what it needs and the reply's text comes
- * back. The gateway holds the provider credentials (unified billing or a
+ * repository tools (main's, unless `tools` says otherwise); the model reads
+ * what it needs and the reply's text comes back. The gateway holds the provider credentials (unified billing or a
  * stored key) and authenticates the Cloudflare token in `cf-aig-authorization`;
  * the SDK still wants an API key, which the gateway ignores, so it is that token.
  */
@@ -43,6 +47,7 @@ export async function modelReply(
   messages: ModelMessage[],
   metadata: GatewayMetadata,
   onProgress?: ProgressSink,
+  tools: ToolsFor = (repo) => repositoryTools(repo),
 ): Promise<string> {
   const env = plannerEnv();
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
@@ -67,7 +72,7 @@ export async function modelReply(
       // The prompt and the tools are the same on every turn: cached across them.
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: turns,
-      tools: repositoryTools(repo),
+      tools: tools(repo),
       thinking: { type: "adaptive" },
       // A safety refusal re-runs the request on a fallback model inside the same call.
       betas: ["server-side-fallback-2026-07-01"],

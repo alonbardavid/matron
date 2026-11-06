@@ -52,6 +52,8 @@
  * the next turn.
  */
 
+import type { ReviewTrailer } from "@shared/contract/arch/review";
+
 export type BuilderMode = "build" | "continue" | "merge" | "abandon";
 
 export type BuilderStatus =
@@ -157,6 +159,8 @@ export interface StepInput {
   summary: string;
   reasoning: string;
   request: string;
+  /** Written into the commit's `Matron-Review` trailer. */
+  review?: ReviewTrailer;
 }
 
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
@@ -176,6 +180,8 @@ export interface AgentOutcome {
   summary: string;
   reasoning: string;
   message: string;
+  /** The whole branch's summary and brackets, with `done`; absent when the agent gave none. */
+  review?: ReviewTrailer;
 }
 
 export interface PrepareContinueResult {

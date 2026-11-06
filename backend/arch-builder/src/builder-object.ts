@@ -10,6 +10,7 @@ import { markReady } from "@backend/arch-branches/service";
 import { logger } from "@backend/commons/logger";
 import { getBuilderModel } from "@backend/arch-settings/service";
 import { AI_GATEWAY } from "@backend/commons/names";
+import { reviewTrailerSchema, type ReviewTrailer } from "@shared/contract/arch/review";
 import type {
   AbandonJob,
   AgentOutcome,
@@ -472,6 +473,8 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
               ...outcome,
               summary: run.outcome.summary || outcome.summary,
               reasoning: run.outcome.reasoning || outcome.reasoning,
+              // A fix turn regroups the branch with its new line numbers.
+              review: outcome.review ?? run.outcome.review,
             }
           : outcome;
         run.phase = "verify";
@@ -505,6 +508,7 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
           summary: outcome.summary,
           reasoning: outcome.reasoning,
           request: job.mode === "continue" ? job.message : job.request,
+          review: outcome.review,
         });
         log.info("branch pushed", { sessionId: job.sessionId, committed });
         await session.builderStatus("deploying");
@@ -873,7 +877,16 @@ function toOutcome(value: unknown): AgentOutcome | null {
     summary: typeof value.summary === "string" ? value.summary : "",
     reasoning: typeof value.reasoning === "string" ? value.reasoning : "",
     message: typeof value.message === "string" ? value.message : "",
+    review: toReview(value.review),
   };
+}
+
+/** The agent's review, or undefined when it gave none worth keeping; a malformed one is dropped, never fatal. */
+function toReview(value: unknown): ReviewTrailer | undefined {
+  const parsed = reviewTrailerSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const review = parsed.data;
+  return review.summary.trim() || review.brackets.length ? review : undefined;
 }
 
 function parseJson(text: string): unknown {

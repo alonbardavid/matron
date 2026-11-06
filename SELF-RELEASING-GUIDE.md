@@ -61,6 +61,8 @@ All router routes live under `/api/arch/`. Everything under this prefix is handl
   - `GET /api/arch/branches`: list the user's branches, with the branch the request resolved to.
   - `POST /api/arch/branches/:id/merge`: merge the branch. Fails if main has diverged.
   - `DELETE /api/arch/branches/:id`: abandon without merging, same cleanup as a merge.
+  - `GET /api/arch/branches/:id/review`: the branch's review (see Review).
+  - `POST /api/arch/branches/:id/review/ask`: ask about the branch's code; the whole conversation is sent and the next answer returned.
 - `/api/arch/sessions`
   - `GET /api/arch/sessions`: list the user's sessions, newest activity first; every chat message counts as activity. Archiving keeps the last status; the list shows it greyed out. The branch row holds its session id, so a branch view knows which chat to open.
   - `POST /api/arch/sessions`: create a session.
@@ -82,6 +84,7 @@ The resources so far:
 - `task` and `event`: `view`, `create`, `update`, `share`, `remove`; everyone. The object's own rule (its creator, who it is shared with) decides which ones.
 - `conversation`: `view`, `create`, `chat`, `rename`, `archive`; everyone, on their own conversations.
 - `database` (the assistant's read-only queries): `read` for everyone, `read_router` for owners and admins.
+- `review` (router): `view`, reading a branch's code and asking about it; owners only.
 
 A service action first calls its resource's `require(principal, action)`, then its object rule. Routes and screens only mirror these checks. The owner is created by the deploy script.
 
@@ -144,7 +147,7 @@ The builder talks to the planning agent, which talks to the user. Whenever the b
 When development is finished the builder:
 
 1. Runs the tests and verifies the build.
-2. Commits to the branch. The commit message contains a summary of the changes, the user's request, and the reasoning that led to the changes. The branch is pushed.
+2. Commits to the branch. The commit message contains a summary of the changes, the user's request, and the reasoning that led to the changes, and a `Matron-Review` trailer: one line of JSON with the agent's summary of the whole branch for its reviewer and the branch's changes split into brackets (see Review). The branch is pushed.
 3. Clones the production D1 into a new D1 database for the branch (export, create, import), and applies the branch's migrations to it.
 4. Deploys the branch as a Preview under the agreed name, with generated configuration binding the branch's database and referencing the already published container image. Sets the Preview secrets.
 5. Returns a response to the chat with a link, snapshots, and shuts down.
@@ -156,6 +159,15 @@ The link reloads the page on the new branch.
 The UI has a branch dropdown listing main and the user's open branches. Switching changes which code the router proxies the user to.
 
 On a branch, a side banner warns that data changes made here are not kept when the branch is merged. The build chat is open on the branch with the session's context, so the user can continue asking for changes; each continuation wakes the builder from its snapshot, and a new deploy replaces the Preview.
+
+## Review
+
+Before merging, the owner can read a branch's code from its row on the branches page. The review is deliberately small: it reads, it does not approve, and it keeps nothing on the server.
+
+- The diff is the branch's head against its `base_commit`, file by file, with both versions' text; lockfiles, binary and very large files are listed but not shown.
+- The summary and brackets come from the newest of the branch's own commits that carries a `Matron-Review` trailer. A bracket is a titled group of line ranges (in the branch's version of each file) with a kind (`flow`, `schema`, `refactor`, `move`, `tests`, `config`, `docs`, `other`) and a description; changes no bracket covers are gathered at the end. Each commit's request and reasoning are shown too.
+- Three tabs: Overview (the summary and the commits), Brackets (one bracket at a time, range by range) and Files (a tree of changed files and one file's diff). Lines are marked viewed per change, a range, a bracket or a file at a time; the marks live in the browser and survive rebuilds while a change's text stays the same.
+- Ask about the code: the planner's model answers with tools that read the branch, the file on main and one file's diff, starting from the changed files and the builder's notes. The conversation lives in the page only.
 
 ## Merging
 

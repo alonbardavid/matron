@@ -1,4 +1,5 @@
 import { branchesContract } from "./branches";
+import { reviewContract } from "./review";
 import { sessionsContract } from "./sessions";
 import { settingsContract } from "./settings";
 import { troubleshootingContract } from "./troubleshooting";
@@ -9,6 +10,7 @@ import { troubleshootingContract } from "./troubleshooting";
  */
 export const archContract = {
   branches: branchesContract,
+  review: reviewContract,
   sessions: sessionsContract,
   settings: settingsContract,
   troubleshooting: troubleshootingContract,

@@ -1,5 +1,7 @@
 import { Button, Group, Stack, Table, Text } from "@mantine/core";
 import type { Branch } from "@shared/contract/arch/branches";
+import { useNavigate } from "react-router-dom";
+import { withBranch } from "@frontend/api/branch";
 import { useMe } from "@frontend/auth/useMe";
 import { Card } from "@frontend/ds/Card";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
@@ -25,11 +27,37 @@ function BranchMeta({ branch }: { branch: Branch }) {
   );
 }
 
-/** What can be done with the branch: open, merge or update, abandon; view an archived one's session. */
+/** Merge, or Update when main moved since the branch took it in. */
+export function MergeButton({
+  branch,
+  onOutOfDate,
+}: {
+  branch: Branch;
+  onOutOfDate?: OnOutOfDate;
+}) {
+  const { merge, outOfDate, requestMainPull } = useBranchActions(branch, onOutOfDate);
+  return outOfDate ? (
+    <Button size="xs" color="yellow" onClick={requestMainPull}>
+      Update
+    </Button>
+  ) : (
+    <Button
+      size="xs"
+      color="sage"
+      disabled={branch.status !== "ready"}
+      loading={merge.isPending}
+      onClick={() => merge.mutate()}
+    >
+      {branch.status === "merging" ? "Merging" : "Merge"}
+    </Button>
+  );
+}
+
+/** What can be done with the branch: open, review, merge or update, abandon; view an archived one's session. */
 function BranchActions({ branch, current, onOutOfDate, onViewSession }: BranchRowProps) {
-  const { can } = useMe();
-  const { merge, switching, outOfDate, requestMainPull, abandonAndLeave } =
-    useBranchActions(branch, onOutOfDate);
+  const { can, canReview } = useMe();
+  const navigate = useNavigate();
+  const { switching, abandonAndLeave } = useBranchActions(branch, onOutOfDate);
   const isCurrent = branch.id === current;
   const archived = branch.archivedAt !== null;
 
@@ -64,23 +92,18 @@ function BranchActions({ branch, current, onOutOfDate, onViewSession }: BranchRo
           Open
         </Button>
       )}
-      {!archived &&
-        can("merge") &&
-        (outOfDate ? (
-          <Button size="xs" color="yellow" onClick={requestMainPull}>
-            Update
-          </Button>
-        ) : (
-          <Button
-            size="xs"
-            color="sage"
-            disabled={branch.status !== "ready"}
-            loading={merge.isPending}
-            onClick={() => merge.mutate()}
-          >
-            {branch.status === "merging" ? "Merging" : "Merge"}
-          </Button>
-        ))}
+      {!archived && canReview && (
+        <Button
+          size="xs"
+          variant="default"
+          onClick={() => navigate(withBranch(`/branches/${branch.id}/review`))}
+        >
+          Review
+        </Button>
+      )}
+      {!archived && can("merge") && (
+        <MergeButton branch={branch} onOutOfDate={onOutOfDate} />
+      )}
       {!archived && can("merge") && (
         <ConfirmButton
           size="xs"

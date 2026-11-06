@@ -80,21 +80,26 @@ export async function writeToken(
   });
 }
 
-/** Every file under `directory` on main, repository-relative, up to a cap. */
-export async function listFiles(repo: ArtifactsRepo, directory = ""): Promise<string[]> {
-  const files = await filesUnder(repo, directory, MAX_LISTED_PATHS);
+/** Every file under `directory` at `ref` (main by default), repository-relative, up to a cap. */
+export async function listFiles(
+  repo: ArtifactsRepo,
+  directory = "",
+  ref: string = MAIN_BRANCH,
+): Promise<string[]> {
+  const files = await filesUnder(repo, directory, MAX_LISTED_PATHS, ref);
   if (!files) return [];
   const paths = files.entries.map((file) => file.path);
   if (files.truncated) paths.push("... (more files not listed)");
   return paths;
 }
 
-/** A file's text on main, or null when there is no such file. Long files are cut. */
+/** A file's text at `ref` (main by default), or null when there is no such file. Long files are cut. */
 export async function readFile(
   repo: ArtifactsRepo,
   path: string,
+  ref: string = MAIN_BRANCH,
 ): Promise<string | null> {
-  const blob = await repo.readFile({ ref: MAIN_BRANCH, path });
+  const blob = await repo.readFile({ ref, path });
   if (!blob) return null;
   const text = await blob.text();
   return text.length > MAX_FILE_CHARS
@@ -103,17 +108,18 @@ export async function readFile(
 }
 
 /**
- * Lines on main containing `query`, case-insensitively, as `path:line: text`.
- * Scans the text files under `directory`, most of a small repository.
+ * Lines at `ref` (main by default) containing `query`, case-insensitively, as
+ * `path:line: text`. Scans the text files under `directory`, most of a small repository.
  */
 export async function searchFiles(
   repo: ArtifactsRepo,
   query: string,
   directory = "",
+  ref: string = MAIN_BRANCH,
 ): Promise<string[]> {
   const needle = query.toLowerCase();
   if (!needle) return [];
-  const files = await filesUnder(repo, directory, MAX_SEARCH_FILES);
+  const files = await filesUnder(repo, directory, MAX_SEARCH_FILES, ref);
   if (!files) return [];
   const matches: string[] = [];
   for (let i = 0; i < files.entries.length && matches.length < MAX_SEARCH_MATCHES;) {
@@ -141,13 +147,14 @@ interface RepositoryFile {
   hash: string;
 }
 
-/** The files under `directory` on main, breadth first; null when it is not a directory. */
+/** The files under `directory` at `ref`, breadth first; null when it is not a directory. */
 async function filesUnder(
   repo: ArtifactsRepo,
   directory: string,
   limit: number,
+  ref: string,
 ): Promise<{ entries: RepositoryFile[]; truncated: boolean } | null> {
-  const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
+  const [head] = await repo.log({ ref, limit: 1 });
   if (!head) return { entries: [], truncated: false };
   const segments = directory.split("/").filter(Boolean);
   let tree = head.treeHash;
@@ -179,4 +186,89 @@ async function textOf(repo: ArtifactsRepo, hash: string): Promise<string | null>
   if (!blob || blob.size > MAX_SEARCHED_BLOB_BYTES) return null;
   const text = await blob.text();
   return text.includes("\0") ? null : text;
+}
+
+/** Commits along `ref`'s first-parent chain, newest first. */
+export async function firstParentLog(
+  repo: ArtifactsRepo,
+  ref: string,
+  limit: number,
+): Promise<ArtifactsCommitMetadata[]> {
+  return repo.log({ ref, limit });
+}
+
+export interface ChangedFile {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  /** Blob hashes on each side; null where the file does not exist. */
+  before: string | null;
+  after: string | null;
+}
+
+/**
+ * The files that differ between two commits' trees. Subtrees with the same
+ * hash are skipped whole, so the cost follows the size of the change. A path
+ * that turned from a file into a directory (or back) shows as deleted and added.
+ */
+export async function changedFiles(
+  repo: ArtifactsRepo,
+  fromCommit: string,
+  toCommit: string,
+  limit = MAX_LISTED_PATHS,
+): Promise<ChangedFile[]> {
+  const [from, to] = await Promise.all([
+    repo.readCommit(fromCommit),
+    repo.readCommit(toCommit),
+  ]);
+  if (!from || !to) throw new DomainError("NOT_FOUND", "Commit not found");
+  const changes: ChangedFile[] = [];
+  const walk = async (
+    before: string | null,
+    after: string | null,
+    prefix: string,
+  ): Promise<void> => {
+    if (before === after || changes.length >= limit) return;
+    const [left, right] = await Promise.all([
+      before ? repo.readTree(before) : Promise.resolve([]),
+      after ? repo.readTree(after) : Promise.resolve([]),
+    ]);
+    const names = new Set([...(left ?? []), ...(right ?? [])].map((entry) => entry.name));
+    for (const name of [...names].sort()) {
+      const l = left?.find((entry) => entry.name === name);
+      const r = right?.find((entry) => entry.name === name);
+      const path = `${prefix}${name}`;
+      if (l?.hash === r?.hash) continue;
+      const lTree = l?.type === "tree" ? l.hash : null;
+      const rTree = r?.type === "tree" ? r.hash : null;
+      if (lTree || rTree) await walk(lTree, rTree, `${path}/`);
+      const lBlob = l && isFile(l) ? l.hash : null;
+      const rBlob = r && isFile(r) ? r.hash : null;
+      if (lBlob === rBlob || changes.length >= limit) continue;
+      changes.push({
+        path,
+        status: !lBlob ? "added" : !rBlob ? "deleted" : "modified",
+        before: lBlob,
+        after: rBlob,
+      });
+    }
+  };
+  await walk(from.treeHash, to.treeHash, "");
+  return changes.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function isFile(entry: ArtifactsTreeEntry): boolean {
+  return entry.type === "blob" || entry.type === "exec" || entry.type === "symlink";
+}
+
+/** A blob's text, or why it is not shown: binary, or over `maxBytes`. */
+export async function blobText(
+  repo: ArtifactsRepo,
+  hash: string,
+  maxBytes: number,
+): Promise<{ text: string } | { omitted: "binary" | "too-large" }> {
+  const blob = await repo.readBlob(hash);
+  if (!blob) throw new DomainError("NOT_FOUND", "File not found");
+  if (blob.size > maxBytes) return { omitted: "too-large" };
+  const text = await blob.text();
+  return text.includes("\0") ? { omitted: "binary" } : { text };
 }

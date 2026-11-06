@@ -57,8 +57,14 @@ A Preview holds the token too, so its assistant takes the same route.
   `BuildSessionLink` interface it declares (`session-link.ts`); it never imports the sessions
   package.
 - The code repository (Artifacts) is reached only through `backend/arch-repository/src/service.ts`:
-  main's head, the file listing, reading and searching behind the planner's tools, and the
-  token a builder clones with.
+  main's head, the file listing, reading and searching behind the planner's tools (at any
+  ref), the tree diff and commit log behind the review, and the token a builder clones with.
+- The review (`backend/arch-review`, `frontend/review`) reads a live branch's diff against
+  its `base_commit` and the builder's commit messages (`commits.ts` parses the
+  `Matron-Review` trailer `apps/builder/src/git.ts` writes). The browser diffs each file
+  itself (`frontend/review/src/diff.ts`) and keeps viewed marks in `localStorage`. Questions
+  go to the planner's model call with the branch's tools (`reviewer.ts`); the client sends the
+  whole conversation each time and nothing is stored.
 - The builder object is an Agent whose container harness (Agents SDK) owns the builder
   container: it starts it from the image, runs every turn the object submits as a durable
   operation, streams the turn's events, reattaches after an eviction, and snapshots the

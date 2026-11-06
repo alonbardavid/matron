@@ -1,5 +1,60 @@
 import { loadPrompt, promptPath, renderTemplate } from "./prompts.js";
-import type { AgentPrompt, BuilderJob } from "./types.js";
+import { BRACKET_KINDS, type AgentPrompt, type BuilderJob } from "./types.js";
+
+/**
+ * The branch's review, written into the commit trailer: a summary for the
+ * owner who reviews the branch, and every change on it split into brackets.
+ */
+const REVIEW_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: {
+      type: "string",
+      description:
+        "Markdown for the reviewer: what the whole branch changes and how, in a few short paragraphs",
+    },
+    brackets: {
+      type: "array",
+      description:
+        "Every changed line of the branch, grouped into what a reviewer should read together, in reading order",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "A few plain words" },
+          kind: { type: "string", enum: BRACKET_KINDS },
+          description: {
+            type: "string",
+            description: "What these lines do and why, in two to four sentences",
+          },
+          ranges: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "Repository-relative path" },
+                start: {
+                  type: "integer",
+                  description: "First line, in the branch's version",
+                },
+                end: { type: "integer", description: "Last line, inclusive" },
+                note: {
+                  type: "string",
+                  description: "One short sentence about these lines, or empty",
+                },
+              },
+              required: ["path", "start", "end", "note"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["title", "kind", "description", "ranges"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["summary", "brackets"],
+  additionalProperties: false,
+} as const;
 
 /** The structured output every agent turn must end with. */
 export const OUTCOME_SCHEMA = {
@@ -12,8 +67,9 @@ export const OUTCOME_SCHEMA = {
     },
     reasoning: { type: "string", description: "Why the change was made this way" },
     message: { type: "string", description: "What to show the user, in markdown" },
+    review: REVIEW_SCHEMA,
   },
-  required: ["status", "summary", "reasoning", "message"],
+  required: ["status", "summary", "reasoning", "message", "review"],
   additionalProperties: false,
 } as const;
 

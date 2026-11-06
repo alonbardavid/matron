@@ -2,12 +2,13 @@ import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { onError } from "@orpc/server";
 import { logUnexpectedError, type ApiContext } from "@backend/commons/api";
 import { branches } from "./routes/branches";
+import { review } from "./routes/review";
 import { sessions } from "./routes/sessions";
 import { settings } from "./routes/settings";
 import { troubleshooting } from "./routes/troubleshooting";
 
 const handler = new OpenAPIHandler(
-  { branches, sessions, settings, troubleshooting },
+  { branches, review, sessions, settings, troubleshooting },
   { interceptors: [onError(logUnexpectedError)] },
 );
 

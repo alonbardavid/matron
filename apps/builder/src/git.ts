@@ -7,7 +7,13 @@ import {
   type RunOptions,
   type RunResult,
 } from "./run.js";
-import { JobError } from "./types.js";
+import { JobError, type ReviewTrailer } from "./types.js";
+
+/**
+ * The trailer the review reads the branch's summary and brackets from, as
+ * one line of JSON. `backend/arch-review/src/commits.ts` parses it.
+ */
+export const REVIEW_TRAILER = "Matron-Review";
 
 /**
  * How the repository token reaches the remote. The Artifacts protocol says it
@@ -201,17 +207,19 @@ export async function mergeFastForward(ctx: GitContext, ref: string): Promise<bo
 
 /**
  * The commit message: a one-line summary, then the user's request and the
- * agent's reasoning as labelled paragraphs.
+ * agent's reasoning as labelled paragraphs, and the review as a trailer.
  */
 export function formatCommitMessage(
   summary: string,
   request: string,
   reasoning: string,
+  review?: ReviewTrailer,
 ): string {
   const title = oneLine(summary) || "Update from build session";
   const sections = [title];
   sections.push(`Request:\n${indentBlock(request)}`);
   sections.push(`Reasoning:\n${indentBlock(reasoning)}`);
+  if (review) sections.push(`${REVIEW_TRAILER}: ${JSON.stringify(review)}`);
   return sections.join("\n\n") + "\n";
 }
 

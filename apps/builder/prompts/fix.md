@@ -1,7 +1,8 @@
 Verification failed after your change. The runner ran `{{command}}` in the repository root
 and it did not succeed. Fix the cause (not the check), re-run it yourself, and finish with
 `status: done` once it passes. Keep `summary` and `reasoning` describing the overall
-change, not just this fix.
+change, not just this fix, and give the `review` again for the whole branch, with line
+numbers that match the files after your fix.
 
 ## Output of `{{command}}`
 

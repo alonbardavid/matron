@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@backend/arch-branches": "workspace:*",
+    "@backend/arch-review": "workspace:*",
     "@backend/arch-troubleshooting": "workspace:*",
     "@backend/ask": "workspace:*",
     "@backend/calendar": "workspace:*",

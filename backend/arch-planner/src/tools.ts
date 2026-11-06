@@ -2,18 +2,19 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { listFiles, readFile, searchFiles } from "@backend/arch-repository/service";
 import { DomainError } from "@backend/commons/errors";
+import { MAIN_BRANCH } from "@backend/commons/principal";
 
 /**
- * How the planner looks at the code: the repository as it is on main, read
- * through one Artifacts handle shared by every call of the turn. Every tool
- * answers with text the model reads.
+ * How the planner looks at the code: the repository as it is at `ref` (main,
+ * or a branch for the reviewer), read through one Artifacts handle shared by
+ * every call of the turn. Every tool answers with text the model reads.
  */
-export function repositoryTools(repo: ArtifactsRepo) {
+export function repositoryTools(repo: ArtifactsRepo, ref: string = MAIN_BRANCH) {
+  const on = ref === MAIN_BRANCH ? "on main" : "on the branch under review";
   return [
     betaZodTool({
       name: "list_files",
-      description:
-        "Lists the files in the repository (on main) under a directory, recursively. Start at the root to see the layout.",
+      description: `Lists the files in the repository (${on}) under a directory, recursively. Start at the root to see the layout.`,
       inputSchema: z.object({
         directory: z
           .string()
@@ -24,25 +25,24 @@ export function repositoryTools(repo: ArtifactsRepo) {
       }),
       run: ({ directory }) =>
         answer(async () => {
-          const files = await listFiles(repo, directory ?? "");
+          const files = await listFiles(repo, directory ?? "", ref);
           return files.length ? files.join("\n") : `No directory '${directory ?? ""}'`;
         }),
     }),
     betaZodTool({
       name: "read_file",
-      description: "Reads one file from the repository (on main) and returns its text.",
+      description: `Reads one file from the repository (${on}) and returns its text.`,
       inputSchema: z.object({
         path: z
           .string()
           .describe("Repository-relative path, such as 'SELF-RELEASING-GUIDE.md'"),
       }),
       run: ({ path }) =>
-        answer(async () => (await readFile(repo, path)) ?? `No file '${path}'`),
+        answer(async () => (await readFile(repo, path, ref)) ?? `No file '${path}'`),
     }),
     betaZodTool({
       name: "search_files",
-      description:
-        "Finds lines containing a text (case-insensitive) across the repository's files on main, as path:line: text. Use it to locate where something is implemented.",
+      description: `Finds lines containing a text (case-insensitive) across the repository's files ${on}, as path:line: text. Use it to locate where something is implemented.`,
       inputSchema: z.object({
         query: z
           .string()
@@ -51,7 +51,7 @@ export function repositoryTools(repo: ArtifactsRepo) {
       }),
       run: ({ query, directory }) =>
         answer(async () => {
-          const matches = await searchFiles(repo, query, directory ?? "");
+          const matches = await searchFiles(repo, query, directory ?? "", ref);
           return matches.length ? matches.join("\n") : `Nothing contains '${query}'`;
         }),
     }),
@@ -74,7 +74,7 @@ export function describeToolCall(name: string, input: unknown): string {
 }
 
 // A repository problem is an answer the model can act on, not a failed turn.
-async function answer(fn: () => Promise<string>): Promise<string> {
+export async function answer(fn: () => Promise<string>): Promise<string> {
   try {
     return await fn();
   } catch (err) {

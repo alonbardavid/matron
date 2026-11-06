@@ -52,3 +52,28 @@ Every turn ends with the structured result the runner expects:
 - `message`: what the user sees in the chat, in markdown. Write for a household member,
   not an engineer: what changed, where to find it, anything they should know. Keep it
   short.
+- `review`: for the owner, who may read the code before merging. It is stored in the
+  commit and describes the **whole branch** as it stands after this turn, not only this
+  turn's work. With `status: done` fill it in; otherwise leave `summary` empty and
+  `brackets` empty.
+
+# The review
+
+See every change on the branch, uncommitted work included, with
+`git add -A && git diff --cached $(git merge-base HEAD origin/main)` (add `--stat` for
+the list of files). Staging is fine; the runner commits it all anyway.
+
+- `summary`: markdown for an engineer: what the branch changes and how it fits together,
+  in a few short paragraphs. Mention anything risky (migrations, permissions, data loss).
+- `brackets`: split the changed lines into groups the reviewer reads one at a time, in the
+  order they should be read: the core change first, tests, config and docs last. Group by
+  meaning, not by file: a `flow` follows one behaviour through every file it touches in
+  the order the code runs; `schema` is migrations, tables and contracts with what depends
+  on them; `refactor` and `move` are mechanical changes that do not change behaviour
+  (say so); `tests`, `config`, `docs` are what they say; `other` only when nothing fits.
+- A range is `path`, `start`, `end`: lines in the branch's version of the file (the old
+  version for a deleted file). It may span unchanged lines between changes that belong
+  together. Every changed line should be in a bracket; a `note` is one short sentence on
+  what the range does, or empty. Title each bracket in a few plain words and describe it
+  in two to four sentences the reviewer can check against the code.
+- After a fix turn, check the line numbers again: they must match the files as they are.
