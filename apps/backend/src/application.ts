@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
 import { openAskSocket } from "@backend/ask/socket";
+import { answerError } from "@backend/commons/errors";
 import {
   requireHandoff,
   type ApplicationVariables,
@@ -15,6 +16,8 @@ const log = logger("backend/application");
  * (a Preview). Everything that is not /api/app/* is the SPA and its assets.
  */
 export const application = new Hono<{ Variables: ApplicationVariables }>();
+
+application.onError(answerError);
 
 application.use("*", requireHandoff);
 

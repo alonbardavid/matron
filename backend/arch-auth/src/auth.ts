@@ -36,6 +36,18 @@ function createAuth() {
     // the household through the admin plugin.
     emailAndPassword: { enabled: true, disableSignUp: true },
     plugins: [admin({ ac, roles, adminRoles: ADMIN_ROLES, defaultRole: "member" })],
+    databaseHooks: {
+      user: {
+        // `image` is the id of an uploaded file, set only by the household's
+        // avatar service; a profile update names nothing else as a picture.
+        update: {
+          before: async (data) => {
+            const { image: _image, ...rest } = data;
+            return { data: rest };
+          },
+        },
+      },
+    },
     advanced: {
       database: {
         generateId: ({ model }) => {

@@ -12,9 +12,9 @@ export const conversationPermissions = definePermissions({
 /** The assistant's read-only queries: the household's tables, and the router's. */
 export const databasePermissions = definePermissions({
   resource: "database",
-  actions: ["read", "read_router"],
+  actions: ["read", "read_router", "read_files"],
   grants: {
-    owner: ["read", "read_router"],
+    owner: ["read", "read_router", "read_files"],
     admin: ["read", "read_router"],
     member: ["read"],
   },
