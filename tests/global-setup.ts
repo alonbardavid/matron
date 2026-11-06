@@ -34,6 +34,8 @@ export default async function globalSetup(): Promise<void> {
     "DELETE FROM task",
     "DELETE FROM calendar_event_share",
     "DELETE FROM calendar_event",
+    "DELETE FROM calendar_share",
+    "DELETE FROM calendar_share",
     "DELETE FROM calendar",
     "DELETE FROM google_calendar_connection",
     "DELETE FROM ask_session",

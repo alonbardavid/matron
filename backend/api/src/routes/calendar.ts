@@ -2,6 +2,7 @@ import {
   createEvent,
   getEvent,
   listOccurrences,
+  placeEvent,
   removeEvent,
   stopRecurrence,
   updateEvent,
@@ -42,6 +43,9 @@ export const calendar = app.calendar.router({
     await removeEvent(context.principal, input.id);
     return { ok: true as const };
   }),
+  place: app.calendar.place.handler(({ context, input }) =>
+    placeEvent(context.principal, input.id, input.calendarId),
+  ),
   calendars: app.calendar.calendars.router({
     list: app.calendar.calendars.list.handler(({ context }) =>
       listCalendars(context.principal),

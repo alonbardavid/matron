@@ -5,6 +5,7 @@ import {
   ColorSwatch,
   Group,
   Loader,
+  Menu,
   Popover,
   SimpleGrid,
   Stack,
@@ -13,6 +14,8 @@ import {
 } from "@mantine/core";
 import { z } from "zod";
 import { CALENDAR_COLORS, type Calendar } from "@shared/contract/app/calendar";
+import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
+import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { Card } from "@frontend/ds/Card";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { useForm } from "@frontend/ds/forms/context";
@@ -20,7 +23,7 @@ import { FormGeneralErrors } from "@frontend/ds/forms/FormGeneralErrors";
 import { FormTextInput } from "@frontend/ds/forms/FormInputs";
 import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
 import { StandardForm } from "@frontend/ds/forms/StandardForm";
-import { IconTrash } from "@frontend/ds/icons";
+import { IconChevronDown, IconTrash } from "@frontend/ds/icons";
 import { useCalendarActions, useCalendars } from "../useCalendar";
 
 const newCalendarSchema = z.object({
@@ -49,7 +52,7 @@ function ColorPicker({
           size={22}
           aria-label={label}
           onClick={() => setOpened((open) => !open)}
-          style={{ cursor: "pointer" }}
+          style={{ cursor: "pointer", flexShrink: 0 }}
         />
       </Popover.Target>
       <Popover.Dropdown p="xs">
@@ -78,7 +81,70 @@ function ColorPicker({
   );
 }
 
-function CalendarRow({ calendar }: { calendar: Calendar }) {
+/** Who an own calendar is shared with, read-only, picked in a popover. */
+function ShareButton({ calendar }: { calendar: Calendar }) {
+  const { update } = useCalendarActions();
+  const [opened, setOpened] = useState(false);
+  const [people, setPeople] = useState(calendar.sharedWith);
+  useEffect(() => setPeople(calendar.sharedWith), [calendar.sharedWith]);
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-end"
+      shadow="md"
+      width={300}
+    >
+      <Popover.Target>
+        <Button
+          size="compact-sm"
+          variant="subtle"
+          aria-label={`Share ${calendar.name}`}
+          onClick={() => setOpened((open) => !open)}
+        >
+          {calendar.sharedWith.length
+            ? `Shared with ${calendar.sharedWith.length}`
+            : "Share"}
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap="xs">
+          <PeoplePicker
+            label="Share read-only with"
+            placeholder="No one"
+            value={people}
+            onChange={setPeople}
+            exclude={[calendar.ownerId]}
+            comboboxProps={{ withinPortal: false }}
+          />
+          <Text size="xs" c="dimmed">
+            They see every event in it and choose their own colour for it; only you change
+            it.
+          </Text>
+          <Button
+            size="compact-sm"
+            w="fit-content"
+            loading={update.isPending}
+            onClick={async () => {
+              await update.mutateAsync({ id: calendar.id, sharedWith: people });
+              setOpened(false);
+            }}
+          >
+            Save
+          </Button>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
+
+function OwnCalendarRow({
+  calendar,
+  receives,
+}: {
+  calendar: Calendar;
+  receives: boolean;
+}) {
   const { update, remove } = useCalendarActions();
   const [name, setName] = useState(calendar.name);
   useEffect(() => setName(calendar.name), [calendar.name]);
@@ -87,6 +153,9 @@ function CalendarRow({ calendar }: { calendar: Calendar }) {
     if (next && next !== calendar.name) update.mutate({ id: calendar.id, name: next });
     else setName(calendar.name);
   };
+  const matron = calendar.source === "matron";
+  const canMakeDefault = matron && !calendar.isDefault;
+  const canReceive = matron && !receives;
   return (
     <Group gap="sm" wrap="nowrap">
       <ColorPicker
@@ -101,44 +170,110 @@ function CalendarRow({ calendar }: { calendar: Calendar }) {
         onBlur={rename}
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         style={{ flex: 1 }}
-        maw={280}
+        maw={260}
       />
-      {calendar.source === "google" && (
+      {!matron && (
         <Badge variant="light" color="gray">
           Google
         </Badge>
       )}
-      {calendar.isDefault ? (
-        <Badge variant="light">Default</Badge>
-      ) : (
-        calendar.source === "matron" && (
-          <>
+      {calendar.isDefault && <Badge variant="light">Default</Badge>}
+      {receives && (
+        <Badge variant="light" color="sage">
+          Shared events
+        </Badge>
+      )}
+      <ShareButton calendar={calendar} />
+      {(canMakeDefault || canReceive) && (
+        <Menu position="bottom-end" withinPortal>
+          <Menu.Target>
             <Button
               size="compact-sm"
               variant="subtle"
-              onClick={() => update.mutate({ id: calendar.id, isDefault: true })}
+              aria-label={`More for ${calendar.name}`}
+              rightSection={<IconChevronDown size={14} />}
             >
-              Make default
+              Use for
             </Button>
-            <ConfirmButton
-              variant="subtle"
-              color="red"
-              size="compact-sm"
-              message={`Remove ${calendar.name} and every event in it?`}
-              confirmLabel="Remove"
-              onConfirm={() => remove.mutateAsync({ id: calendar.id })}
-              aria-label={`Remove ${calendar.name}`}
-            >
-              <IconTrash size={16} />
-            </ConfirmButton>
-          </>
-        )
+          </Menu.Target>
+          <Menu.Dropdown>
+            {canMakeDefault && (
+              <Menu.Item
+                onClick={() => update.mutate({ id: calendar.id, isDefault: true })}
+              >
+                New events (make default)
+              </Menu.Item>
+            )}
+            {canReceive && (
+              <Menu.Item
+                onClick={() => update.mutate({ id: calendar.id, receivesShared: true })}
+              >
+                Events shared with me
+              </Menu.Item>
+            )}
+          </Menu.Dropdown>
+        </Menu>
+      )}
+      {matron && !calendar.isDefault && (
+        <ConfirmButton
+          variant="subtle"
+          color="red"
+          size="compact-sm"
+          message={`Remove ${calendar.name} and every event in it?`}
+          confirmLabel="Remove"
+          onConfirm={() => remove.mutateAsync({ id: calendar.id })}
+          aria-label={`Remove ${calendar.name}`}
+        >
+          <IconTrash size={16} />
+        </ConfirmButton>
       )}
     </Group>
   );
 }
 
-/** The member's own calendars: their names and colours, and which one new events go to. */
+function SharedCalendarRow({ calendar }: { calendar: Calendar }) {
+  const { update, remove } = useCalendarActions();
+  const { nameOf } = useHouseholdMembers();
+  return (
+    <Group gap="sm" wrap="nowrap">
+      <ColorPicker
+        value={calendar.color}
+        label={`Your colour for ${calendar.name}`}
+        onChange={(color) => update.mutate({ id: calendar.id, color })}
+      />
+      <Text size="sm" style={{ flex: 1 }} truncate>
+        {calendar.name}{" "}
+        <Text span size="sm" c="dimmed">
+          · {nameOf(calendar.ownerId)}
+        </Text>
+      </Text>
+      {calendar.source === "google" && (
+        <Badge variant="light" color="gray">
+          Google
+        </Badge>
+      )}
+      <Badge variant="light" color="gray">
+        Read-only
+      </Badge>
+      <ConfirmButton
+        variant="subtle"
+        color="red"
+        size="compact-sm"
+        message={`Stop seeing ${calendar.name}? ${nameOf(calendar.ownerId)} can share it again.`}
+        confirmLabel="Stop seeing it"
+        onConfirm={() => remove.mutateAsync({ id: calendar.id })}
+        aria-label={`Stop seeing ${calendar.name}`}
+      >
+        <IconTrash size={16} />
+      </ConfirmButton>
+    </Group>
+  );
+}
+
+/**
+ * The member's calendars: their own (names, colours, which take new and shared
+ * events, who sees them) and those shared with them, in colours of their own.
+ */
 export function CalendarsCard() {
   const calendars = useCalendars();
   const { create } = useCalendarActions();
@@ -151,20 +286,30 @@ export function CalendarsCard() {
     await create.mutateAsync({ name: values.name, color });
     form.reset();
   };
+  const own = (calendars.data ?? []).filter((c) => c.access === "owner");
+  const shared = (calendars.data ?? []).filter((c) => c.access === "viewer");
+  // Events shared with you land in the calendar picked for them, else the default.
+  const receiver = own.find((c) => c.receivesShared) ?? own.find((c) => c.isDefault);
   return (
     <Card>
       <Stack gap="sm">
         <Text fw={600}>Calendars</Text>
         <Text size="sm" c="dimmed">
-          Every event belongs to one of your calendars, shown in its colour. New events go
-          to the default one; calendars imported from Google change only there.
+          Every event belongs to a calendar and shows in its colour. New events go to the
+          default one; events others share with you go to the one for shared events (the
+          default unless you pick another), or wherever you place each. Share a calendar
+          to let others see it read-only.
         </Text>
         {calendars.isLoading ? (
           <Loader size="sm" />
         ) : (
           <Stack gap="xs">
-            {(calendars.data ?? []).map((calendar) => (
-              <CalendarRow key={calendar.id} calendar={calendar} />
+            {own.map((calendar) => (
+              <OwnCalendarRow
+                key={calendar.id}
+                calendar={calendar}
+                receives={calendar.id === receiver?.id}
+              />
             ))}
           </Stack>
         )}
@@ -179,7 +324,7 @@ export function CalendarsCard() {
               name="name"
               label="New calendar"
               placeholder="Kids"
-              maw={280}
+              maw={260}
             />
             <FormSubmitButton variant="light" w="fit-content">
               Add
@@ -187,6 +332,18 @@ export function CalendarsCard() {
           </Group>
           <FormGeneralErrors />
         </StandardForm>
+        {shared.length > 0 && (
+          <>
+            <Text fw={600} size="sm" mt="xs">
+              Shared with you
+            </Text>
+            <Stack gap="xs">
+              {shared.map((calendar) => (
+                <SharedCalendarRow key={calendar.id} calendar={calendar} />
+              ))}
+            </Stack>
+          </>
+        )}
       </Stack>
     </Card>
   );

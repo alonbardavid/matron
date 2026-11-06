@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Anchor,
   Badge,
   Button,
   Chip,
@@ -69,6 +70,8 @@ interface EventModalProps {
   onSave: (values: EventSubmit) => Promise<void>;
   onRemove?: () => Promise<void>;
   onStop?: (fromDay: string) => Promise<void>;
+  /** For an event someone shared with the caller: which of their calendars it shows in. */
+  onPlace?: (calendarId: string) => Promise<void>;
 }
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -110,6 +113,7 @@ export function EventModal({
   onSave,
   onRemove,
   onStop,
+  onPlace,
 }: EventModalProps) {
   const { me } = useMe();
   const [draft, setDraft] = useState<EventDraft>(() => draftOf(event, initial));
@@ -126,10 +130,16 @@ export function EventModal({
   const mine = !event || event.creatorId === me?.id || me?.role === "owner";
   // An event imported from Google changes there; here only who it is shared with.
   const imported = event?.source === "google";
-  const ownCalendar = event
-    ? calendars.find((c) => c.id === event.calendarId)
-    : undefined;
-  const writable = calendars.filter((c) => c.source === "matron");
+  // Seen only through a calendar shared with the caller: nothing here changes it.
+  const readOnly = event?.access === "read";
+  // Shared with the caller by someone else: they choose which of their calendars shows it.
+  const placing =
+    !!event &&
+    !readOnly &&
+    event.creatorId !== me?.id &&
+    event.sharedWith.includes(me?.id ?? "");
+  const shownCalendar = event ? calendars.find((c) => c.id === event.shownIn) : undefined;
+  const writable = calendars.filter((c) => c.access === "owner" && c.source === "matron");
   const defaultCalendar = writable.find((c) => c.isDefault) ?? writable[0];
   // Moving between calendars is the creator's, among their own Matron calendars.
   const pickCalendar =
@@ -208,7 +218,15 @@ export function EventModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      title={imported ? "Google Calendar event" : event ? "Edit event" : "New event"}
+      title={
+        readOnly
+          ? "Shared calendar event"
+          : imported
+            ? "Google Calendar event"
+            : event
+              ? "Edit event"
+              : "New event"
+      }
       centered
       size="lg"
     >
@@ -218,21 +236,46 @@ export function EventModal({
         </Group>
       ) : (
         <Stack gap="sm">
-          {imported && (
+          {event && (imported || readOnly || placing) && (
             <Group gap="xs">
               <Badge
                 variant="light"
-                color={ownCalendar?.color ?? "gray"}
+                color={shownCalendar?.color ?? "gray"}
                 styles={{ root: { textTransform: "none" } }}
               >
-                {ownCalendar?.name ?? "Google Calendar"}
+                {shownCalendar?.name ?? "Calendar"}
               </Badge>
               <Text size="sm" c="dimmed">
-                From Google Calendar: change it there. Here you can share it.
+                {readOnly
+                  ? "From a calendar shared with you, read-only."
+                  : imported
+                    ? "From Google Calendar: change it there. Here you can share it."
+                    : "Shared with you."}
+                {imported && event.repeatsAtSource && " It repeats in Google Calendar."}
               </Text>
+              {event.externalUrl && (
+                <Anchor href={event.externalUrl} target="_blank" size="sm">
+                  Open in Google Calendar
+                </Anchor>
+              )}
             </Group>
           )}
-          <fieldset disabled={imported} style={{ border: 0, padding: 0, margin: 0 }}>
+          {placing && onPlace && writable.length > 0 && (
+            <Select
+              label="Show in my calendar"
+              data={writable.map((c) => ({ value: c.id, label: c.name }))}
+              value={
+                writable.some((c) => c.id === event?.shownIn) ? event!.shownIn : null
+              }
+              onChange={(value) => value && void onPlace(value)}
+              allowDeselect={false}
+              maw={280}
+            />
+          )}
+          <fieldset
+            disabled={imported || readOnly}
+            style={{ border: 0, padding: 0, margin: 0 }}
+          >
             <Stack gap="sm">
               <TextInput
                 label="Title"
@@ -394,33 +437,39 @@ export function EventModal({
               )}
             </Stack>
           </fieldset>
-          <PeoplePicker
-            label="Shared with"
-            placeholder="Only you"
-            value={draft.sharedWith}
-            onChange={(ids) =>
-              setDraft((prev) => ({
-                ...prev,
-                sharedWith: ids,
-                // Everyone newly shared with attends by default.
-                attendees: [
-                  ...new Set([
-                    ...prev.attendees,
-                    ...ids.filter((id) => !prev.sharedWith.includes(id)),
-                  ]),
-                ],
-              }))
-            }
-            exclude={[creatorId]}
-            disabled={!mine}
-          />
-          <PeoplePicker
-            label="Attending"
-            description="Anyone attending sees the event too."
-            placeholder="No one"
-            value={draft.attendees}
-            onChange={(ids) => set("attendees", ids)}
-          />
+          <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0 }}>
+            <Stack gap="sm">
+              {!readOnly && (
+                <PeoplePicker
+                  label="Shared with"
+                  placeholder="Only you"
+                  value={draft.sharedWith}
+                  onChange={(ids) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      sharedWith: ids,
+                      // Everyone newly shared with attends by default.
+                      attendees: [
+                        ...new Set([
+                          ...prev.attendees,
+                          ...ids.filter((id) => !prev.sharedWith.includes(id)),
+                        ]),
+                      ],
+                    }))
+                  }
+                  exclude={[creatorId]}
+                  disabled={!mine}
+                />
+              )}
+              <PeoplePicker
+                label="Attending"
+                description="Anyone attending sees the event too."
+                placeholder="No one"
+                value={draft.attendees}
+                onChange={(ids) => set("attendees", ids)}
+              />
+            </Stack>
+          </fieldset>
           {error && (
             <Text size="sm" c="red">
               {error}
@@ -428,7 +477,7 @@ export function EventModal({
           )}
           <Group justify="space-between" mt="xs">
             <Group gap="xs">
-              {event && onRemove && mine && !imported && (
+              {event && onRemove && mine && !imported && !readOnly && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
@@ -446,23 +495,34 @@ export function EventModal({
                   Remove
                 </ConfirmButton>
               )}
-              {event?.recurrence && onStop && occurrenceDay && mine && !imported && (
-                <ConfirmButton
-                  variant="subtle"
-                  message="Stop repeating from this one on? Earlier ones stay."
-                  confirmLabel="Stop repeating"
-                  onConfirm={async () => {
-                    await onStop(occurrenceDay);
-                    onClose();
-                  }}
-                >
-                  Stop repeating
-                </ConfirmButton>
-              )}
+              {event?.recurrence &&
+                onStop &&
+                occurrenceDay &&
+                mine &&
+                !imported &&
+                !readOnly && (
+                  <ConfirmButton
+                    variant="subtle"
+                    message="Stop repeating from this one on? Earlier ones stay."
+                    confirmLabel="Stop repeating"
+                    onConfirm={async () => {
+                      await onStop(occurrenceDay);
+                      onClose();
+                    }}
+                  >
+                    Stop repeating
+                  </ConfirmButton>
+                )}
             </Group>
-            <Button loading={saving} onClick={() => void save()}>
-              {event ? "Save" : "Add event"}
-            </Button>
+            {readOnly ? (
+              <Button variant="default" onClick={onClose}>
+                Close
+              </Button>
+            ) : (
+              <Button loading={saving} onClick={() => void save()}>
+                {event ? "Save" : "Add event"}
+              </Button>
+            )}
           </Group>
         </Stack>
       )}

@@ -13,6 +13,7 @@ export const APP_TABLES = [
   "task",
   "task_share",
   "calendar",
+  "calendar_share",
   "calendar_event",
   "calendar_event_share",
   "ask_session",

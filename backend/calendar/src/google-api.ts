@@ -144,13 +144,17 @@ export interface GoogleEvent {
   summary?: string;
   description?: string;
   location?: string;
+  /** Set on an instance of a repeating event: the series' id. */
+  recurringEventId?: string;
+  htmlLink?: string;
   start?: GoogleEventTime;
   end?: GoogleEventTime;
 }
 
 /**
  * The calendar's events overlapping [timeMin, timeMax), repeating ones expanded
- * into single instances by Google. Also returns the calendar's own zone, which
+ * into single instances by Google (`singleEvents`): each instance names its
+ * series in `recurringEventId`, and moved or cancelled instances come right. Also returns the calendar's own zone, which
  * all-day events are reckoned in.
  */
 export async function listEvents(

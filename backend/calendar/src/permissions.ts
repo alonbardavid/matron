@@ -9,11 +9,18 @@ export const eventPermissions = definePermissions({
   grants: { owner: ALL, admin: ALL, member: ALL },
 });
 
-const CALENDAR_ACTIONS = ["view", "create", "update", "remove", "connect"] as const;
+const CALENDAR_ACTIONS = [
+  "view",
+  "create",
+  "update",
+  "share",
+  "remove",
+  "connect",
+] as const;
 
 /**
- * A member's calendars, and connecting their Google Calendar to import from:
- * every role keeps its own, and only its own.
+ * A member's calendars, sharing them read-only, and connecting their Google
+ * Calendar to import from: every role keeps its own, and only its own.
  */
 export const calendarPermissions = definePermissions({
   resource: "calendar",
