@@ -11,5 +11,6 @@ export function useHouseholdMembers() {
     members,
     isLoading: query.isLoading,
     nameOf: (id: string) => byId.get(id)?.name ?? "Someone",
+    avatarUrlOf: (id: string) => byId.get(id)?.avatarUrl ?? null,
   };
 }

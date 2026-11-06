@@ -1,15 +1,19 @@
-import { Avatar, Button, Group, Loader, Select, Stack, Table, Text } from "@mantine/core";
+import { Button, Group, Loader, Select, Stack, Table, Text } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import type { HouseholdUser } from "@shared/contract/app/users";
+import type { HouseholdUser as ListedUser } from "@shared/contract/app/users";
 import { Card } from "@frontend/ds/Card";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { IconPlus } from "@frontend/ds/icons";
 import { Page } from "@frontend/ds/Page";
-import { initials } from "../initials";
+import { useHouseholdMembers } from "../useHouseholdMembers";
 import { useHouseholdUsers } from "../useHouseholdUsers";
 import { toRole, useMe, type Role } from "../useMe";
 import { NewMemberModal, ROLE_OPTIONS } from "../widgets/NewMemberModal";
+import { UserAvatar } from "../widgets/UserAvatar";
+
+/** A member as the admin list gives them: the application's list adds the picture. */
+type HouseholdUser = Omit<ListedUser, "avatarUrl">;
 
 interface MemberControls {
   self: boolean;
@@ -18,12 +22,17 @@ interface MemberControls {
   onRemove: () => Promise<unknown>;
 }
 
-function Identity({ user }: { user: Pick<HouseholdUser, "name" | "email"> }) {
+function Identity({ user }: { user: Pick<HouseholdUser, "id" | "name" | "email"> }) {
+  // The picture comes from the application, so a branch shows what it holds.
+  const { avatarUrlOf } = useHouseholdMembers();
   return (
     <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-      <Avatar size={40} radius={40} color="rose" aria-hidden="true">
-        {initials(user.name)}
-      </Avatar>
+      <UserAvatar
+        size={40}
+        name={user.name}
+        avatarUrl={avatarUrlOf(user.id)}
+        aria-hidden="true"
+      />
       <div style={{ minWidth: 0 }}>
         <Text fz="sm" fw={500} truncate>
           {user.name}

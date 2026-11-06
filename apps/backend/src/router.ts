@@ -5,6 +5,7 @@ import { resolvePrincipal } from "@backend/arch-auth/session";
 import { resolveBranch } from "@backend/arch-branches/service";
 import { readBranchParam } from "@backend/arch-routing/branch-param";
 import { handoff } from "@backend/arch-routing/handoff";
+import { answerError } from "@backend/commons/errors";
 import { missingBranchResponse } from "@backend/arch-routing/missing-branch";
 import { openSessionSocket } from "@backend/arch-sessions/service";
 import type { ApiContext } from "@backend/commons/api";
@@ -22,10 +23,7 @@ const log = logger("backend/router");
  */
 export const router = new Hono<{ Bindings: Cloudflare.Env; Variables: ApiContext }>();
 
-router.onError((err, c) => {
-  log.error("unhandled error", { err });
-  return c.json({ message: err.message }, 500);
-});
+router.onError(answerError);
 
 router.on(["GET", "POST"], `${AUTH_BASE_PATH}/*`, (c) => getAuth().handler(c.req.raw));
 

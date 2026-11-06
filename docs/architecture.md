@@ -25,7 +25,11 @@ how a request moves through it.
    assistant's chat socket at `/api/app/ask/:id/ws` (`backend/ask/src/socket.ts`), and serves
    everything else from static assets. The features behind the routes are `backend/tasks`,
    `backend/calendar` (with the recurrence expansion in `recurrence.ts`), `backend/household`
-   (the member list) and `backend/ask` (the conversations and the assistant).
+   (the member list and their pictures, `avatar.ts`), `backend/files` (uploads: `storage.ts` keeps
+   writes under the branch's own R2 prefix, `service.ts` records and opens them by their visibility,
+   `pictures.ts` checks and squares a picture through the Images binding; `files.get` returns the
+   stream, which `fileResponses` in `backend/commons/src/api.ts` answers with the file's headers) and `backend/ask` (the conversations
+   and the assistant).
 
 ## The assistant
 

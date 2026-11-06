@@ -36,6 +36,7 @@ export default async function globalSetup(): Promise<void> {
     "DELETE FROM calendar_event",
     "DELETE FROM ask_session",
     "DELETE FROM settings",
+    "DELETE FROM file",
     "DELETE FROM user",
     await createUserSql(OWNER),
     await createUserSql(MEMBER),
