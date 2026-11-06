@@ -73,6 +73,11 @@ A Preview holds the token too, so its assistant takes the same route.
   replies.
 - Merge and abandon are jobs for the same container in `merge`/`abandon` mode
   (`backend/arch-builder/src/jobs.ts`).
+- A revert, started from the troubleshooting page (`backend/arch-troubleshooting`), is a
+  `revert` job on the reverted branch's builder. The container commits the old tree onto
+  main (`revert-main`) and deploys production. Between the two, the object restores the
+  production D1 with Time Travel through `backend/arch-time-travel`, which keeps the router's
+  tables (`router-tables.ts`) across the restore.
 
 ## Configuration
 

@@ -23,3 +23,24 @@ export async function createUserSql(user: SeedUser): Promise<string> {
     `INSERT INTO user_accounts (id, account_id, provider_id, user_id, password) VALUES (${quote(accountId)}, ${quote(userId)}, 'credential', ${quote(userId)}, ${quote(hash)})`,
   ].join(";\n");
 }
+
+/**
+ * A merged branch of `ownerEmail`'s, with its archived build session: created
+ * `createdDaysAgo` days ago, merged a day after. Two statements separated by ";".
+ */
+export function mergedBranchSql(input: {
+  ownerEmail: string;
+  name: string;
+  createdDaysAgo: number;
+}): string {
+  const day = 24 * 60 * 60 * 1000;
+  const createdAt = Date.now() - input.createdDaysAgo * day;
+  const mergedAt = createdAt + day;
+  const sessionId = newEntityId("BUILD_SESSION");
+  const branchId = newEntityId("BRANCH");
+  const owner = `(SELECT id FROM user WHERE email = ${quote(input.ownerEmail)})`;
+  return [
+    `INSERT INTO build_sessions (id, user_id, title, status, archived_at, created_at, updated_at) VALUES (${quote(sessionId)}, ${owner}, ${quote(`Add ${input.name}`)}, 'merged', ${mergedAt}, ${createdAt}, ${mergedAt})`,
+    `INSERT INTO branches (id, name, preview_name, database_name, build_session_id, user_id, base_commit, head_commit, status, archived_at, created_at, updated_at) VALUES (${quote(branchId)}, ${quote(input.name)}, ${quote(input.name)}, ${quote(`matron-${input.name}`)}, ${quote(sessionId)}, ${owner}, '0123456789abcdef0123456789abcdef01234567', 'fedcba9876543210fedcba9876543210fedcba98', 'merged', ${mergedAt}, ${createdAt}, ${mergedAt})`,
+  ].join(";\n");
+}

@@ -26,6 +26,7 @@ import {
   type DeployResult,
   type MergeMainResult,
   type PrepareContinueResult,
+  type RevertMainResult,
   type VerifyResult,
 } from "./types.js";
 
@@ -265,6 +266,37 @@ export class Steps {
     await git.push(g, "main");
     progress("main pushed");
     return { headCommit: await git.revParse(g) };
+  }
+
+  /**
+   * Main goes back to the revert's commit: its tree is committed on top of main
+   * and pushed, so history is kept and every later merge is undone with it.
+   */
+  async revertMain(): Promise<RevertMainResult> {
+    const { revert, branch, request } = this.job;
+    if (!revert) throw new JobError("revert-main needs the job's revert");
+    const g = await this.clone();
+    await git.checkout(g, "main");
+    progress(`restoring main to ${revert.commit.slice(0, 12)}`);
+    await git.restoreTree(g, revert.commit);
+    const later = revert.alsoReverted.length
+      ? ` Later merges taken out with it: ${revert.alsoReverted.join(", ")}.`
+      : "";
+    const committed = await git.commitAll(
+      g,
+      git.formatCommitMessage(
+        `Revert ${branch.name}`,
+        request,
+        `Main returns to ${revert.commit}, the commit it had before ${branch.name} was merged.${later}`,
+      ),
+    );
+    if (committed) {
+      await git.push(g, "main");
+      progress("main pushed");
+    } else {
+      progress("main already has that version; nothing to commit");
+    }
+    return { headCommit: await git.revParse(g), committed };
   }
 
   async deployProduction(): Promise<void> {

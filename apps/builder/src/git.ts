@@ -163,6 +163,16 @@ export async function deleteRemoteBranch(ctx: GitContext, branch: string): Promi
   await must(ctx, ["push", "--quiet", "origin", "--delete", branch]);
 }
 
+/**
+ * Makes the index and the working tree `commit`'s tree, on the current branch:
+ * files added since are removed, changed ones go back. The branch itself does
+ * not move; committing records the old tree as a new commit.
+ */
+export async function restoreTree(ctx: GitContext, commit: string): Promise<void> {
+  await must(ctx, ["cat-file", "-e", `${commit}^{commit}`]);
+  await must(ctx, ["read-tree", "-u", "--reset", commit]);
+}
+
 export async function revParse(ctx: GitContext, ref = "HEAD"): Promise<string> {
   return (await must(ctx, ["rev-parse", ref])).stdout.trim();
 }

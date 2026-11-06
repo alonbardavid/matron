@@ -34,12 +34,16 @@
  *   merge-main         fast-forward main onto the branch and push it (fails when main diverged) → {@link MergeMainResult}
  *   deploy-production  build, migrate the production D1, deploy production
  *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
+ *   revert-main        commit `revert.commit`'s tree on top of main and push main → {@link RevertMainResult}
  *
  * The object sequences them: build and continue jobs run prepare, install,
  * agent turns until the agent is done (a question parks the job as `waiting`
  * until the user replies), verify with up to three fix turns, commit-push,
  * deploy-preview; a merge runs merge-main, install, deploy-production,
- * cleanup; an abandon runs prepare-cleanup, cleanup.
+ * cleanup; an abandon runs prepare-cleanup, cleanup; a revert runs
+ * revert-main, install, then restores the production D1 in the object itself
+ * (Time Travel, not a step: the container never touches the database), then
+ * deploy-production.
  *
  * Status rules
  * ------------
@@ -47,12 +51,14 @@
  *   building → (waiting ↔ building)* → deploying → deployed | failed
  *   merging → merged | failed
  *   abandoning → abandoned | failed
+ * A revert reports nothing to the session, whose chat it only writes to: it
+ * records its outcome on the branch row.
  * A job parked as `waiting` runs nothing; the harness snapshots and stops
  * the container after its idle timeout (five minutes) and restores it for
  * the next turn.
  */
 
-export type BuilderMode = "build" | "continue" | "merge" | "abandon";
+export type BuilderMode = "build" | "continue" | "merge" | "abandon" | "revert";
 
 export type BuilderStatus =
   | "idle"
@@ -132,7 +138,20 @@ export interface AbandonJob extends BuilderJobBase {
   mode: "abandon";
 }
 
-export type BuilderJob = BuildJob | ContinueJob | MergeJob | AbandonJob;
+/** Takes a merged branch, and every merge after it, back out of main and production. */
+export interface RevertJob extends BuilderJobBase {
+  mode: "revert";
+  revert: {
+    /** The commit main had before the branch was merged: its tree becomes main's. */
+    commit: string;
+    /** When the branch was created, in ms: the production D1 is restored to it. */
+    restoreTo: number;
+    /** The later merges taken out with it, by name, for the commit message. */
+    alsoReverted: string[];
+  };
+}
+
+export type BuilderJob = BuildJob | ContinueJob | MergeJob | AbandonJob | RevertJob;
 
 export type StepName =
   | "prepare-build"
@@ -144,7 +163,8 @@ export type StepName =
   | "deploy-preview"
   | "merge-main"
   | "deploy-production"
-  | "cleanup";
+  | "cleanup"
+  | "revert-main";
 
 /** How the agent's prompt for one turn is built; the templates live in the image. */
 export type AgentPrompt =
@@ -189,6 +209,11 @@ export interface CommitPushResult {
 }
 export interface MergeMainResult {
   headCommit: string;
+}
+export interface RevertMainResult {
+  headCommit: string;
+  /** False when main already had that tree: nothing was committed. */
+  committed: boolean;
 }
 export interface DeployResult {
   previewUrl: string;

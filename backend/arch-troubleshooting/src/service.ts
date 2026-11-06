@@ -1,4 +1,13 @@
 import { inArray } from "drizzle-orm";
+import {
+  beginRevert,
+  listMerged,
+  markRevertFailed,
+  revertableUntil,
+  revertRefusal,
+} from "@backend/arch-branches/service";
+import { startRevert } from "@backend/arch-builder/jobs";
+import { checkRestorePoint } from "@backend/arch-time-travel/service";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
@@ -10,6 +19,7 @@ import type {
   ApiProblem,
   TroubleshootingContainer,
   TroubleshootingDatabase,
+  TroubleshootingMerge,
 } from "@shared/contract/arch/troubleshooting";
 import {
   CONTAINERS_PERMISSION,
@@ -96,6 +106,74 @@ async function databaseRows(worker: string): Promise<D1Row[]> {
     { permission: D1_PERMISSION },
   );
   return result.filter((row) => row.name === worker || row.name.startsWith(`${worker}-`));
+}
+
+// ── Merges ────────────────────────────────────────────────────────────────────
+
+/** Every merged branch, the latest first, with whether it can be reverted now. */
+export async function listMerges(
+  principal: Principal,
+): Promise<Listing<TroubleshootingMerge>> {
+  troubleshootingPermissions.require(principal, "manage");
+  const rows = await listMerged();
+  const now = Date.now();
+  const items: TroubleshootingMerge[] = [];
+  for (const row of rows) {
+    const active =
+      row.revertStatus === "reverting" && (await builderActive(row.buildSessionId));
+    const mergedAt = row.archivedAt?.getTime() ?? null;
+    items.push({
+      id: row.id,
+      name: row.name,
+      userName: row.userName,
+      sessionTitle: row.sessionTitle,
+      createdAt: row.createdAt.getTime(),
+      mergedAt,
+      baseCommit: row.baseCommit,
+      headCommit: row.headCommit,
+      revertStatus: row.revertStatus,
+      revertError: row.revertError,
+      revertedAt: row.revertedAt?.getTime() ?? null,
+      revertableUntil: revertableUntil(row.createdAt),
+      refusal: await revertRefusal(row, active, now),
+      // The same rule as laterMerges, on the rows at hand.
+      later: rows
+        .filter(
+          (other) =>
+            mergedAt !== null &&
+            (other.archivedAt?.getTime() ?? 0) > mergedAt &&
+            other.revertStatus !== "reverted",
+        )
+        .map((other) => other.name),
+    });
+  }
+  return { items, problem: null };
+}
+
+/**
+ * Reverts a merged branch and every merge after it: the builder commits the
+ * tree main had before the merge and deploys it, after restoring the
+ * production database to when the branch was created.
+ */
+export async function revertMerge(principal: Principal, id: string): Promise<void> {
+  troubleshootingPermissions.require(principal, "manage");
+  const { branch, later } = await beginRevert(principal, id, builderActive);
+  try {
+    await checkRestorePoint(branch.createdAt.getTime());
+    await startRevert(branch, later);
+  } catch (err) {
+    await markRevertFailed(id, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+  log.info("revert requested", {
+    branchId: id,
+    later: later.map((row) => row.id),
+    userId: principal.userId,
+  });
+}
+
+async function builderActive(buildSessionId: string): Promise<boolean> {
+  return (await troubleshootingEnv().BUILDERS.getByName(buildSessionId).status()).active;
 }
 
 // ── Containers ────────────────────────────────────────────────────────────────
@@ -291,4 +369,3 @@ async function mustCall<T>(call: () => Promise<T>): Promise<T> {
     throw err;
   }
 }
-

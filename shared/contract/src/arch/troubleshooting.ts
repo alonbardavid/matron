@@ -44,6 +44,29 @@ export const containerSchema = z.object({
 });
 export type TroubleshootingContainer = z.infer<typeof containerSchema>;
 
+export const mergeSchema = z.object({
+  /** The branch's id. */
+  id: z.string(),
+  name: z.string(),
+  userName: z.string(),
+  sessionTitle: z.string().nullable(),
+  createdAt: z.number(),
+  mergedAt: z.number().nullable(),
+  /** Main before the merge: a revert takes main back to it. */
+  baseCommit: z.string(),
+  headCommit: z.string().nullable(),
+  revertStatus: z.enum(["reverting", "reverted", "failed"]).nullable(),
+  revertError: z.string().nullable(),
+  revertedAt: z.number().nullable(),
+  /** The last moment a revert may start: Time Travel reaches thirty days back. */
+  revertableUntil: z.number(),
+  /** Why it cannot be reverted now, or null when it can. */
+  refusal: z.string().nullable(),
+  /** The later merges a revert would take out with it, by name. */
+  later: z.array(z.string()),
+});
+export type TroubleshootingMerge = z.infer<typeof mergeSchema>;
+
 /** A listing, or the problem that stopped it. */
 const listOf = <T extends z.ZodType>(item: T) =>
   z.object({ items: z.array(item), problem: apiProblemSchema.nullable() });
@@ -59,6 +82,20 @@ export const troubleshootingContract = {
     /** A Preview database; the production one is never removed here. */
     remove: oc
       .route({ method: "DELETE", path: "/api/arch/troubleshooting/databases/{id}" })
+      .input(z.object({ id: z.string() }))
+      .output(doneSchema),
+  },
+  merges: {
+    list: oc
+      .route({ method: "GET", path: "/api/arch/troubleshooting/merges" })
+      .output(listOf(mergeSchema)),
+    /**
+     * Reverts a merged branch: main returns to the commit before it and is
+     * deployed, and the production database to when the branch was created.
+     * Later merges go with it. Starts the job; the branch row tells how it went.
+     */
+    revert: oc
+      .route({ method: "POST", path: "/api/arch/troubleshooting/merges/{id}/revert" })
       .input(z.object({ id: z.string() }))
       .output(doneSchema),
   },

@@ -414,6 +414,9 @@ importers:
       '@backend/arch-settings':
         specifier: workspace:*
         version: link:../arch-settings
+      '@backend/arch-time-travel':
+        specifier: workspace:*
+        version: link:../arch-time-travel
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
@@ -547,6 +550,22 @@ importers:
         specifier: ^5.20261008.1
         version: 5.20261029.1
 
+  backend/arch-time-travel:
+    dependencies:
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@backend/db-models':
+        specifier: workspace:*
+        version: link:../db-models
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
   backend/arch-troubleshooting:
     dependencies:
       '@backend/arch-branches':
@@ -558,6 +577,9 @@ importers:
       '@backend/arch-sessions':
         specifier: workspace:*
         version: link:../arch-sessions
+      '@backend/arch-time-travel':
+        specifier: workspace:*
+        version: link:../arch-time-travel
       '@backend/ask':
         specifier: workspace:*
         version: link:../ask

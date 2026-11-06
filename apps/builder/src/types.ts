@@ -9,7 +9,7 @@
  * agent's CLI in the checkout.
  */
 
-export type JobMode = "build" | "continue" | "merge" | "abandon";
+export type JobMode = "build" | "continue" | "merge" | "abandon" | "revert";
 
 export type BuilderJob = {
   mode: JobMode;
@@ -34,6 +34,8 @@ export type BuilderJob = {
   request: string;
   plan?: string;
   message?: string;
+  /** A revert's target: main goes back to `commit`'s tree. */
+  revert?: { commit: string; restoreTo: number; alsoReverted: string[] };
   builderImage?: string;
 };
 
@@ -48,7 +50,8 @@ export type StepName =
   | "deploy-preview"
   | "merge-main"
   | "deploy-production"
-  | "cleanup";
+  | "cleanup"
+  | "revert-main";
 
 /** How the agent's prompt for one turn is built; the templates live in /app/prompts. */
 export type AgentPrompt =
@@ -83,6 +86,7 @@ export type PrepareContinueResult = { sync: string };
 export type VerifyResult = { failure: { label: string; output: string } | null };
 export type CommitPushResult = { committed: boolean };
 export type MergeMainResult = { headCommit: string };
+export type RevertMainResult = { headCommit: string; committed: boolean };
 
 export type DeployResult = {
   previewUrl: string;

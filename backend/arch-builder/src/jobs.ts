@@ -9,6 +9,7 @@ import type {
   BuilderJob,
   ContinueJob,
   MergeJob,
+  RevertJob,
 } from "./protocol";
 import { builderEnv } from "./env";
 import { writeToken } from "@backend/arch-repository/service";
@@ -104,6 +105,26 @@ export async function abandonJob(branch: BranchRow): Promise<AbandonJob> {
   };
 }
 
+/**
+ * Takes `branch` back out of main: main returns to the commit it had before the
+ * merge, and the production D1 to when the branch was created. `later` are the
+ * merges after it, which go with it.
+ */
+export async function revertJob(
+  branch: BranchRow,
+  later: BranchRow[],
+): Promise<RevertJob> {
+  return {
+    ...(await jobCommon(branch.buildSessionId, branch, `Revert ${branch.name}`)),
+    mode: "revert",
+    revert: {
+      commit: branch.baseCommit,
+      restoreTo: branch.createdAt.getTime(),
+      alsoReverted: later.map((row) => row.name),
+    },
+  };
+}
+
 /** Hands a merge to the branch's builder; the row is already marked merging. */
 export async function startMerge(branch: BranchRow): Promise<void> {
   const job = await mergeJob(branch);
@@ -115,4 +136,11 @@ export async function startAbandon(branch: BranchRow): Promise<void> {
   const job = await abandonJob(branch);
   log.info("abandon job sent", { branchId: branch.id, sessionId: branch.buildSessionId });
   await builderEnv().BUILDERS.getByName(branch.buildSessionId).startAbandon(job);
+}
+
+/** Hands a revert to the branch's builder; the row is already marked reverting. */
+export async function startRevert(branch: BranchRow, later: BranchRow[]): Promise<void> {
+  const job = await revertJob(branch, later);
+  log.info("revert job sent", { branchId: branch.id, sessionId: branch.buildSessionId });
+  await builderEnv().BUILDERS.getByName(branch.buildSessionId).startRevert(job);
 }

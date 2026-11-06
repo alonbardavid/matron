@@ -10,6 +10,7 @@
     "@backend/arch-branches": "workspace:*",
     "@backend/arch-repository": "workspace:*",
     "@backend/arch-settings": "workspace:*",
+    "@backend/arch-time-travel": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
     "@shared/contract": "workspace:*",

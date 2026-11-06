@@ -10,6 +10,7 @@
     "@backend/arch-branches": "workspace:*",
     "@backend/arch-builder": "workspace:*",
     "@backend/arch-sessions": "workspace:*",
+    "@backend/arch-time-travel": "workspace:*",
     "@backend/ask": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",

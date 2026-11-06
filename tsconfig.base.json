@@ -25,6 +25,7 @@
       "@backend/arch-routing/*": ["./backend/arch-routing/src/*"],
       "@backend/arch-sessions/*": ["./backend/arch-sessions/src/*"],
       "@backend/arch-settings/*": ["./backend/arch-settings/src/*"],
+      "@backend/arch-time-travel/*": ["./backend/arch-time-travel/src/*"],
       "@backend/arch-troubleshooting/*": ["./backend/arch-troubleshooting/src/*"],
       "@backend/ask/*": ["./backend/ask/src/*"],
       "@backend/calendar/*": ["./backend/calendar/src/*"],

@@ -6,7 +6,15 @@ import {
   type ContainerOperationResult,
   type ContainerSessionEvent,
 } from "agents/harness/container";
-import { markReady } from "@backend/arch-branches/service";
+import {
+  markReady,
+  markReverted,
+  markRevertFailed,
+} from "@backend/arch-branches/service";
+import {
+  restoreProductionDatabase,
+  storageSnapshotStore,
+} from "@backend/arch-time-travel/service";
 import { logger } from "@backend/commons/logger";
 import { getBuilderModel } from "@backend/arch-settings/service";
 import { AI_GATEWAY } from "@backend/commons/names";
@@ -23,6 +31,8 @@ import type {
   MergeJob,
   MergeMainResult,
   PrepareContinueResult,
+  RevertJob,
+  RevertMainResult,
   StepInput,
   StepName,
   TurnRequest,
@@ -68,7 +78,9 @@ type Phase =
   | "commit-push"
   | "deploy-preview"
   | "deploy-production"
-  | "cleanup";
+  | "cleanup"
+  | "restore-database"
+  | "deploy-revert";
 
 /** One job's progress; checkpointed into the fiber, parked while waiting for the user. */
 interface JobRun {
@@ -88,7 +100,7 @@ interface JobRun {
   fixRound: number;
   /** What prepare-continue said about main, for the agent's prompt. */
   sync: string | null;
-  /** Main's head after a merge, for the merged report. */
+  /** Main's head after a merge or a revert, for the report. */
   mergedHead: string | null;
 }
 
@@ -201,6 +213,10 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
   }
 
   async startAbandon(job: AbandonJob): Promise<void> {
+    await this.serial(() => this.begin(job));
+  }
+
+  async startRevert(job: RevertJob): Promise<void> {
     await this.serial(() => this.begin(job));
   }
 
@@ -413,6 +429,12 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
             await this.step(run, "prepare-cleanup");
             run.phase = "cleanup";
             return "continue";
+          case "revert": {
+            const result = await this.step<RevertMainResult>(run, "revert-main");
+            run.mergedHead = result.headCommit;
+            run.phase = "install";
+            return "continue";
+          }
         }
         break;
       }
@@ -420,6 +442,10 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
         await this.step(run, "install");
         if (job.mode === "merge") {
           run.phase = "deploy-production";
+          return "continue";
+        }
+        if (job.mode === "revert") {
+          run.phase = "restore-database";
           return "continue";
         }
         const state = await this.load();
@@ -526,6 +552,30 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
         await this.step(run, "deploy-production");
         run.phase = "cleanup";
         return "continue";
+      case "restore-database": {
+        if (job.mode !== "revert") throw new Error("only a revert restores the database");
+        const at = new Date(job.revert.restoreTo).toISOString();
+        await session.progress(`restoring the production database to ${at}`);
+        // Right before the deploy: the code that runs meanwhile is the newer one.
+        await restoreProductionDatabase(
+          job.revert.restoreTo,
+          storageSnapshotStore(this.ctx.storage, `revert:${job.branch.id}`),
+        );
+        await session.relay({
+          role: "builder",
+          text: `The production database is back to ${at}; users, sign-ins, build sessions, branches and settings were kept as they are. Deploying the reverted version.`,
+        });
+        run.phase = "deploy-revert";
+        return "continue";
+      }
+      case "deploy-revert":
+        await this.step(run, "deploy-production");
+        await session.relay({
+          role: "builder",
+          text: `Reverted: main is at ${run.mergedHead?.slice(0, 12) ?? "the earlier version"} and production is deployed from it.`,
+        });
+        await this.finish(run, "reverted");
+        return "end";
       case "cleanup":
         await this.step(run, "cleanup");
         if (job.mode === "merge") {
@@ -553,7 +603,7 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
   /** Terminal status: tell the session; the harness stops the container once it idles. */
   private async finish(
     run: JobRun,
-    status: "deployed" | "failed" | "merged" | "abandoned",
+    status: "deployed" | "failed" | "merged" | "abandoned" | "reverted",
     detail?: BuilderStatusDetail,
   ): Promise<void> {
     const { job } = run;
@@ -568,7 +618,15 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     state.pending = [];
     await this.forgetSilenceCheck(state);
     await this.save(state);
-    await this.session(state).builderStatus(status, detail);
+    if (job.mode === "revert") {
+      // The session is archived: a revert's outcome is the branch row's.
+      await this.recordRevert(
+        job,
+        status === "reverted" ? null : (detail?.error ?? "failed"),
+      );
+    } else if (status !== "reverted") {
+      await this.session(state).builderStatus(status, detail);
+    }
     // Nothing more comes for a deployed, merged or abandoned job: the container
     // goes now, its workspace snapshotted. A failed job is left to the idle
     // stop, like a question: a fix may follow within minutes.
@@ -631,11 +689,11 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
       mode: job.mode,
       phase: run.phase,
     });
-    if (job.mode === "merge" || job.mode === "abandon") {
+    if (job.mode === "merge" || job.mode === "abandon" || job.mode === "revert") {
       await this.save(state);
       await this.session(state).relay({
         role: "builder",
-        text: `The ${job.mode} stopped: thirty minutes passed without a message. Start it again from the branch menu.`,
+        text: `The ${job.mode} stopped: thirty minutes passed without a message. Start it again from ${job.mode === "revert" ? "the troubleshooting page" : "the branch menu"}.`,
       });
       await this.finish(run, "failed", { error: "timed out" });
       return;
@@ -731,10 +789,27 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
   // ── State ─────────────────────────────────────────────────────────────────
 
   private async failWithoutContainer(job: BuilderJob): Promise<void> {
+    if (job.mode === "revert") {
+      await this.recordRevert(
+        job,
+        "The builder container is not available in this deployment",
+      );
+      return;
+    }
     if (job.mode === "merge" || job.mode === "abandon") await markReady(job.branch.id);
     await this.env.BUILD_SESSIONS.getByName(job.sessionId).builderStatus("failed", {
       error: "The builder container is not available in this deployment",
     });
+  }
+
+  /** A revert's outcome on its branch row: reverted, or failed with `error`. */
+  private async recordRevert(job: RevertJob, error: string | null): Promise<void> {
+    try {
+      if (error === null) await markReverted(job.branch.id);
+      else await markRevertFailed(job.branch.id, error);
+    } catch (err) {
+      log.error("revert outcome not recorded", { err, sessionId: job.sessionId });
+    }
   }
 
   private session(state: BuilderState) {

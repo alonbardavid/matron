@@ -1,30 +1,11 @@
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { executeSql, migrateTestDb } from "./d1";
 import { createUserSql } from "./seed-sql";
 import { MEMBER, OWNER } from "./e2e/users";
 
-const backendDir = resolve(import.meta.dirname, "../apps/backend");
-const persistTo = "./.wrangler-test";
-
-function wrangler(args: string[]): void {
-  const result = spawnSync("pnpm", ["exec", "wrangler", ...args], {
-    cwd: backendDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `wrangler ${args.slice(0, 3).join(" ")} failed:\n${result.stdout}\n${result.stderr}`,
-    );
-  }
-}
-
 /** Migrates the local test D1, wipes it and seeds an owner and a member. */
 export default async function globalSetup(): Promise<void> {
-  wrangler(["d1", "migrations", "apply", "DB", "--local", "--persist-to", persistTo]);
-  const sql = [
+  migrateTestDb();
+  executeSql([
     "DELETE FROM user_sessions",
     "DELETE FROM user_accounts",
     "DELETE FROM user_verifications",
@@ -39,22 +20,5 @@ export default async function globalSetup(): Promise<void> {
     "DELETE FROM user",
     await createUserSql(OWNER),
     await createUserSql(MEMBER),
-  ].join(";\n");
-  const dir = mkdtempSync(join(tmpdir(), "matron-seed-"));
-  const file = join(dir, "seed.sql");
-  writeFileSync(file, sql + ";\n");
-  try {
-    wrangler([
-      "d1",
-      "execute",
-      "DB",
-      "--local",
-      "--persist-to",
-      persistTo,
-      "--file",
-      file,
-    ]);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  ]);
 }

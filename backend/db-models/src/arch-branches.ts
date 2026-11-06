@@ -12,6 +12,10 @@ export const BRANCH_STATUSES = [
 ] as const;
 export type BranchStatus = (typeof BRANCH_STATUSES)[number];
 
+/** Where reverting a merged branch stands; null for a branch never reverted. */
+export const REVERT_STATUSES = ["reverting", "reverted", "failed"] as const;
+export type RevertStatus = (typeof REVERT_STATUSES)[number];
+
 // A merged or abandoned branch is archived: the row stays, with its Preview and
 // database gone, so the history can still be viewed.
 export const branches = sqliteTable(
@@ -35,6 +39,11 @@ export const branches = sqliteTable(
     headCommit: text("head_commit"),
     status: text("status", { enum: BRANCH_STATUSES }).default("deploying").notNull(),
     archivedAt: timestamp("archived_at"),
+    // A merged branch taken back out of main: by its own revert, or by reverting an
+    // earlier merge. Separate from `status` so older code still reads the row.
+    revertStatus: text("revert_status", { enum: REVERT_STATUSES }),
+    revertError: text("revert_error"),
+    revertedAt: timestamp("reverted_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
