@@ -1,19 +1,11 @@
-import {
-  Box,
-  Button,
-  Checkbox,
-  Group,
-  Paper,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Box, Button, Group, Paper, Stack, Text, TextInput } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useMemo, useState, type ReactNode } from "react";
 import { markKey } from "../diff";
 import type { ReviewModel } from "../model";
 import type { Viewed } from "../viewed";
 import { DiffView } from "./DiffView";
+import { MarkButton, markState } from "./Marks";
 import { plural, ViewedIcon } from "./Progress";
 import classes from "./review.module.css";
 
@@ -127,13 +119,13 @@ export function FilesTab({ model, viewed, selected, onSelect }: FilesTabProps) {
               <Text size="xs" c="dimmed">
                 {plural(keys.length, "change")} · {done} viewed
               </Text>
-              <Checkbox
-                color="sage"
+              <MarkButton
+                state={markState(done, keys.length)}
                 label="Viewed"
-                checked={keys.length > 0 && done >= keys.length}
-                indeterminate={done > 0 && done < keys.length}
-                onChange={(event) => viewed.setViewed(keys, event.currentTarget.checked)}
-              />
+                onToggle={() => viewed.setViewed(keys, done < keys.length)}
+              >
+                Viewed
+              </MarkButton>
             </Group>
           </Group>
           <Box style={{ overflowX: "auto" }}>

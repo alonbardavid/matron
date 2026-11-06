@@ -1,7 +1,8 @@
-import { Checkbox, Text } from "@mantine/core";
-import { Fragment, useMemo, useState } from "react";
+import { Text } from "@mantine/core";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { markKey, type FileModel } from "../diff";
 import type { Viewed } from "../viewed";
+import { MarkBox, markState } from "./Marks";
 import classes from "./review.module.css";
 
 interface DiffViewProps {
@@ -23,13 +24,27 @@ const OMITTED: Record<string, string> = {
 type Segment = { shown: true; lines: number[] } | { shown: false; lines: number[] };
 
 /**
- * A unified diff. The first line of each change carries its "viewed" box;
- * runs of lines outside the view fold into a row that unfolds them.
+ * A unified diff, marked as IronGarden marks it: a rail beside every changed
+ * line toggles its change (shift-click takes in every change since the last
+ * one clicked), and a box heads each run of adjacent changes to mark the run.
+ * Runs of lines outside the view fold into a row that unfolds them.
  */
 export function DiffView({ model, focus, viewed }: DiffViewProps) {
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
   const segments = useMemo(() => segmentsOf(model, focus), [model, focus]);
+  const lastClicked = useRef<number | null>(null);
   const path = model.file.path;
+  const keyOf = (changeIndex: number) => markKey(path, model.changes[changeIndex]!);
+
+  const clickRail = (changeIndex: number, extend: boolean) => {
+    const from = extend ? (lastClicked.current ?? changeIndex) : changeIndex;
+    lastClicked.current = changeIndex;
+    const indexes: number[] = [];
+    for (let i = Math.min(from, changeIndex); i <= Math.max(from, changeIndex); i++) {
+      indexes.push(i);
+    }
+    viewed.setViewed(indexes.map(keyOf), !viewed.viewed.has(keyOf(changeIndex)));
+  };
 
   if (model.file.omitted) {
     return (
@@ -50,7 +65,8 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
     <table className={classes.diff}>
       {/* A fixed layout takes its widths from here, not from a folded first row. */}
       <colgroup>
-        <col className={classes.markCol} />
+        <col className={classes.blockCol} />
+        <col className={classes.railCol} />
         <col className={classes.numberCol} />
         <col className={classes.numberCol} />
         <col className={classes.signCol} />
@@ -62,7 +78,7 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
           if (!segment.shown && !unfolded.has(first)) {
             return (
               <tr key={`gap-${first}`} className={classes.gap}>
-                <td colSpan={5}>
+                <td colSpan={6}>
                   <button
                     type="button"
                     className={classes.gapButton}
@@ -75,37 +91,51 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
               </tr>
             );
           }
+          const blocks = blocksOf(segment.lines, model.changeOf);
           return (
             <Fragment key={`lines-${first}`}>
-              {segment.lines.map((index) => {
+              {segment.lines.map((index, row) => {
                 const line = model.lines[index]!;
                 const changeIndex = model.changeOf[index]!;
-                const change = changeIndex >= 0 ? model.changes[changeIndex] : undefined;
-                const key = change ? markKey(path, change) : null;
-                const isViewed = key !== null && viewed.viewed.has(key);
-                const leads = change?.lines[0] === index;
+                const isViewed =
+                  changeIndex >= 0 && viewed.viewed.has(keyOf(changeIndex));
+                const block = blocks[row];
+                const lineNumber = line.kind === "removed" ? line.old : line.new;
                 const rowClass = [
                   line.kind === "added" && classes.added,
                   line.kind === "removed" && classes.removed,
-                  isViewed && classes.viewed,
                 ]
                   .filter(Boolean)
                   .join(" ");
                 return (
                   <tr key={index} className={rowClass}>
-                    <td className={classes.mark}>
-                      {leads && key && (
-                        <Checkbox
-                          size="xs"
-                          color="sage"
-                          aria-label={`Viewed line ${line.kind === "removed" ? line.old : line.new}`}
-                          checked={isViewed}
-                          onChange={(event) =>
-                            viewed.setViewed([key], event.currentTarget.checked)
-                          }
-                        />
+                    <td
+                      className={`${classes.blockCell} ${block && !block.head ? classes.blockLine : ""}`}
+                    >
+                      {block?.head && (
+                        <BlockBox keys={block.changes.map(keyOf)} viewed={viewed} />
                       )}
                     </td>
+                    {changeIndex >= 0 ? (
+                      <td
+                        role="checkbox"
+                        tabIndex={0}
+                        aria-checked={isViewed}
+                        aria-label={`${isViewed ? "Unmark" : "Mark"} line ${lineNumber} viewed. Shift-click for a range.`}
+                        title={`${isViewed ? "Unmark" : "Mark"} this change viewed. Shift-click for a range.`}
+                        className={`${classes.rail} ${isViewed ? classes.railOn : ""}`}
+                        // Keeps a shift-click from selecting the code it passes over.
+                        onMouseDown={(event) => event.shiftKey && event.preventDefault()}
+                        onClick={(event) => clickRail(changeIndex, event.shiftKey)}
+                        onKeyDown={(event) => {
+                          if (event.key !== " " && event.key !== "Enter") return;
+                          event.preventDefault();
+                          clickRail(changeIndex, event.shiftKey);
+                        }}
+                      />
+                    ) : (
+                      <td />
+                    )}
                     <td className={classes.number}>
                       {line.kind !== "added" ? line.old : ""}
                     </td>
@@ -125,6 +155,40 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
       </tbody>
     </table>
   );
+}
+
+/** The box heading a run of adjacent changes: ticked when all are viewed, part-filled when some are. */
+function BlockBox({ keys, viewed }: { keys: string[]; viewed: Viewed }) {
+  const state = markState(viewed.count(keys), keys.length);
+  return (
+    <MarkBox
+      state={state}
+      label={`${state === "all" ? "Unmark" : "Mark"} these ${keys.length} changes viewed`}
+      onToggle={() => viewed.setViewed(keys, state !== "all")}
+    />
+  );
+}
+
+/**
+ * For each shown row, the run of adjacent changed rows it is in, when that
+ * run holds more than one change; `head` is its first row.
+ */
+function blocksOf(
+  rows: number[],
+  changeOf: number[],
+): ({ head: boolean; changes: number[] } | null)[] {
+  const result: ({ head: boolean; changes: number[] } | null)[] = rows.map(() => null);
+  let from = 0;
+  while (from < rows.length) {
+    let to = from;
+    while (to < rows.length && changeOf[rows[to]!]! >= 0) to++;
+    const changes = [...new Set(rows.slice(from, to).map((index) => changeOf[index]!))];
+    if (changes.length > 1) {
+      for (let i = from; i < to; i++) result[i] = { head: i === from, changes };
+    }
+    from = to + 1;
+  }
+  return result;
 }
 
 /** The file's lines split into the runs shown and the runs folded away. */

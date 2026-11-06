@@ -15,6 +15,7 @@ import { changesIn, markKey } from "../diff";
 import type { ReviewModel, ShownBracket } from "../model";
 import type { Viewed } from "../viewed";
 import { DiffView } from "./DiffView";
+import { MarkButton, markState } from "./Marks";
 import { leftLabel, plural, ViewedBar } from "./Progress";
 import classes from "./review.module.css";
 
@@ -143,14 +144,13 @@ export function BracketsTab({
                     </Text>
                   </Group>
                   {keys.length > 0 && (
-                    <Button
-                      size="compact-xs"
-                      variant={done >= keys.length ? "light" : "default"}
-                      color="sage"
-                      onClick={() => viewed.setViewed(keys, done < keys.length)}
+                    <MarkButton
+                      state={markState(done, keys.length)}
+                      label={`Viewed: ${range.path} lines ${range.start}–${range.end}`}
+                      onToggle={() => viewed.setViewed(keys, done < keys.length)}
                     >
-                      {done >= keys.length ? "Viewed" : "Mark viewed"}
-                    </Button>
+                      Viewed
+                    </MarkButton>
                   )}
                 </Group>
                 {range.note && (

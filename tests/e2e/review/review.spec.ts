@@ -64,6 +64,17 @@ test.describe("branch review", () => {
     await expect(
       page.getByRole("checkbox", { name: "Viewed", exact: true }),
     ).toBeChecked();
+    // A line's rail marks its change; a shift-click takes in every change since the last click.
+    await tree.getByRole("button", { name: /0007_task_lists\.sql/ }).click();
+    await expect(page.getByRole("article")).toContainText("CREATE INDEX");
+    await page.getByRole("checkbox", { name: /^Mark line 1 viewed/ }).click();
+    await page
+      .getByRole("checkbox", { name: /^Mark line 3 viewed/ })
+      .click({ modifiers: ["Shift"] });
+    await expect(
+      page.getByRole("checkbox", { name: "Unmark these 3 changes viewed" }),
+    ).toBeChecked();
+    await expect(tree.getByRole("img", { name: "Viewed", exact: true })).toHaveCount(4);
     await tree.getByRole("button", { name: "pnpm-lock.yaml" }).click();
     await expect(page.getByText("A generated file")).toBeVisible();
   });
