@@ -34,4 +34,31 @@ test.describe("ask", () => {
     );
     expect(archived.ok()).toBeTruthy();
   });
+
+  test("a file can go with a message, and be taken off before it is sent", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    await page.getByRole("button", { name: "Ask" }).click();
+    const panel = page.locator(".mantine-Drawer-body");
+    await panel.locator('input[type="file"]').setInputFiles({
+      name: "receipt.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("milk 2.50\nbread 3.10\n"),
+    });
+    await expect(panel.getByText("receipt.txt")).toBeVisible();
+    // A file alone is enough to send.
+    await expect(panel.getByRole("button", { name: "Send" })).toBeEnabled();
+    await page.getByRole("button", { name: "Remove receipt.txt" }).click();
+    await expect(panel.getByText("receipt.txt")).toBeHidden();
+    await expect(panel.getByRole("button", { name: "Send" })).toBeDisabled();
+    // Anything but a picture, a PDF or a text file is refused.
+    await panel.locator('input[type="file"]').setInputFiles({
+      name: "notes.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from("not really a document"),
+    });
+    await expect(page.getByText("pictures, PDFs and text files only")).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
 });

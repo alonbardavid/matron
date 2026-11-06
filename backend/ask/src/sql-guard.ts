@@ -20,6 +20,9 @@ export const APP_TABLES = [
   "ask_session",
 ] as const;
 
+/** The uploaded files' table, readable by owners only. */
+export const FILE_TABLE = "file";
+
 /** The router's tables, readable by owners and admins only; `user` is open to everyone. */
 export const ARCH_TABLES = [
   "user",
@@ -38,12 +41,15 @@ const FORBIDDEN =
 export interface GuardOptions {
   /** Whether the router's tables may be read too (the database.read_router permission). */
   routerTables: boolean;
+  /** Whether the files' table may be read (the database.read_files permission). */
+  fileTable: boolean;
 }
 
 /** The tables a role may read. */
 export function allowedTables(options: GuardOptions): Set<string> {
   const tables = new Set<string>([...APP_TABLES, "user"]);
   if (options.routerTables) for (const table of ARCH_TABLES) tables.add(table);
+  if (options.fileTable) tables.add(FILE_TABLE);
   return tables;
 }
 

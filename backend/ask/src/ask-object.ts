@@ -5,6 +5,7 @@ import { getAskModel } from "@backend/arch-settings/service";
 import { logger } from "@backend/commons/logger";
 import { ROLES, type Principal, type Role } from "@backend/commons/principal";
 import { DEFAULT_ASK_MODEL } from "@shared/contract/arch/settings";
+import { carriesFile, fileNames } from "./attachments";
 import { touchConversation } from "./conversations";
 import {
   gatewayModel,
@@ -40,6 +41,13 @@ export interface AskState {
  */
 export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
   initialState: AskState = { principal: null, branch: "main", timeZone: "UTC" };
+
+  /**
+   * An attachment is read by the turn it came with and the next one, then
+   * moved out of the transcript so no later turn pays for it again.
+   */
+  override mediaEviction = { keepRecentMessages: 2 };
+  override truncationStep = 2;
 
   override async onConnect(
     connection: Connection,
@@ -135,11 +143,18 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
         : (last?.content ?? [])
             .map((part) => (part.type === "text" ? part.text : ""))
             .join("");
-    void touchConversation(this.name, text || undefined).catch((err: unknown) =>
-      log.warn("touch failed", { err }),
+    const withFile = !ctx.continuation && carriesFile(last);
+    void touchConversation(this.name, text || fileNames(last).join(", ") || undefined).catch(
+      (err: unknown) => log.warn("touch failed", { err }),
     );
+    const model = await getAskModel().catch(() => DEFAULT_ASK_MODEL);
+    if (withFile && isWorkersAIModel(model)) {
+      throw new Error(
+        `Attachments need an Anthropic model; the assistant is set to ${model}`,
+      );
+    }
     return {
-      model: await getAskModel().catch(() => DEFAULT_ASK_MODEL),
+      model,
       system: this.getSystemPrompt(),
       activeTools: Object.keys(this.getTools()),
     };

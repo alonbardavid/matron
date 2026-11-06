@@ -10,6 +10,7 @@ import { notifications } from "@mantine/notifications";
 import { z } from "zod";
 import { authClient, unwrapAuth } from "@frontend/api/auth-client";
 import { useMe } from "@frontend/auth/useMe";
+import { AvatarEditor } from "@frontend/auth/widgets/AvatarEditor";
 import { CalendarsCard } from "@frontend/calendar/widgets/CalendarsCard";
 import { GoogleCalendarCard } from "@frontend/calendar/widgets/GoogleCalendarCard";
 import { Card } from "@frontend/ds/Card";
@@ -81,6 +82,7 @@ export function SettingsScreen() {
       <Card>
         <Stack gap="sm">
           <Text fw={600}>Profile</Text>
+          <AvatarEditor />
           <TextInput label="Email" value={me?.email ?? ""} readOnly disabled />
           <StandardForm form={profile} onSubmit={saveProfile}>
             <FormTextInput name="name" label="Name" autoComplete="name" />

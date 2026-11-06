@@ -9,7 +9,8 @@
   "dependencies": {
     "nanoid": "^5.1.6",
     "zod": "^4.1.0",
-    "@orpc/server": "1.15.4"
+    "@orpc/server": "1.15.4",
+    "hono": "^4.7.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261008.1"

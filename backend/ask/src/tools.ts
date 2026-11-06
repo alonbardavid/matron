@@ -141,6 +141,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
         databasePermissions.require(principal, "read");
         const statement = guardReadOnlySql(sql, {
           routerTables: databasePermissions.can(principal.role, "read_router"),
+          fileTable: databasePermissions.can(principal.role, "read_files"),
         });
         const result = await ctx.db.prepare(statement).all();
         const rows = result.results ?? [];

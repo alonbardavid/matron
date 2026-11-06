@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getAgentByName } from "agents";
-import { DOMAIN_ERROR_STATUS, DomainError } from "@backend/commons/errors";
+import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
 import { ASK_SOCKET_HEADERS, type AskSessionObject } from "./ask-object";
@@ -16,7 +16,8 @@ interface AskEnv {
 /**
  * Upgrades the request to the ask session's object, which runs the assistant.
  * The identity travels in headers the object trusts: only the application,
- * behind the router's signed handoff, can reach it.
+ * behind the router's signed handoff, can reach it. A refusal is thrown; the
+ * route's error hook answers it.
  */
 export async function openAskSocket(
   principal: Principal,
@@ -24,21 +25,11 @@ export async function openAskSocket(
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  try {
-    conversationPermissions.require(principal, "chat");
-    const conversation = await getConversation(principal, sessionId);
-    // Its messages live on the branch it was started on; another branch's object holds nothing of it.
-    if (conversation.branch !== branch) {
-      throw new DomainError(
-        "FORBIDDEN",
-        "This conversation was started on another branch",
-      );
-    }
-  } catch (err) {
-    if (err instanceof DomainError) {
-      return new Response(err.message, { status: DOMAIN_ERROR_STATUS[err.code] });
-    }
-    throw err;
+  conversationPermissions.require(principal, "chat");
+  const conversation = await getConversation(principal, sessionId);
+  // Its messages live on the branch it was started on; another branch's object holds nothing of it.
+  if (conversation.branch !== branch) {
+    throw new DomainError("FORBIDDEN", "This conversation was started on another branch");
   }
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("Expected a WebSocket upgrade", { status: 426 });

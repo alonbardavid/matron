@@ -97,6 +97,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../../backend/db-models
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../../backend/files
       '@backend/household':
         specifier: workspace:*
         version: link:../../backend/household
@@ -293,6 +296,9 @@ importers:
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../files
       '@backend/household':
         specifier: workspace:*
         version: link:../household
@@ -666,6 +672,9 @@ importers:
       '@orpc/server':
         specifier: 1.15.4
         version: 1.15.4(@opentelemetry/api@1.10.0)(ws@8.22.0)
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
       nanoid:
         specifier: ^5.1.6
         version: 5.1.16
@@ -690,6 +699,25 @@ importers:
         specifier: ^5.20261008.1
         version: 5.20261029.1
 
+  backend/files:
+    dependencies:
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@backend/db-models':
+        specifier: workspace:*
+        version: link:../db-models
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
   backend/household:
     dependencies:
       '@backend/commons':
@@ -698,6 +726,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../files
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -882,6 +913,9 @@ importers:
       '@mantine/notifications':
         specifier: 9.7.4
         version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)

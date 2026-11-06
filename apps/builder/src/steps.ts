@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { r2DeletePrefix, wranglerTolerant } from "./cloudflare.js";
+import { runCleanupSteps } from "./cleanup-steps.js";
 import {
   deployPreview,
   deployProduction,
@@ -271,51 +271,14 @@ export class Steps {
     await deployProduction(this.deployContext());
   }
 
-  /** Removes the Preview, the branch D1, the remote branch and the R2 prefix. Each step tolerates failure. */
+  /** Removes what the branch leaves behind (`cleanup-steps.ts` lists the cleanup steps); each tolerates failure. */
   async cleanup(): Promise<void> {
-    const { job } = this;
-    const w = wranglerContext(this.deployContext());
-    progress(`deleting preview ${job.branch.previewName}`);
-    await wranglerTolerant(
-      w,
-      "wrangler preview delete",
-      [
-        "preview",
-        "delete",
-        "--name",
-        job.branch.previewName,
-        "--worker-name",
-        job.cloudflare.workerName,
-        "--skip-confirmation",
-      ],
+    await runCleanupSteps({
+      job: this.job,
+      wrangler: wranglerContext(this.deployContext()),
+      git: this.gitContext(),
       progress,
-    );
-    progress(`deleting D1 ${job.branch.databaseName}`);
-    await wranglerTolerant(
-      w,
-      "wrangler d1 delete",
-      ["d1", "delete", job.branch.databaseName, "--skip-confirmation"],
-      progress,
-    );
-    progress(`deleting remote branch ${job.branch.name}`);
-    try {
-      await git.deleteRemoteBranch(this.gitContext(), job.branch.name);
-    } catch (error) {
-      progress(
-        `deleting the remote branch failed: ${error instanceof Error ? error.message : String(error)} (ignored)`,
-      );
-    }
-    const bucket = job.cloudflare.productionDatabaseName;
-    const prefix = `${job.branch.id}/`;
-    progress(`deleting R2 objects under ${bucket}/${prefix}`);
-    try {
-      const deleted = await r2DeletePrefix(job, bucket, prefix);
-      progress(`deleted ${deleted} R2 objects`);
-    } catch (error) {
-      progress(
-        `R2 cleanup failed: ${error instanceof Error ? error.message : String(error)} (ignored)`,
-      );
-    }
+    });
   }
 }
 

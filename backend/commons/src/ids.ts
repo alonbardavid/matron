@@ -18,6 +18,7 @@ export const ENTITY_PREFIXES = {
   CALENDAR_EVENT_EXCEPTION: "CX",
   GOOGLE_CALENDAR_CONNECTION: "GC",
   ASK_SESSION: "AS",
+  FILE: "FL",
 } as const satisfies Record<string, Uppercase<string>>;
 
 export type Entity = keyof typeof ENTITY_PREFIXES;
