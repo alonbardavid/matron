@@ -37,12 +37,18 @@ export function useEventActions() {
       onError: (err) => notifyError(err, "Could not remove the event"),
     }),
   );
-  return { create, update, stop, remove };
+  const place = useMutation(
+    orpc.calendar.place.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not move the event"),
+    }),
+  );
+  return { create, update, stop, remove, place };
 }
 
 /** The caller's own calendars. */
 export function useCalendars() {
-  return useQuery(orpc.calendar.calendars.list.queryOptions({ staleTime: 60_000 }));
+  return useQuery(orpc.calendar.calendars.list.queryOptions({ staleTime: 10_000 }));
 }
 
 export function useCalendarActions() {

@@ -39,18 +39,28 @@ export const CALENDAR_COLORS = [
   "#7f8c8d",
 ] as const;
 
+/** How the caller holds a calendar: their own, or shared with them read-only. */
+export const CALENDAR_ACCESS = ["owner", "viewer"] as const;
+
 /**
- * A member's calendar. Every event belongs to one: each member has a default
- * Matron calendar, and each Google calendar they import is a calendar of its own.
+ * A calendar as the caller sees it. Every event belongs to one: each member
+ * has a default Matron calendar, and each Google calendar they import is a
+ * calendar of its own. An owner may share a calendar read-only with others.
  */
 export const calendarSchema = z.object({
   id: z.string(),
   ownerId: z.string(),
   name: z.string(),
+  /** The caller's colour for it: the owner's, or a viewer's own choice. */
   color: z.string(),
   source: calendarSourceSchema,
-  /** Where new events go when no calendar is named. */
+  access: z.enum(CALENDAR_ACCESS),
+  /** Where new events go when no calendar is named. Owner only. */
   isDefault: z.boolean(),
+  /** Where events others share with the owner show, unless placed elsewhere. Owner only. */
+  receivesShared: z.boolean(),
+  /** Who the owner shares it with; empty for a viewer. */
+  sharedWith: z.array(z.string()),
 });
 export type Calendar = z.infer<typeof calendarSchema>;
 
@@ -73,9 +83,18 @@ export const calendarEventSchema = z.object({
   sharedWith: z.array(z.string()),
   /** User ids attending; by default everyone the event is shared with, and the creator. */
   attendees: z.array(z.string()),
+  /** The creator's calendar it belongs to. */
   calendarId: z.string(),
+  /** The calendar it shows in for the caller: theirs for an event shared with them, or the shared calendar it came through. */
+  shownIn: z.string(),
+  /** `read` when the caller sees it only through a calendar shared with them. */
+  access: z.enum(["edit", "read"]),
   /** The calendar's source. An imported event is changed there; in Matron only who it is shared with changes. */
   source: calendarSourceSchema,
+  /** An imported occurrence of an event that repeats at its source. */
+  repeatsAtSource: z.boolean(),
+  /** Where to open an imported event at its source. */
+  externalUrl: z.string().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -92,8 +111,9 @@ export const occurrenceSchema = z.object({
   endAt: z.number(),
   recurring: z.boolean(),
   creatorId: z.string(),
+  /** The calendar it shows in for the caller (see the event's `shownIn`). */
   calendarId: z.string(),
-  /** The colour of the event's calendar. */
+  /** The caller's colour for that calendar. */
   color: z.string(),
   source: calendarSourceSchema,
 });
@@ -181,7 +201,7 @@ export const googleCalendarContract = {
     .output(googleStatusSchema),
 };
 
-/** The caller's own calendars. */
+/** The caller's calendars: their own, then those shared with them. */
 export const calendarsContract = {
   list: oc
     .route({ method: "GET", path: "/api/app/calendar/calendars" })
@@ -190,7 +210,11 @@ export const calendarsContract = {
     .route({ method: "POST", path: "/api/app/calendar/calendars" })
     .input(z.object({ name: calendarName, color: colorString }))
     .output(calendarSchema),
-  /** Renames or recolours a calendar; an imported one too. */
+  /**
+   * The owner renames, recolours or shares a calendar (an imported one too), or
+   * makes a Matron one the default or the one for shared events. A viewer only
+   * sets their own colour for it.
+   */
   update: oc
     .route({ method: "PUT", path: "/api/app/calendar/calendars/{id}" })
     .input(
@@ -199,10 +223,12 @@ export const calendarsContract = {
         name: calendarName.optional(),
         color: colorString.optional(),
         isDefault: z.literal(true).optional(),
+        receivesShared: z.literal(true).optional(),
+        sharedWith: z.array(z.string()).max(100).optional(),
       }),
     )
     .output(calendarSchema),
-  /** Removes a Matron calendar and its events; the default one stays. */
+  /** The owner removes a Matron calendar and its events (the default stays); a viewer stops seeing a shared one. */
   remove: oc
     .route({ method: "DELETE", path: "/api/app/calendar/calendars/{id}" })
     .input(z.object({ id: z.string() }))
@@ -236,6 +262,11 @@ export const calendarContract = {
     .route({ method: "DELETE", path: "/api/app/calendar/events/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
+  /** Shows an event someone shared with the caller in one of the caller's Matron calendars; null for their calendar for shared events. */
+  place: oc
+    .route({ method: "PUT", path: "/api/app/calendar/events/{id}/placement" })
+    .input(z.object({ id: z.string(), calendarId: z.string().nullable() }))
+    .output(calendarEventSchema),
   calendars: calendarsContract,
   google: googleCalendarContract,
 };

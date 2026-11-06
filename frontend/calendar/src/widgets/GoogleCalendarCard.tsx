@@ -22,6 +22,9 @@ const RESULTS: Record<string, { message: string; color?: string }> = {
   failed: { message: "Google did not complete the connection; try again", color: "red" },
 };
 
+/** Google returns the browser to production, so a branch, whose data is a copy, never connects. */
+const MAIN_ONLY = "Connecting Google Calendar is only available on main.";
+
 function useCallbackResult() {
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -110,12 +113,13 @@ export function GoogleCalendarCard() {
           onClick={startConnect}
           loading={connect.isPending}
           disabled={!status.data.canConnect}
+          title={status.data.canConnect ? undefined : MAIN_ONLY}
         >
           Connect Google Calendar
         </Button>
         {!status.data.canConnect && (
           <Text size="sm" c="dimmed">
-            Connect on main: a branch&apos;s data is a copy that is not kept.
+            {MAIN_ONLY}
           </Text>
         )}
       </Stack>
@@ -193,6 +197,7 @@ export function GoogleCalendarCard() {
               onClick={startConnect}
               loading={connect.isPending}
               disabled={!status.data.canConnect}
+              title={status.data.canConnect ? undefined : MAIN_ONLY}
             >
               Reconnect
             </Button>
@@ -217,7 +222,8 @@ export function GoogleCalendarCard() {
         <Text fw={600}>Google Calendar</Text>
         <Text size="sm" c="dimmed">
           Show events from your own Google Calendar on the Matron calendar. They come one
-          way, from Google: change them there. Only you see them, unless you share one.
+          way, from Google: change them there. Only you see them, unless you share the
+          calendar or an event.
         </Text>
         {body}
       </Stack>

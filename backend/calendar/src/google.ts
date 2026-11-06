@@ -434,6 +434,8 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
     startAt: new Date(startAt),
     endAt: new Date(endAt),
     timeZone,
+    externalSeriesId: event.recurringEventId ?? null,
+    externalUrl: event.htmlLink?.startsWith("https://") ? event.htmlLink : null,
     recurrenceFrequency: null,
     recurrenceDays: null,
     recurrenceUntil: null,

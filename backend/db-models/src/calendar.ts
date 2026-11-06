@@ -25,6 +25,8 @@ export const calendar = sqliteTable(
     externalId: text("external_id"),
     /** The owner's calendar new events go to; one per owner. */
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    /** Where events others share with the owner show, unless placed elsewhere; one per owner, else the default. */
+    receivesShared: integer("receives_shared", { mode: "boolean" }).notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -35,6 +37,27 @@ export const calendar = sqliteTable(
       table.source,
       table.externalId,
     ),
+  ],
+);
+
+/**
+ * A calendar shared read-only with another member: they see every event in it,
+ * in the colour they choose for it.
+ */
+export const calendarShare = sqliteTable(
+  "calendar_share",
+  {
+    id: text("id").primaryKey(),
+    calendarId: text("calendar_id").notNull(),
+    userId: text("user_id").notNull(),
+    /** The viewer's own colour for it; the calendar's when null. */
+    color: text("color"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_share_calendar_user").on(table.calendarId, table.userId),
+    index("calendar_share_user_idx").on(table.userId),
   ],
 );
 
@@ -59,6 +82,10 @@ export const calendarEvent = sqliteTable(
     calendarId: text("calendar_id").notNull(),
     /** For an imported event: its id at the source, unique within its calendar. */
     externalId: text("external_id"),
+    /** For an imported occurrence of a repeating event: the series' id at the source. */
+    externalSeriesId: text("external_series_id"),
+    /** For an imported event: where to open it at the source. */
+    externalUrl: text("external_url"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -78,6 +105,8 @@ export const calendarEventShare = sqliteTable(
     eventId: text("event_id").notNull(),
     userId: text("user_id").notNull(),
     attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
+    /** The recipient's own calendar it shows in; their calendar for shared events when null. */
+    calendarId: text("calendar_id"),
     createdAt: createdAt(),
   },
   (table) => [

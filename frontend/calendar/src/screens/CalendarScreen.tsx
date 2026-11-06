@@ -15,7 +15,6 @@ import { useMediaQuery } from "@mantine/hooks";
 import { MobileMonthView, Schedule, type ScheduleEventData } from "@mantine/schedule";
 import dayjs from "dayjs";
 import type { Occurrence } from "@shared/contract/app/calendar";
-import { useMe } from "@frontend/auth/useMe";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
 import {
   allDaySpan,
@@ -64,7 +63,6 @@ interface Opening {
 
 /** Day, week and month views of the household's calendar. */
 export function CalendarScreen() {
-  const { me } = useMe();
   const narrow = useMediaQuery("(max-width: 48em)");
   const [date, setDate] = useState(() => toDayString(Date.now()));
   // A phone starts on the day, a wider screen on the week.
@@ -75,7 +73,7 @@ export function CalendarScreen() {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
-  const { create, update, stop, remove } = useEventActions();
+  const { create, update, stop, remove, place } = useEventActions();
   const calendars = useCalendars();
   useGoogleAutoSync();
 
@@ -85,8 +83,8 @@ export function CalendarScreen() {
       title: item.title,
       start: new Date(item.startAt),
       end: new Date(item.endAt),
-      // Your own events in their calendar's colour; others' shared with you in one colour.
-      color: item.creatorId === me?.id ? item.color : "sage",
+      // The colour of the calendar it shows in for you, as you set it.
+      color: item.color,
       payload: { eventId: item.eventId, day: toDayString(item.startAt) },
     }),
   );
@@ -255,6 +253,13 @@ export function CalendarScreen() {
           opening?.eventId
             ? async () => {
                 await remove.mutateAsync({ id: opening.eventId! });
+              }
+            : undefined
+        }
+        onPlace={
+          opening?.eventId
+            ? async (calendarId) => {
+                await place.mutateAsync({ id: opening.eventId!, calendarId });
               }
             : undefined
         }
