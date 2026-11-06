@@ -49,11 +49,12 @@ export type ModelCatalog = z.infer<typeof modelCatalogSchema>;
 
 /**
  * The household's own Google OAuth app, which members connect their Google
- * Calendar through. The secret is write-only: reading tells only whether one is set.
+ * Calendar through. The secret is write-only: reading shows only its first few characters.
  */
 export const googleOAuthSettingsSchema = z.object({
   clientId: z.string().nullable(),
-  clientSecretSet: z.boolean(),
+  /** The stored secret's first few characters and asterisks (`GOCSPX-ab****`), or null when none is stored. */
+  clientSecretHint: z.string().nullable(),
   /** The redirect URI to register on the OAuth client in the Google Cloud console. */
   redirectUri: z.string(),
 });

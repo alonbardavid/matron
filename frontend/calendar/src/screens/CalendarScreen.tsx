@@ -30,7 +30,11 @@ import {
   useGoogleAutoSync,
   useOccurrences,
 } from "../useCalendar";
-import { EventModal, type EventSubmit } from "../widgets/EventModal";
+import {
+  EventModal,
+  type EventSubmit,
+  type OpenedOccurrence,
+} from "../widgets/EventModal";
 import classes from "./CalendarScreen.module.css";
 
 type View = "day" | "week" | "month" | "year";
@@ -57,7 +61,7 @@ function dateLabel(date: string, view: View): string {
 
 interface Opening {
   eventId: string | null;
-  occurrenceDay: string | null;
+  occurrence: OpenedOccurrence | null;
   initial: { allDay: boolean; startAt: number; endAt: number } | null;
 }
 
@@ -73,7 +77,8 @@ export function CalendarScreen() {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
-  const { create, update, stop, remove, place } = useEventActions();
+  const { create, update, stop, remove, place, editOccurrence, cancelOccurrence } =
+    useEventActions();
   const calendars = useCalendars();
   useGoogleAutoSync();
 
@@ -85,16 +90,32 @@ export function CalendarScreen() {
       end: new Date(item.endAt),
       // The colour of the calendar it shows in for you, as you set it.
       color: item.color,
-      payload: { eventId: item.eventId, day: toDayString(item.startAt) },
+      payload: {
+        eventId: item.eventId,
+        occurrence:
+          item.originalStartAt === null
+            ? null
+            : {
+                originalStartAt: item.originalStartAt,
+                startAt: item.startAt,
+                endAt: item.endAt,
+                title: item.title,
+              },
+      },
     }),
   );
 
   const openNew = (initial: Opening["initial"]) =>
-    setOpening({ eventId: null, occurrenceDay: null, initial });
+    setOpening({ eventId: null, occurrence: null, initial });
   const openEvent = (item: ScheduleEventData) => {
-    const payload = item.payload as { eventId: string; day: string } | undefined;
+    const payload = item.payload as
+      { eventId: string; occurrence: OpenedOccurrence | null } | undefined;
     if (payload)
-      setOpening({ eventId: payload.eventId, occurrenceDay: payload.day, initial: null });
+      setOpening({
+        eventId: payload.eventId,
+        occurrence: payload.occurrence,
+        initial: null,
+      });
   };
   const openNextHour = () =>
     openNew({
@@ -247,7 +268,28 @@ export function CalendarScreen() {
         loading={opening?.eventId ? event.isLoading : false}
         initial={opening?.initial ?? null}
         calendars={calendars.data ?? []}
-        occurrenceDay={opening?.occurrenceDay ?? null}
+        occurrence={opening?.occurrence ?? null}
+        onEditOccurrence={
+          opening?.eventId
+            ? async (originalStartAt, changes) => {
+                await editOccurrence.mutateAsync({
+                  id: opening.eventId!,
+                  originalStartAt,
+                  ...changes,
+                });
+              }
+            : undefined
+        }
+        onCancelOccurrence={
+          opening?.eventId
+            ? async (originalStartAt) => {
+                await cancelOccurrence.mutateAsync({
+                  id: opening.eventId!,
+                  originalStartAt,
+                });
+              }
+            : undefined
+        }
         onSave={save}
         onRemove={
           opening?.eventId

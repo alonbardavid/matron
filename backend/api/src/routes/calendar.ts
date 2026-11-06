@@ -1,5 +1,7 @@
 import {
+  cancelOccurrence,
   createEvent,
+  editOccurrence,
   getEvent,
   listOccurrences,
   placeEvent,
@@ -43,6 +45,13 @@ export const calendar = app.calendar.router({
     await removeEvent(context.principal, input.id);
     return { ok: true as const };
   }),
+  editOccurrence: app.calendar.editOccurrence.handler(
+    ({ context, input: { id, originalStartAt, ...changes } }) =>
+      editOccurrence(context.principal, id, originalStartAt, changes),
+  ),
+  cancelOccurrence: app.calendar.cancelOccurrence.handler(({ context, input }) =>
+    cancelOccurrence(context.principal, input.id, input.originalStartAt),
+  ),
   place: app.calendar.place.handler(({ context, input }) =>
     placeEvent(context.principal, input.id, input.calendarId),
   ),

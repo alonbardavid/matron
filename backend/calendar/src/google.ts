@@ -1,21 +1,16 @@
 import { env } from "cloudflare:workers";
-import { and, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { getGoogleOAuthApp } from "@backend/arch-settings/service";
-import {
-  base64url,
-  decryptText,
-  encryptText,
-  fromBase64url,
-  hmacSign,
-  hmacVerify,
-} from "@backend/commons/crypto";
+import { base64url, fromBase64url, hmacSign, hmacVerify } from "@backend/commons/crypto";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
+import { decryptSecret, encryptSecret } from "@backend/commons/secrets";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import {
   calendarEvent,
+  calendarEventException,
   calendarEventShare,
   googleCalendarConnection,
 } from "@backend/db-models/calendar";
@@ -40,19 +35,20 @@ import {
   GoogleUnauthorizedError,
   listCalendars as listGoogleCalendarsAt,
   listEvents,
+  listInstances,
   refreshAccessToken,
   revokeToken,
   type GoogleEvent,
   type GoogleOAuthApp,
 } from "./google-api";
 import { calendarPermissions } from "./permissions";
-import { fromWallClock } from "./recurrence";
+import { canonicalRule, expandSeries, fromWallClock } from "./recurrence";
 
 const log = logger("calendar/google");
 
 type ConnectionRow = typeof googleCalendarConnection.$inferSelect;
 
-/** The key derivation label the stored tokens are sealed under. */
+/** The purpose the stored tokens are sealed for, under SECRETS_KEY. */
 const TOKEN_PURPOSE = "google-calendar-token";
 const STATE_PURPOSE = "google-oauth-state";
 const STATE_TTL_MS = 10 * 60_000;
@@ -147,9 +143,7 @@ export async function finishGoogleConnect(
   const existing = await connectionOf(principal.userId);
   const refreshToken =
     tokens.refreshToken ??
-    (existing
-      ? await decryptText(signingKey(), TOKEN_PURPOSE, existing.refreshToken)
-      : null);
+    (existing ? await decryptSecret(TOKEN_PURPOSE, existing.refreshToken) : null);
   if (!refreshToken) return back("failed");
   const googleEmail = await fetchAccountEmail(tokens.accessToken);
   if (existing && existing.googleEmail !== googleEmail) {
@@ -160,8 +154,8 @@ export async function finishGoogleConnect(
   }
   const sealed = {
     googleEmail,
-    refreshToken: await encryptText(signingKey(), TOKEN_PURPOSE, refreshToken),
-    accessToken: await encryptText(signingKey(), TOKEN_PURPOSE, tokens.accessToken),
+    refreshToken: await encryptSecret(TOKEN_PURPOSE, refreshToken),
+    accessToken: await encryptSecret(TOKEN_PURPOSE, tokens.accessToken),
     accessTokenExpiresAt: new Date(tokens.expiresAt),
     status: "active" as const,
     lastError: null,
@@ -280,11 +274,9 @@ export async function disconnectGoogle(
       .where(eq(googleCalendarConnection.id, row.id));
     // Only main revokes: a branch's copy of the grant is production's too.
     if (branch === MAIN_BRANCH) {
-      const token = await decryptText(
-        signingKey(),
-        TOKEN_PURPOSE,
-        row.refreshToken,
-      ).catch(() => null);
+      const token = await decryptSecret(TOKEN_PURPOSE, row.refreshToken).catch(
+        () => null,
+      );
       if (token) await revokeToken(token);
     }
   }
@@ -317,7 +309,11 @@ async function syncConnection(row: ConnectionRow, app: GoogleOAuthApp): Promise<
       const { timeZone, events } = await withAccess(row, app, (token) =>
         listEvents(token, cal.externalId!, from, to),
       );
-      await mirrorCalendar(cal, timeZone, events, from, to);
+      await mirrorCalendar(cal, timeZone, events, from, to, (eventId) =>
+        withAccess(row, app, (token) =>
+          listInstances(token, cal.externalId!, eventId, from, to),
+        ),
+      );
     } catch (err) {
       if (err instanceof GoogleGrantError) {
         status = "needs_reconnect";
@@ -343,10 +339,32 @@ async function syncConnection(row: ConnectionRow, app: GoogleOAuthApp): Promise<
     .where(eq(googleCalendarConnection.id, row.id));
 }
 
+type EventValues = NonNullable<ReturnType<typeof eventValues>>;
+
+interface ImportedRow {
+  externalId: string;
+  values: EventValues & { rrule: string | null; externalSeriesId: string | null };
+}
+
+interface ImportedException {
+  originalStartAt: number;
+  cancelled: boolean;
+  title: string | null;
+  description: string | null;
+  startAt: Date | null;
+  endAt: Date | null;
+  externalId: string | null;
+}
+
 /**
- * Writes the calendar's events in [from, to) over what was imported before:
- * new ones added, changed ones updated in place (keeping who they are shared
- * with), and ones gone from Google removed.
+ * Writes the calendar's events in [from, to) over what was imported before.
+ * A repeating Google event becomes a series here, its RRULE as is, with its
+ * changed and cancelled instances (and EXDATEs) as exceptions. A series
+ * Matron cannot expand itself (RDATE, EXRULE, a rule it rejects) comes as
+ * Google's own instances instead. New events are added, changed ones updated
+ * in place (keeping who they are shared with), and ones gone from Google
+ * removed: a single event when it overlaps the window, a series when it would
+ * occur in it.
  */
 async function mirrorCalendar(
   cal: CalendarRow,
@@ -354,50 +372,265 @@ async function mirrorCalendar(
   events: GoogleEvent[],
   from: number,
   to: number,
+  instancesOf: (eventId: string) => Promise<GoogleEvent[]>,
 ): Promise<void> {
   const db = getDb();
-  const seen = new Set<string>();
-  const writes: BatchItem<"sqlite">[] = [];
+  const rows = new Map<string, ImportedRow>();
+  const exceptions = new Map<string, ImportedException[]>();
+  const changedInstances = new Map<string, GoogleEvent[]>();
   for (const event of events) {
-    const values = eventValues(event, calendarTimeZone);
-    if (!values || seen.has(event.id)) continue;
-    seen.add(event.id);
-    writes.push(
-      db
-        .insert(calendarEvent)
-        .values({
-          id: newEntityId("CALENDAR_EVENT"),
-          creatorId: cal.ownerId,
-          calendarId: cal.id,
-          externalId: event.id,
-          ...values,
-        })
-        .onConflictDoUpdate({
-          target: [calendarEvent.calendarId, calendarEvent.externalId],
-          set: { ...values, updatedAt: new Date() },
-        }),
-    );
+    if (event.recurringEventId) {
+      const list = changedInstances.get(event.recurringEventId) ?? [];
+      list.push(event);
+      changedInstances.set(event.recurringEventId, list);
+    }
   }
+  const addSingle = (event: GoogleEvent, seriesId: string | null) => {
+    const values = eventValues(event, calendarTimeZone);
+    if (values && !rows.has(event.id)) {
+      rows.set(event.id, {
+        externalId: event.id,
+        values: { ...values, rrule: null, externalSeriesId: seriesId },
+      });
+    }
+  };
+
+  for (const event of events) {
+    if (event.recurringEventId) continue;
+    if (!event.recurrence?.length) {
+      addSingle(event, null);
+      continue;
+    }
+    const values = eventValues(event, calendarTimeZone);
+    if (!values) continue;
+    const rule = seriesRule(event.recurrence, values.timeZone, values.allDay);
+    if (rule) {
+      rows.set(event.id, {
+        externalId: event.id,
+        values: { ...values, rrule: rule.rrule, externalSeriesId: null },
+      });
+      exceptions.set(event.id, [
+        ...rule.exdates.map((at) => cancelledAt(at)),
+        ...(changedInstances.get(event.id) ?? []).flatMap((instance) =>
+          exceptionOf(instance, values.timeZone, calendarTimeZone),
+        ),
+      ]);
+    } else {
+      for (const instance of await instancesOf(event.id)) {
+        if (instance.status !== "cancelled") addSingle(instance, event.id);
+      }
+    }
+    changedInstances.delete(event.id);
+  }
+  // Changed instances of a series Google did not send: shown as they are.
+  for (const [seriesId, list] of changedInstances) {
+    for (const instance of list) {
+      if (instance.status !== "cancelled") addSingle(instance, seriesId);
+    }
+  }
+
+  const writes: BatchItem<"sqlite">[] = [...rows.values()].map(({ externalId, values }) =>
+    db
+      .insert(calendarEvent)
+      .values({
+        id: newEntityId("CALENDAR_EVENT"),
+        creatorId: cal.ownerId,
+        calendarId: cal.id,
+        externalId,
+        ...values,
+      })
+      .onConflictDoUpdate({
+        target: [calendarEvent.calendarId, calendarEvent.externalId],
+        set: { ...values, updatedAt: new Date() },
+      }),
+  );
   for (const chunk of chunks(writes, WRITE_CHUNK))
     await db.batch(chunk as [BatchItem<"sqlite">]);
 
   const present = await db
-    .select({ id: calendarEvent.id, externalId: calendarEvent.externalId })
+    .select({
+      id: calendarEvent.id,
+      externalId: calendarEvent.externalId,
+      rrule: calendarEvent.rrule,
+      startAt: calendarEvent.startAt,
+      endAt: calendarEvent.endAt,
+      timeZone: calendarEvent.timeZone,
+    })
     .from(calendarEvent)
     .where(
-      and(
-        eq(calendarEvent.calendarId, cal.id),
-        lt(calendarEvent.startAt, new Date(to)),
-        gt(calendarEvent.endAt, new Date(from)),
-      ),
+      and(eq(calendarEvent.calendarId, cal.id), lt(calendarEvent.startAt, new Date(to))),
     );
-  const gone = present.filter((e) => !seen.has(e.externalId ?? "")).map((e) => e.id);
+
+  // Each series' exceptions in the window are what Google sent this time.
+  for (const event of present) {
+    const imported = event.externalId ? exceptions.get(event.externalId) : undefined;
+    if (!imported || !event.rrule) continue;
+    await mirrorExceptions(event.id, imported, from, to);
+  }
+
+  const gone = present
+    .filter((event) => !rows.has(event.externalId ?? ""))
+    .filter((event) =>
+      event.rrule
+        ? expandSeries(
+            {
+              startAt: event.startAt.getTime(),
+              endAt: event.endAt.getTime(),
+              timeZone: event.timeZone,
+              rule: event.rrule,
+            },
+            [],
+            from,
+            to,
+          ).length > 0
+        : event.endAt.getTime() > from,
+    )
+    .map((event) => event.id);
   for (const ids of chunks(gone, ID_CHUNK)) {
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
+      db
+        .delete(calendarEventException)
+        .where(inArray(calendarEventException.eventId, ids)),
       db.delete(calendarEvent).where(inArray(calendarEvent.id, ids)),
     ]);
   }
+}
+
+/** Replaces a series' exceptions due in [from, to) with those Google sent; ones outside stay. */
+async function mirrorExceptions(
+  eventId: string,
+  imported: ImportedException[],
+  from: number,
+  to: number,
+): Promise<void> {
+  const db = getDb();
+  const keep = new Set(imported.map((e) => e.originalStartAt));
+  const existing = await db
+    .select({ id: calendarEventException.id, at: calendarEventException.originalStartAt })
+    .from(calendarEventException)
+    .where(
+      and(
+        eq(calendarEventException.eventId, eventId),
+        gte(calendarEventException.originalStartAt, new Date(from)),
+        lt(calendarEventException.originalStartAt, new Date(to)),
+      ),
+    );
+  const stale = existing.filter((e) => !keep.has(e.at.getTime())).map((e) => e.id);
+  const writes: BatchItem<"sqlite">[] = imported.map(({ originalStartAt, ...values }) =>
+    db
+      .insert(calendarEventException)
+      .values({
+        id: newEntityId("CALENDAR_EVENT_EXCEPTION"),
+        eventId,
+        originalStartAt: new Date(originalStartAt),
+        ...values,
+      })
+      .onConflictDoUpdate({
+        target: [calendarEventException.eventId, calendarEventException.originalStartAt],
+        set: { ...values, updatedAt: new Date() },
+      }),
+  );
+  for (const ids of chunks(stale, ID_CHUNK)) {
+    writes.push(
+      db.delete(calendarEventException).where(inArray(calendarEventException.id, ids)),
+    );
+  }
+  for (const chunk of chunks(writes, WRITE_CHUNK))
+    await db.batch(chunk as [BatchItem<"sqlite">]);
+}
+
+/**
+ * A Google series' iCalendar lines as Matron's: its one RRULE, stored as is,
+ * and its EXDATEs as instants. Null when Matron cannot expand it the same way
+ * (an RDATE, an EXRULE, several rules, a rule it rejects).
+ */
+function seriesRule(
+  lines: string[],
+  timeZone: string,
+  allDay: boolean,
+): { rrule: string; exdates: number[] } | null {
+  const rules = lines.filter((line) => /^RRULE:/i.test(line));
+  const other = lines.filter((line) => !/^(RRULE:|EXDATE[;:])/i.test(line));
+  if (rules.length !== 1 || other.length > 0) return null;
+  let rrule: string;
+  try {
+    rrule = canonicalRule(rules[0]!, timeZone, allDay);
+  } catch {
+    return null;
+  }
+  const exdates = lines
+    .filter((line) => /^EXDATE[;:]/i.test(line))
+    .flatMap((line) => dateList(line, timeZone));
+  return { rrule, exdates };
+}
+
+/**
+ * The instants an iCalendar date list names: `EXDATE;TZID=Europe/London:20261110T090000,...`,
+ * `EXDATE;VALUE=DATE:20261110` (midnight in the zone) or `EXDATE:20261110T090000Z`.
+ */
+export function dateList(line: string, timeZone: string): number[] {
+  const colon = line.indexOf(":");
+  const params = line.slice(0, colon);
+  const zone = /TZID=([^;:]+)/i.exec(params)?.[1] ?? timeZone;
+  return line
+    .slice(colon + 1)
+    .split(",")
+    .map((value) => {
+      const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(
+        value.trim(),
+      );
+      if (!m) return NaN;
+      const [, y, mo, d, h, mi, se, z] = m;
+      if (!h) return midnight(`${y}-${mo}-${d}`, timeZone);
+      if (z) return Date.UTC(+y!, +mo! - 1, +d!, +h, +mi!, +se!);
+      return fromWallClock(
+        { year: +y!, month: +mo!, day: +d!, hour: +h, minute: +mi!, second: +se! },
+        zone,
+      );
+    })
+    .filter(Number.isFinite);
+}
+
+function cancelledAt(originalStartAt: number): ImportedException {
+  return {
+    originalStartAt,
+    cancelled: true,
+    title: null,
+    description: null,
+    startAt: null,
+    endAt: null,
+    externalId: null,
+  };
+}
+
+/** A changed or cancelled Google instance as an exception of its series. */
+function exceptionOf(
+  instance: GoogleEvent,
+  seriesTimeZone: string,
+  calendarTimeZone: string | null,
+): ImportedException[] {
+  const original = instance.originalStartTime;
+  const originalStartAt = original?.date
+    ? midnight(original.date, original.timeZone ?? seriesTimeZone)
+    : original?.dateTime
+      ? Date.parse(original.dateTime)
+      : NaN;
+  if (!Number.isFinite(originalStartAt)) return [];
+  if (instance.status === "cancelled") return [cancelledAt(originalStartAt)];
+  const values = eventValues(instance, calendarTimeZone);
+  if (!values) return [];
+  return [
+    {
+      originalStartAt,
+      cancelled: false,
+      title: values.title,
+      description: values.description,
+      startAt: values.startAt,
+      endAt: values.endAt,
+      externalId: instance.id,
+    },
+  ];
 }
 
 /** A Google event as Matron's columns, or null for one to skip (cancelled, or without times). */
@@ -434,12 +667,7 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
     startAt: new Date(startAt),
     endAt: new Date(endAt),
     timeZone,
-    externalSeriesId: event.recurringEventId ?? null,
     externalUrl: event.htmlLink?.startsWith("https://") ? event.htmlLink : null,
-    recurrenceFrequency: null,
-    recurrenceDays: null,
-    recurrenceUntil: null,
-    recurrenceCount: null,
   };
 }
 
@@ -462,7 +690,7 @@ async function withAccess<T>(
 ): Promise<T> {
   let token =
     row.accessToken && (row.accessTokenExpiresAt?.getTime() ?? 0) > Date.now()
-      ? await decryptText(signingKey(), TOKEN_PURPOSE, row.accessToken).catch(() => null)
+      ? await decryptSecret(TOKEN_PURPOSE, row.accessToken).catch(() => null)
       : null;
   let refreshed = false;
   if (!token) {
@@ -480,12 +708,12 @@ async function withAccess<T>(
 async function refresh(row: ConnectionRow, app: GoogleOAuthApp): Promise<string> {
   let refreshToken: string;
   try {
-    refreshToken = await decryptText(signingKey(), TOKEN_PURPOSE, row.refreshToken);
+    refreshToken = await decryptSecret(TOKEN_PURPOSE, row.refreshToken);
   } catch {
     throw new GoogleGrantError("The stored connection cannot be read; connect again");
   }
   const tokens = await refreshAccessToken(app, refreshToken);
-  const accessToken = await encryptText(signingKey(), TOKEN_PURPOSE, tokens.accessToken);
+  const accessToken = await encryptSecret(TOKEN_PURPOSE, tokens.accessToken);
   const expiresAt = new Date(tokens.expiresAt);
   await getDb()
     .update(googleCalendarConnection)

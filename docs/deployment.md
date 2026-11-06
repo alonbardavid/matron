@@ -43,7 +43,7 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    `registry.cloudflare.com/<account>/matron-builder@sha256:<digest>`.
 6. Writes `apps/backend/dist/worker/wrangler.generated.production.json`.
 7. Applies pending D1 migrations to the production database.
-8. Lists the Worker's secrets; generates `BETTER_AUTH_SECRET` and `SIGNING_KEY` when missing.
+8. Lists the Worker's secrets; generates `BETTER_AUTH_SECRET`, `SIGNING_KEY` and `SECRETS_KEY` (as `v1-<hex>`) when missing.
 9. `wrangler deploy` with a temporary `--secrets-file` (deleted afterwards).
 10. Creates the Artifacts repository `matron/matron` if missing, mints a one-hour write token and
     runs `git push --all` and `git push --tags` to it (the token travels in git's config env).
@@ -66,7 +66,7 @@ Flags (`pnpm run deploy --name home`):
 
 | What                                                                              | Where                                                                                                               |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`                       | Worker secrets (never in config; printed nowhere)                                                                   |
+| `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`, `SECRETS_KEY`        | Worker secrets (never in config; printed nowhere)                                                                   |
 | `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; everything else is derived from `WORKER_NAME` (`backend/commons/src/names.ts`) |
 | Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)               |
 | Users, branches, sessions, tasks, events                                          | Production D1 `<name>`                                                                                              |

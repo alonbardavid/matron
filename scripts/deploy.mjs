@@ -525,6 +525,12 @@ let firstDeploy = false;
     if (!existing.includes(generated))
       secrets[generated] = randomBytes(32).toString("hex");
   }
+  // Encrypts secrets kept in the database. The value starts with its version,
+  // and every value it seals starts with the same, so a rotation can tell
+  // which key each value needs.
+  if (!existing.includes("SECRETS_KEY")) {
+    secrets.SECRETS_KEY = `v1-${randomBytes(32).toString("hex")}`;
+  }
   writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
   console.log(`  setting: ${Object.keys(secrets).join(", ") || "nothing new"}`);
   if (hasApiToken) {

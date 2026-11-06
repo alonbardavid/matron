@@ -3,11 +3,9 @@ import {
   Anchor,
   Badge,
   Button,
-  Chip,
   Group,
   Loader,
   Modal,
-  NumberInput,
   SegmentedControl,
   Select,
   Stack,
@@ -18,11 +16,17 @@ import {
 } from "@mantine/core";
 import { DateInput, DateTimePicker } from "@mantine/dates";
 import dayjs from "dayjs";
-import type { Calendar, CalendarEvent, Recurrence } from "@shared/contract/app/calendar";
+import type {
+  Calendar,
+  CalendarEvent,
+  OccurrenceUpdate,
+} from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { describeRule } from "../rrule";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
+import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
 export interface EventDraft {
@@ -32,11 +36,8 @@ export interface EventDraft {
   /** `YYYY-MM-DD` when all day, `YYYY-MM-DD HH:mm:ss` otherwise. */
   start: string;
   end: string;
-  repeat: "none" | "weekly" | "monthly";
-  days: number[];
-  ends: "never" | "on" | "after";
-  until: string | null;
-  count: number;
+  /** The iCalendar RRULE, or null for a single event. */
+  rrule: string | null;
   sharedWith: string[];
   attendees: string[];
   /** One of the creator's Matron calendars; null for their default. */
@@ -49,10 +50,18 @@ export interface EventSubmit {
   allDay: boolean;
   startAt: number;
   endAt: number;
-  recurrence: Recurrence | null;
+  rrule: string | null;
   sharedWith: string[];
   attendees: string[];
   calendarId?: string;
+}
+
+/** The occurrence of a series that was opened. */
+export interface OpenedOccurrence {
+  originalStartAt: number;
+  startAt: number;
+  endAt: number;
+  title: string;
 }
 
 interface EventModalProps {
@@ -65,36 +74,43 @@ interface EventModalProps {
   initial?: { allDay: boolean; startAt: number; endAt: number } | null;
   /** The caller's own calendars, to pick where the event goes. */
   calendars?: Calendar[];
-  /** The occurrence that was opened, for "stop repeating from here". */
-  occurrenceDay?: string | null;
+  /** The occurrence of a series that was opened: it alone can be changed or removed. */
+  occurrence?: OpenedOccurrence | null;
   onSave: (values: EventSubmit) => Promise<void>;
   onRemove?: () => Promise<void>;
   onStop?: (fromDay: string) => Promise<void>;
+  onEditOccurrence?: (
+    originalStartAt: number,
+    changes: OccurrenceUpdate,
+  ) => Promise<void>;
+  onCancelOccurrence?: (originalStartAt: number) => Promise<void>;
   /** For an event someone shared with the caller: which of their calendars it shows in. */
   onPlace?: (calendarId: string) => Promise<void>;
 }
 
-const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+/** "one": the opened occurrence alone; "all": the whole series. */
+type Scope = "one" | "all";
 
 function draftOf(
   event: CalendarEvent | null,
   initial: EventModalProps["initial"],
+  occurrence: OpenedOccurrence | null,
 ): EventDraft {
   const allDay = event?.allDay ?? initial?.allDay ?? false;
-  const startAt = event?.startAt ?? initial?.startAt ?? Date.now();
-  const endAt = event?.endAt ?? initial?.endAt ?? startAt + 60 * 60_000;
-  const recurrence = event?.recurrence ?? null;
+  // One occurrence shows its own times and title, its description if changed.
+  const own = occurrence
+    ? event?.exceptions.find((e) => e.originalStartAt === occurrence.originalStartAt)
+    : undefined;
+  const startAt = occurrence?.startAt ?? event?.startAt ?? initial?.startAt ?? Date.now();
+  const endAt =
+    occurrence?.endAt ?? event?.endAt ?? initial?.endAt ?? startAt + 60 * 60_000;
   return {
-    title: event?.title ?? "",
-    description: event?.description ?? "",
+    title: occurrence?.title ?? event?.title ?? "",
+    description: own?.description ?? event?.description ?? "",
     allDay,
     start: allDay ? toDayString(startAt) : toDateTimeString(startAt),
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
-    repeat: recurrence?.frequency ?? "none",
-    days: recurrence?.days ?? [dayjs(startAt).day()],
-    ends: recurrence?.until ? "on" : recurrence?.count ? "after" : "never",
-    until: recurrence?.until ?? null,
-    count: recurrence?.count ?? 10,
+    rrule: event?.rrule ?? null,
     sharedWith: event?.sharedWith ?? [],
     attendees: event?.attendees ?? [],
     calendarId: event?.calendarId ?? null,
@@ -109,22 +125,34 @@ export function EventModal({
   loading = false,
   initial = null,
   calendars = [],
-  occurrenceDay = null,
+  occurrence = null,
   onSave,
   onRemove,
   onStop,
   onPlace,
+  onEditOccurrence,
+  onCancelOccurrence,
 }: EventModalProps) {
   const { me } = useMe();
-  const [draft, setDraft] = useState<EventDraft>(() => draftOf(event, initial));
+  const [scope, setScope] = useState<Scope>("all");
+  const [draft, setDraft] = useState<EventDraft>(() => draftOf(event, initial, null));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // An occurrence of a series opens on itself; anything else on the whole event.
+  const series = Boolean(event?.rrule && occurrence);
   useEffect(() => {
     if (opened && !loading) {
-      setDraft(draftOf(event, initial));
+      const start: Scope = event?.rrule && occurrence ? "one" : "all";
+      setScope(start);
+      setDraft(draftOf(event, initial, start === "one" ? occurrence : null));
       setError(null);
     }
-  }, [opened, loading, event, initial]);
+  }, [opened, loading, event, initial, occurrence]);
+  const changeScope = (next: Scope) => {
+    setScope(next);
+    setDraft(draftOf(event, initial, next === "one" ? occurrence : null));
+  };
+  const one = scope === "one" && series;
 
   const creatorId = event?.creatorId ?? me?.id ?? "";
   const mine = !event || event.creatorId === me?.id || me?.role === "owner";
@@ -179,24 +207,24 @@ export function EventModal({
       setError("The event must end after it starts");
       return;
     }
-    const recurrence: Recurrence | null =
-      draft.repeat === "none"
-        ? null
-        : {
-            frequency: draft.repeat,
-            days: draft.days.length ? draft.days : [dayjs(span.startAt).date()],
-            until: draft.ends === "on" ? draft.until : null,
-            count: draft.ends === "after" ? draft.count : null,
-          };
     setSaving(true);
     setError(null);
     try {
+      if (one && occurrence && onEditOccurrence) {
+        await onEditOccurrence(occurrence.originalStartAt, {
+          title: draft.title.trim(),
+          description: draft.description.trim(),
+          ...span,
+        });
+        onClose();
+        return;
+      }
       await onSave({
         title: draft.title.trim(),
         description: draft.description.trim(),
         allDay: draft.allDay,
         ...span,
-        recurrence,
+        rrule: draft.rrule,
         sharedWith: draft.sharedWith,
         attendees: draft.attendees,
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
@@ -209,10 +237,10 @@ export function EventModal({
     }
   };
 
-  const dayChips =
-    draft.repeat === "weekly"
-      ? WEEKDAYS.map((label, index) => ({ value: index, label }))
-      : Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: String(i + 1) }));
+  const startForRule = draft.allDay
+    ? dayjs(draft.start).valueOf()
+    : fromDateTimeString(draft.start);
+  const editable = !imported && !readOnly;
 
   return (
     <Modal
@@ -251,7 +279,10 @@ export function EventModal({
                   : imported
                     ? "From Google Calendar: change it there. Here you can share it."
                     : "Shared with you."}
-                {imported && event.repeatsAtSource && " It repeats in Google Calendar."}
+                {imported &&
+                  (event.rrule
+                    ? ` ${describeRule(event.rrule)}.`
+                    : event.repeatsAtSource && " It repeats in Google Calendar.")}
               </Text>
               {event.externalUrl && (
                 <Anchor href={event.externalUrl} target="_blank" size="sm">
@@ -272,6 +303,18 @@ export function EventModal({
               maw={280}
             />
           )}
+          {series && editable && (
+            <SegmentedControl
+              value={scope}
+              onChange={(value) => changeScope(value as Scope)}
+              data={[
+                { value: "one", label: "This event" },
+                { value: "all", label: "All events" },
+              ]}
+              w="fit-content"
+              aria-label="Change"
+            />
+          )}
           <fieldset
             disabled={imported || readOnly}
             style={{ border: 0, padding: 0, margin: 0 }}
@@ -283,7 +326,7 @@ export function EventModal({
                 onChange={(e) => set("title", e.currentTarget.value)}
                 data-autofocus
               />
-              {pickCalendar && (
+              {pickCalendar && !one && (
                 <Select
                   label="Calendar"
                   data={writable.map((c) => ({ value: c.id, label: c.name }))}
@@ -293,11 +336,13 @@ export function EventModal({
                   maw={280}
                 />
               )}
-              <Switch
-                label="All day"
-                checked={draft.allDay}
-                onChange={(e) => toggleAllDay(e.currentTarget.checked)}
-              />
+              {!one && (
+                <Switch
+                  label="All day"
+                  checked={draft.allDay}
+                  onChange={(e) => toggleAllDay(e.currentTarget.checked)}
+                />
+              )}
               <Group grow align="flex-start">
                 {draft.allDay ? (
                   <>
@@ -339,105 +384,20 @@ export function EventModal({
                 value={draft.description}
                 onChange={(e) => set("description", e.currentTarget.value)}
               />
-              {!imported && (
-                <div>
-                  <Text size="sm" fw={500} mb={4}>
-                    Repeats
-                  </Text>
-                  <SegmentedControl
-                    value={draft.repeat}
-                    onChange={(value) => {
-                      const repeat = value as EventDraft["repeat"];
-                      setDraft((prev) => ({
-                        ...prev,
-                        repeat,
-                        days:
-                          repeat === "weekly"
-                            ? [
-                                dayjs(
-                                  prev.allDay
-                                    ? prev.start
-                                    : fromDateTimeString(prev.start),
-                                ).day(),
-                              ]
-                            : repeat === "monthly"
-                              ? [
-                                  dayjs(
-                                    prev.allDay
-                                      ? prev.start
-                                      : fromDateTimeString(prev.start),
-                                  ).date(),
-                                ]
-                              : prev.days,
-                      }));
-                    }}
-                    data={[
-                      { value: "none", label: "Never" },
-                      { value: "weekly", label: "Weekly" },
-                      { value: "monthly", label: "Monthly" },
-                    ]}
-                  />
-                </div>
-              )}
-              {!imported && draft.repeat !== "none" && (
-                <>
-                  <Chip.Group
-                    multiple
-                    value={draft.days.map(String)}
-                    onChange={(values) =>
-                      set(
-                        "days",
-                        values.map(Number).sort((a, b) => a - b),
-                      )
-                    }
-                  >
-                    <Group gap={4}>
-                      {dayChips.map((chip) => (
-                        <Chip
-                          key={chip.value}
-                          value={String(chip.value)}
-                          size="xs"
-                          radius="xl"
-                        >
-                          {chip.label}
-                        </Chip>
-                      ))}
-                    </Group>
-                  </Chip.Group>
-                  <Group align="flex-end" gap="sm">
-                    <SegmentedControl
-                      value={draft.ends}
-                      onChange={(value) => set("ends", value as EventDraft["ends"])}
-                      data={[
-                        { value: "never", label: "Forever" },
-                        { value: "on", label: "Until a day" },
-                        { value: "after", label: "A number of times" },
-                      ]}
-                    />
-                    {draft.ends === "on" && (
-                      <DateInput
-                        label="Until"
-                        value={draft.until}
-                        onChange={(v) => set("until", v)}
-                        valueFormat="ddd D MMM YYYY"
-                      />
-                    )}
-                    {draft.ends === "after" && (
-                      <NumberInput
-                        label="Times"
-                        min={1}
-                        max={1000}
-                        value={draft.count}
-                        onChange={(v) => set("count", typeof v === "number" ? v : 1)}
-                        w={110}
-                      />
-                    )}
-                  </Group>
-                </>
+              {editable && !one && (
+                <RecurrenceEditor
+                  value={draft.rrule}
+                  onChange={(rule) => set("rrule", rule)}
+                  startAt={startForRule}
+                />
               )}
             </Stack>
           </fieldset>
-          <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0 }}>
+          <fieldset
+            disabled={readOnly}
+            hidden={one}
+            style={{ border: 0, padding: 0, margin: 0 }}
+          >
             <Stack gap="sm">
               {!readOnly && (
                 <PeoplePicker
@@ -477,12 +437,26 @@ export function EventModal({
           )}
           <Group justify="space-between" mt="xs">
             <Group gap="xs">
-              {event && onRemove && mine && !imported && !readOnly && (
+              {one && occurrence && onCancelOccurrence && (
+                <ConfirmButton
+                  variant="subtle"
+                  color="red"
+                  message="Remove this one? The others stay."
+                  confirmLabel="Remove"
+                  onConfirm={async () => {
+                    await onCancelOccurrence(occurrence.originalStartAt);
+                    onClose();
+                  }}
+                >
+                  Remove this one
+                </ConfirmButton>
+              )}
+              {event && onRemove && mine && editable && !one && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
                   message={
-                    event.recurrence
+                    event.rrule
                       ? "Remove this event and every repetition?"
                       : "Remove this event?"
                   }
@@ -495,24 +469,19 @@ export function EventModal({
                   Remove
                 </ConfirmButton>
               )}
-              {event?.recurrence &&
-                onStop &&
-                occurrenceDay &&
-                mine &&
-                !imported &&
-                !readOnly && (
-                  <ConfirmButton
-                    variant="subtle"
-                    message="Stop repeating from this one on? Earlier ones stay."
-                    confirmLabel="Stop repeating"
-                    onConfirm={async () => {
-                      await onStop(occurrenceDay);
-                      onClose();
-                    }}
-                  >
-                    Stop repeating
-                  </ConfirmButton>
-                )}
+              {event?.rrule && onStop && occurrence && mine && editable && (
+                <ConfirmButton
+                  variant="subtle"
+                  message="Stop repeating from this one on? Earlier ones stay."
+                  confirmLabel="Stop repeating"
+                  onConfirm={async () => {
+                    await onStop(toDayString(occurrence.originalStartAt));
+                    onClose();
+                  }}
+                >
+                  Stop repeating
+                </ConfirmButton>
+              )}
             </Group>
             {readOnly ? (
               <Button variant="default" onClick={onClose}>

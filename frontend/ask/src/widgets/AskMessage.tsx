@@ -12,6 +12,8 @@ const TOOL_LABELS: Record<string, string> = {
   get_event: "looking at an event",
   create_event: "adding an event",
   update_event: "updating an event",
+  edit_occurrence: "changing one occurrence",
+  cancel_occurrence: "removing one occurrence",
   stop_recurrence: "stopping a repetition",
   remove_event: "removing an event",
   list_household_members: "checking who is in the household",

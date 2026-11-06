@@ -43,7 +43,16 @@ export function useEventActions() {
       onError: (err) => notifyError(err, "Could not move the event"),
     }),
   );
-  return { create, update, stop, remove, place };
+  const editOccurrence = useMutation(
+    orpc.calendar.editOccurrence.mutationOptions({ onSuccess: refresh }),
+  );
+  const cancelOccurrence = useMutation(
+    orpc.calendar.cancelOccurrence.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not remove the event"),
+    }),
+  );
+  return { create, update, stop, remove, place, editOccurrence, cancelOccurrence };
 }
 
 /** The caller's own calendars. */

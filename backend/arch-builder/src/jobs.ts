@@ -46,6 +46,7 @@ async function jobCommon(
       aiGateway: AI_GATEWAY,
     },
     signingKey: env.SIGNING_KEY,
+    secretsKey: env.SECRETS_KEY,
     request,
     builderImage: env.BUILDER_IMAGE || undefined,
   };

@@ -1,8 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createdAt, timestamp, updatedAt } from "./columns";
 
-export const RECURRENCE_FREQUENCIES = ["weekly", "monthly"] as const;
-export type RecurrenceFrequency = (typeof RECURRENCE_FREQUENCIES)[number];
 
 /** Where a calendar's events come from: made in Matron, or imported from the owner's Google Calendar. */
 export const CALENDAR_SOURCES = ["matron", "google"] as const;
@@ -72,12 +70,12 @@ export const calendarEvent = sqliteTable(
     startAt: timestamp("start_at").notNull(),
     endAt: timestamp("end_at").notNull(),
     timeZone: text("time_zone").notNull(),
-    recurrenceFrequency: text("recurrence_frequency", { enum: RECURRENCE_FREQUENCIES }),
-    /** JSON array of weekdays (0 Sunday to 6 Saturday) or days of the month. */
-    recurrenceDays: text("recurrence_days"),
-    /** The last day an occurrence may fall on, `YYYY-MM-DD`. */
-    recurrenceUntil: text("recurrence_until"),
-    recurrenceCount: integer("recurrence_count"),
+    /**
+     * For a repeating event: its iCalendar RRULE value (RFC 5545), such as
+     * `FREQ=WEEKLY;BYDAY=TU,TH`. The event's start is the series' DTSTART, in
+     * `time_zone`; UNTIL is a UTC instant, or a day for an all-day series.
+     */
+    rrule: text("rrule"),
     /** The calendar it belongs to, always one of the creator's. */
     calendarId: text("calendar_id").notNull(),
     /** For an imported event: its id at the source, unique within its calendar. */
@@ -111,6 +109,36 @@ export const calendarEventShare = sqliteTable(
   },
   (table) => [
     uniqueIndex("calendar_event_share_event_user").on(table.eventId, table.userId),
+  ],
+);
+
+/**
+ * One occurrence of a repeating event cancelled or changed, keyed by the
+ * instant the series had it due (an iCalendar EXDATE, or a RECURRENCE-ID
+ * override).
+ */
+export const calendarEventException = sqliteTable(
+  "calendar_event_exception",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    originalStartAt: timestamp("original_start_at").notNull(),
+    cancelled: integer("cancelled", { mode: "boolean" }).notNull().default(false),
+    /** What the occurrence changed; null keeps the series' own. */
+    title: text("title"),
+    description: text("description"),
+    startAt: timestamp("start_at"),
+    endAt: timestamp("end_at"),
+    /** For an imported change: the instance's id at the source. */
+    externalId: text("external_id"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_event_exception_event_original").on(
+      table.eventId,
+      table.originalStartAt,
+    ),
   ],
 );
 

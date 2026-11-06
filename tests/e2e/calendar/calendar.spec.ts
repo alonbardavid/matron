@@ -18,7 +18,7 @@ test.describe("calendar", () => {
         startAt: start,
         endAt: start + 60 * 60_000,
         timeZone,
-        recurrence: { frequency: "weekly", days: [1], until: null, count: 4 },
+        rrule: "FREQ=WEEKLY;BYDAY=MO;COUNT=4",
       },
     });
     expect(created.ok()).toBeTruthy();
