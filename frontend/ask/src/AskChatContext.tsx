@@ -6,10 +6,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { FileUIPart } from "ai";
 
-interface PendingMessage {
-  sessionId: string;
+/** What is asked, with the files that go with it. */
+export interface AskInput {
   text: string;
+  files: FileUIPart[];
+}
+
+interface PendingMessage extends AskInput {
+  sessionId: string;
 }
 
 interface AskChatContextValue {
@@ -21,7 +27,7 @@ interface AskChatContextValue {
   open: (sessionId: string) => void;
   /** Opens an empty panel; the conversation is created by the first message. */
   openNew: () => void;
-  openWithMessage: (sessionId: string, text: string) => void;
+  openWithMessage: (sessionId: string, input: AskInput) => void;
   close: () => void;
   clearPending: () => void;
 }
@@ -42,8 +48,8 @@ export function AskChatProvider({ children }: { children: ReactNode }) {
     setSessionId(null);
     setOpened(true);
   }, []);
-  const openWithMessage = useCallback((id: string, text: string) => {
-    setPending({ sessionId: id, text });
+  const openWithMessage = useCallback((id: string, input: AskInput) => {
+    setPending({ sessionId: id, ...input });
     setSessionId(id);
     setOpened(true);
   }, []);
