@@ -91,7 +91,7 @@ Application routes live under `/api/app/`. The household starts with a calendar,
 
 - Calendar: events with a title, an all-day span or a time range, a creator, the users it is shared with and, among those, the attendees (everyone shared with, by default). An event may repeat weekly on chosen weekdays or monthly on chosen days of the month, until a day or for a number of times; stopping a repetition keeps the occurrences before that day. Day, week and month views.
 - Tasks: a title, an optional description, a creator, the users it is shared with and, among those, the assignees. A task may have a due date and can be completed.
-- Conversations: the user's ask sessions and, for builders, their build sessions. An ask session records the branch it was started on and is continued only there: a Preview's database begins as a copy of production, so main's conversations are listed on a branch but cannot be opened, and the Ask button always starts a new one. The chat socket names its branch in the URL, since a socket carries no referer.
+- Conversations: the user's ask sessions. Build sessions are on the Builds page. An ask session records the branch it was started on and is continued only there: a Preview's database begins as a copy of production, so main's conversations are listed on a branch but cannot be opened, and the Ask button always starts a new one. The chat socket names its branch in the URL, since a socket carries no referer.
 - Ask: an assistant on the Agents SDK's Think harness, under the application. Its tools wrap the services the user could use themselves, so the same permissions apply, plus one read-only query on the database: a single SELECT, checked against the tables the user may read (the household's own tables and `user` for everyone; the router's tables for owners and admins only; the `file` table for owners only).
 - Settings: a member changes their name, their picture and password, not their email. A picture is stored as a square JPEG under the branch's `avatars` folder; replacing or removing one deletes the file it replaces when the branch wrote it. Owners and admins manage users (add, remove, change roles) and the app settings: the Anthropic model the planner and builder use, and the assistant's model, which is either an Anthropic model or anything the AI Gateway serves.
 
@@ -154,6 +154,8 @@ The link reloads the page on the new branch.
 ## Branches
 
 The UI has a branch dropdown listing main and the user's open branches. Switching changes which code the router proxies the user to.
+
+The Builds page, for builders, lists every build: the branches, and the build sessions that have no branch yet, newest first, with archived ones on request. Its New build button opens an empty build chat. A session with a branch is listed once, as its branch, whose actions are Chat (its session's chat, for the session's creator and the owner), Try (switch to it), Abandon (the owner, or the builder who started it) and, for the owner, Merge or Update. A session without a branch can be chatted with, archived and cleared.
 
 On a branch, a side banner warns that data changes made here are not kept when the branch is merged. The build chat is open on the branch with the session's context, so the user can continue asking for changes; each continuation wakes the builder from its snapshot, and a new deploy replaces the Preview.
 
