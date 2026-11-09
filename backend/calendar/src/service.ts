@@ -7,6 +7,7 @@ import {
   calendar,
   calendarEvent,
   calendarEventException,
+  calendarEventLabel,
   calendarEventShare,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
@@ -37,6 +38,7 @@ import {
   ruleEndingOn,
   type ExceptionInput,
 } from "./recurrence";
+import { labelsOfEvents, setEventLabels } from "./labels";
 import { eventPermissions } from "./permissions";
 
 const log = logger("calendar/service");
@@ -146,12 +148,16 @@ export async function listOccurrences(
       .where(eq(calendarEventShare.userId, principal.userId)),
   ]);
   const shareOf = new Map(myShares.map((share) => [share.eventId, share]));
-  const exceptions = await exceptionsOf(rows.filter((r) => r.rrule).map((r) => r.id));
+  const [exceptions, labels] = await Promise.all([
+    exceptionsOf(rows.filter((r) => r.rrule).map((r) => r.id)),
+    labelsOfEvents(rows.map((r) => r.id)),
+  ]);
   const out: Occurrence[] = [];
   for (const row of rows) {
     const cal = calendars.get(row.calendarId);
     const placement = placementOf(viewer, row, shareOf.get(row.id));
     if (!placement) continue;
+    const labelIds = labels.get(row.id) ?? [];
     if (!row.rrule) {
       out.push(
         toOccurrence(row, cal, placement, {
@@ -162,6 +168,7 @@ export async function listOccurrences(
           endAt: row.endAt.getTime(),
           recurring: row.externalSeriesId !== null,
           changed: false,
+          labelIds,
         }),
       );
       continue;
@@ -183,6 +190,7 @@ export async function listOccurrences(
           endAt: window.endAt,
           recurring: true,
           changed: window.changed,
+          labelIds,
         }),
       );
     }
@@ -268,6 +276,7 @@ export async function createEvent(
     })
     .returning();
   await writeShares(id, sharedWith, attendees);
+  if (input.labelIds?.length) await setEventLabels(id, input.labelIds);
   log.info("event created", {
     eventId: id,
     calendarId: target.id,
@@ -293,8 +302,13 @@ export async function updateEvent(
     );
   }
   if (current.source !== "matron") {
-    // An imported event is the source's: only who it is shared with is Matron's own.
-    const { sharedWith: _shared, attendees: _attending, ...rest } = changes;
+    // An imported event is the source's: only who it is shared with and its labels are Matron's own.
+    const {
+      sharedWith: _shared,
+      attendees: _attending,
+      labelIds: _labels,
+      ...rest
+    } = changes;
     if (Object.values(rest).some((value) => value !== undefined)) {
       throw new DomainError(
         "BAD_REQUEST",
@@ -350,6 +364,7 @@ export async function updateEvent(
     await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
     await writeShares(id, sharedWith, attendees, placed);
   }
+  if (changes.labelIds !== undefined) await setEventLabels(id, changes.labelIds);
   log.info("event updated", { eventId: id, userId: principal.userId });
   return withShares(principal, row!);
 }
@@ -495,6 +510,7 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
   await db.batch([
     db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
     db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
+    db.delete(calendarEventLabel).where(eq(calendarEventLabel.eventId, id)),
     db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
   ]);
   log.info("event removed", { eventId: id, userId: principal.userId });
@@ -517,11 +533,12 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions] = await Promise.all([
+  const [shares, calendars, viewer, exceptions, labels] = await Promise.all([
     sharesOf([row.id]),
     calendarsById([row.calendarId]),
     viewerOf(principal),
     row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
+    labelsOfEvents([row.id]),
   ]);
   const list = shares.get(row.id) ?? [];
   const placement = placementOf(
@@ -536,6 +553,7 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     calendars.get(row.calendarId),
     placement,
     exceptions.get(row.id) ?? [],
+    labels.get(row.id) ?? [],
   );
 }
 
@@ -667,6 +685,7 @@ function toEvent(
   cal: CalendarRow | undefined,
   placement: Placement,
   exceptions: ExceptionRow[],
+  labelIds: string[],
 ): CalendarEvent {
   return {
     id: row.id,
@@ -684,6 +703,7 @@ function toEvent(
     calendarId: row.calendarId,
     shownIn: placement.shownIn,
     access: placement.access,
+    labelIds,
     source: cal?.source ?? "matron",
     repeatsAtSource: row.externalSeriesId !== null,
     externalUrl: row.externalUrl,
@@ -700,6 +720,7 @@ interface OccurrenceFields {
   endAt: number;
   recurring: boolean;
   changed: boolean;
+  labelIds: string[];
 }
 
 function toOccurrence(

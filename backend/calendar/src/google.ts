@@ -11,6 +11,7 @@ import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import {
   calendarEvent,
   calendarEventException,
+  calendarEventLabel,
   calendarEventShare,
   googleCalendarConnection,
 } from "@backend/db-models/calendar";
@@ -489,6 +490,7 @@ async function mirrorCalendar(
   for (const ids of chunks(gone, ID_CHUNK)) {
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
+      db.delete(calendarEventLabel).where(inArray(calendarEventLabel.eventId, ids)),
       db
         .delete(calendarEventException)
         .where(inArray(calendarEventException.eventId, ids)),

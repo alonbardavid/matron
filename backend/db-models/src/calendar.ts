@@ -1,7 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createdAt, timestamp, updatedAt } from "./columns";
 
-
 /** Where a calendar's events come from: made in Matron, or imported from the owner's Google Calendar. */
 export const CALENDAR_SOURCES = ["matron", "google"] as const;
 export type CalendarSource = (typeof CALENDAR_SOURCES)[number];
@@ -24,7 +23,9 @@ export const calendar = sqliteTable(
     /** The owner's calendar new events go to; one per owner. */
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
     /** Where events others share with the owner show, unless placed elsewhere; one per owner, else the default. */
-    receivesShared: integer("receives_shared", { mode: "boolean" }).notNull().default(false),
+    receivesShared: integer("receives_shared", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -139,6 +140,36 @@ export const calendarEventException = sqliteTable(
       table.eventId,
       table.originalStartAt,
     ),
+  ],
+);
+
+/**
+ * A label the household tags events with, such as "School" or "Medical": a
+ * name and a colour, shared by every member. An event shows its labels as
+ * coloured bars along its side.
+ */
+export const calendarLabel = sqliteTable("calendar_label", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** A CSS hex colour, `#rrggbb`. */
+  color: text("color").notNull(),
+  creatorId: text("creator_id").notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/** A label on an event: on every occurrence of a series. */
+export const calendarEventLabel = sqliteTable(
+  "calendar_event_label",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    labelId: text("label_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_event_label_event_label").on(table.eventId, table.labelId),
+    index("calendar_event_label_label_idx").on(table.labelId),
   ],
 );
 

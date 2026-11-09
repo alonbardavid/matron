@@ -1,0 +1,31 @@
+/*
+ * An event's labels as thin coloured bars down its leading edge, one beside
+ * the next. The event's root is positioned, so the bars span its full height;
+ * the title moves over to make room for them.
+ */
+.labelled > :global(.mantine-ScheduleEvent-eventInner) {
+  padding-inline-start: calc(0.3125rem + var(--label-count, 0) * 0.3125rem);
+}
+
+.bars {
+  position: absolute;
+  inset-block: 0.1875rem;
+  inset-inline-start: 0.1875rem;
+  z-index: 1;
+  display: flex;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.bar {
+  width: 0.25rem;
+  border-radius: 0.125rem;
+}
+
+.inline {
+  display: inline-flex;
+  gap: 1px;
+  align-self: stretch;
+  min-height: 0.875rem;
+  vertical-align: middle;
+}
