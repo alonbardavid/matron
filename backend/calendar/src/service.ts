@@ -15,6 +15,7 @@ import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
 import {
   CALENDAR_COLORS,
+  type Attachment,
   type CalendarEvent,
   type CalendarEventCreate,
   type CalendarEventUpdate,
@@ -39,6 +40,14 @@ import {
   ruleEndingOn,
   type ExceptionInput,
 } from "./recurrence";
+import {
+  attachFile,
+  attachLink,
+  attachmentsOfEvents,
+  detach,
+  dropAttachments,
+  type AttachmentUpload,
+} from "./attachments";
 import { labelsOfEvents, setEventLabels } from "./labels";
 import { eventPermissions } from "./permissions";
 
@@ -167,6 +176,7 @@ export async function listOccurrences(
           id: row.id,
           originalStartAt: null,
           title: row.title,
+          location: row.location,
           startAt: row.startAt.getTime(),
           endAt: row.endAt.getTime(),
           recurring: row.externalSeriesId !== null,
@@ -178,7 +188,7 @@ export async function listOccurrences(
       continue;
     }
     const own = exceptions.get(row.id) ?? [];
-    const titles = new Map(own.map((e) => [e.originalStartAt.getTime(), e.title]));
+    const changedOf = new Map(own.map((e) => [e.originalStartAt.getTime(), e]));
     for (const window of expandSeries(
       seriesOf(row),
       own.map(toExceptionInput),
@@ -189,7 +199,8 @@ export async function listOccurrences(
         toOccurrence(row, cal, placement, {
           id: `${row.id}:${window.originalStartAt}`,
           originalStartAt: window.originalStartAt,
-          title: titles.get(window.originalStartAt) ?? row.title,
+          title: changedOf.get(window.originalStartAt)?.title ?? row.title,
+          location: changedOf.get(window.originalStartAt)?.location ?? row.location,
           startAt: window.startAt,
           endAt: window.endAt,
           recurring: true,
@@ -213,6 +224,48 @@ export async function getEvent(principal: Principal, id: string): Promise<Calend
     .get();
   if (!row) throw new DomainError("NOT_FOUND", "Event not found");
   return withShares(principal, row);
+}
+
+/**
+ * Uploads a file to the event. Whoever may change the event attaches to it,
+ * one imported from Google too: what is attached here is Matron's own.
+ */
+export async function attachFileToEvent(
+  principal: Principal,
+  branch: string,
+  id: string,
+  upload: AttachmentUpload,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "update");
+  requireEditable(await getEvent(principal, id));
+  await attachFile(principal, branch, id, upload);
+  return getEvent(principal, id);
+}
+
+/** Attaches a link to the event, for whoever may change it. */
+export async function attachLinkToEvent(
+  principal: Principal,
+  id: string,
+  url: string,
+  title: string | undefined,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "update");
+  requireEditable(await getEvent(principal, id));
+  await attachLink(principal, id, url, title);
+  return getEvent(principal, id);
+}
+
+/** Removes something attached here, for whoever may change the event. */
+export async function detachFromEvent(
+  principal: Principal,
+  branch: string,
+  id: string,
+  attachmentId: string,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "update");
+  requireEditable(await getEvent(principal, id));
+  await detach(principal, branch, id, attachmentId);
+  return getEvent(principal, id);
 }
 
 /** Hides the event, every occurrence, from the caller's own calendar; or shows it again. Others are unaffected. */
@@ -315,6 +368,7 @@ export async function createEvent(
       id,
       title: input.title,
       description: input.description ?? "",
+      location: input.location ?? "",
       creatorId: principal.userId,
       allDay: input.allDay,
       startAt: new Date(input.startAt),
@@ -381,6 +435,7 @@ export async function updateEvent(
     .set({
       ...(changes.title !== undefined && { title: changes.title }),
       ...(changes.description !== undefined && { description: changes.description }),
+      ...(changes.location !== undefined && { location: changes.location }),
       ...(changes.allDay !== undefined && { allDay: changes.allDay }),
       startAt: new Date(startAt),
       endAt: new Date(endAt),
@@ -442,7 +497,7 @@ export async function stopRecurrence(
   return withShares(principal, row!);
 }
 
-/** Changes one occurrence of a series: its title, description or times. */
+/** Changes one occurrence of a series: its title, description, location or times. */
 export async function editOccurrence(
   principal: Principal,
   id: string,
@@ -459,6 +514,7 @@ export async function editOccurrence(
     cancelled: false,
     title: changes.title ?? existing?.title ?? null,
     description: changes.description ?? existing?.description ?? null,
+    location: changes.location ?? existing?.location ?? null,
     // Kept only when they differ from the series' own times.
     startAt: startAt === originalStartAt ? null : new Date(startAt),
     endAt: endAt === originalStartAt + duration ? null : new Date(endAt),
@@ -485,6 +541,7 @@ export async function cancelOccurrence(
     cancelled: true,
     title: null,
     description: null,
+    location: null,
     startAt: null,
     endAt: null,
     updatedAt: new Date(),
@@ -547,7 +604,12 @@ async function writeException(
     });
 }
 
-export async function removeEvent(principal: Principal, id: string): Promise<void> {
+/** Removes the event; the files uploaded to it go too when the branch is known. */
+export async function removeEvent(
+  principal: Principal,
+  id: string,
+  branch: string | null = null,
+): Promise<void> {
   eventPermissions.require(principal, "remove");
   const current = await getEvent(principal, id);
   requireEditable(current);
@@ -561,8 +623,9 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
     db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
     db.delete(calendarEventLabel).where(eq(calendarEventLabel.eventId, id)),
     db.delete(calendarEventHidden).where(eq(calendarEventHidden.eventId, id)),
-    db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
   ]);
+  await dropAttachments([id], branch);
+  await db.delete(calendarEvent).where(eq(calendarEvent.id, id));
   log.info("event removed", { eventId: id, userId: principal.userId });
 }
 
@@ -583,23 +646,25 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions, labels, hidden] = await Promise.all([
-    sharesOf([row.id]),
-    calendarsById([row.calendarId]),
-    viewerOf(principal),
-    row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
-    labelsOfEvents([row.id]),
-    getDb()
-      .select({ id: calendarEventHidden.id })
-      .from(calendarEventHidden)
-      .where(
-        and(
-          eq(calendarEventHidden.eventId, row.id),
-          eq(calendarEventHidden.userId, principal.userId),
-        ),
-      )
-      .get(),
-  ]);
+  const [shares, calendars, viewer, exceptions, labels, hidden, attachments] =
+    await Promise.all([
+      sharesOf([row.id]),
+      calendarsById([row.calendarId]),
+      viewerOf(principal),
+      row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
+      labelsOfEvents([row.id]),
+      getDb()
+        .select({ id: calendarEventHidden.id })
+        .from(calendarEventHidden)
+        .where(
+          and(
+            eq(calendarEventHidden.eventId, row.id),
+            eq(calendarEventHidden.userId, principal.userId),
+          ),
+        )
+        .get(),
+      attachmentsOfEvents([row.id]),
+    ]);
   const list = shares.get(row.id) ?? [];
   const placement = placementOf(
     viewer,
@@ -607,15 +672,12 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     list.find((share) => share.userId === principal.userId),
   );
   if (!placement) throw new DomainError("NOT_FOUND", "Event not found");
-  return toEvent(
-    row,
-    list,
-    calendars.get(row.calendarId),
-    placement,
-    exceptions.get(row.id) ?? [],
-    labels.get(row.id) ?? [],
-    hidden !== undefined,
-  );
+  return toEvent(row, list, calendars.get(row.calendarId), placement, {
+    exceptions: exceptions.get(row.id) ?? [],
+    labelIds: labels.get(row.id) ?? [],
+    hidden: hidden !== undefined,
+    attachments: attachments.get(row.id) ?? [],
+  });
 }
 
 function checkTimes(startAt: number, endAt: number): void {
@@ -737,6 +799,7 @@ function toException(row: ExceptionRow): OccurrenceException {
     ...toExceptionInput(row),
     title: row.title,
     description: row.description,
+    location: row.location,
   };
 }
 
@@ -745,28 +808,33 @@ function toEvent(
   shares: ShareRow[],
   cal: CalendarRow | undefined,
   placement: Placement,
-  exceptions: ExceptionRow[],
-  labelIds: string[],
-  hidden: boolean,
+  extra: {
+    exceptions: ExceptionRow[];
+    labelIds: string[];
+    hidden: boolean;
+    attachments: Attachment[];
+  },
 ): CalendarEvent {
   return {
     id: row.id,
     title: row.title,
     description: row.description,
+    location: row.location,
+    attachments: extra.attachments,
     creatorId: row.creatorId,
     allDay: row.allDay,
     startAt: row.startAt.getTime(),
     endAt: row.endAt.getTime(),
     timeZone: row.timeZone,
     rrule: row.rrule,
-    exceptions: exceptions.map(toException),
+    exceptions: extra.exceptions.map(toException),
     sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
     attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
     calendarId: row.calendarId,
     shownIn: placement.shownIn,
     access: placement.access,
-    labelIds,
-    hidden,
+    labelIds: extra.labelIds,
+    hidden: extra.hidden,
     source: cal?.source ?? "matron",
     repeatsAtSource: row.externalSeriesId !== null,
     externalUrl: row.externalUrl,
@@ -779,6 +847,7 @@ interface OccurrenceFields {
   id: string;
   originalStartAt: number | null;
   title: string;
+  location: string;
   startAt: number;
   endAt: number;
   recurring: boolean;

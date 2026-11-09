@@ -144,6 +144,8 @@ export interface GoogleEvent {
   summary?: string;
   description?: string;
   location?: string;
+  /** Files attached at Google, such as Drive documents: where to open each. */
+  attachments?: { fileUrl?: string; title?: string; mimeType?: string }[];
   /** On a repeating event: its iCalendar lines, `RRULE:...`, `EXDATE...`, `RDATE...`. */
   recurrence?: string[];
   /** Set on an instance of a repeating event: the series' id. */

@@ -11,6 +11,7 @@ import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import {
   calendarEvent,
   calendarEventException,
+  calendarEventAttachment,
   calendarEventHidden,
   calendarEventLabel,
   calendarEventShare,
@@ -43,6 +44,12 @@ import {
   type GoogleEvent,
   type GoogleOAuthApp,
 } from "./google-api";
+import {
+  importedAttachmentsOf,
+  importedAttachmentWrites,
+  importedLinks,
+  type ImportedAttachment,
+} from "./attachments";
 import { calendarPermissions } from "./permissions";
 import { canonicalRule, expandSeries, fromWallClock } from "./recurrence";
 
@@ -346,6 +353,8 @@ type EventValues = NonNullable<ReturnType<typeof eventValues>>;
 interface ImportedRow {
   externalId: string;
   values: EventValues & { rrule: string | null; externalSeriesId: string | null };
+  /** The event's attachments at Google (Drive files and the like), as links. */
+  attachments: ImportedAttachment[];
 }
 
 interface ImportedException {
@@ -353,6 +362,7 @@ interface ImportedException {
   cancelled: boolean;
   title: string | null;
   description: string | null;
+  location: string | null;
   startAt: Date | null;
   endAt: Date | null;
   externalId: string | null;
@@ -393,6 +403,7 @@ async function mirrorCalendar(
       rows.set(event.id, {
         externalId: event.id,
         values: { ...values, rrule: null, externalSeriesId: seriesId },
+        attachments: attachmentsOf(event),
       });
     }
   };
@@ -410,6 +421,7 @@ async function mirrorCalendar(
       rows.set(event.id, {
         externalId: event.id,
         values: { ...values, rrule: rule.rrule, externalSeriesId: null },
+        attachments: attachmentsOf(event),
       });
       exceptions.set(event.id, [
         ...rule.exdates.map((at) => cancelledAt(at)),
@@ -463,6 +475,22 @@ async function mirrorCalendar(
       and(eq(calendarEvent.calendarId, cal.id), lt(calendarEvent.startAt, new Date(to))),
     );
 
+  // Each imported event's attachments are what Google sent this time; those added
+  // here stay. Only events whose attachments changed are written.
+  const synced = present.flatMap((event) => {
+    const imported = event.externalId ? rows.get(event.externalId) : undefined;
+    return imported ? [{ id: event.id, attachments: imported.attachments }] : [];
+  });
+  const before = await importedAttachmentsOf(synced.map((event) => event.id));
+  const attachmentWrites = synced
+    .filter(
+      (event) =>
+        JSON.stringify(event.attachments) !== JSON.stringify(before.get(event.id) ?? []),
+    )
+    .flatMap((event) => importedAttachmentWrites(event.id, event.attachments));
+  for (const chunk of chunks(attachmentWrites as BatchItem<"sqlite">[], WRITE_CHUNK))
+    await db.batch(chunk as [BatchItem<"sqlite">]);
+
   // Each series' exceptions in the window are what Google sent this time.
   for (const event of present) {
     const imported = event.externalId ? exceptions.get(event.externalId) : undefined;
@@ -492,6 +520,9 @@ async function mirrorCalendar(
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
       db.delete(calendarEventLabel).where(inArray(calendarEventLabel.eventId, ids)),
+      db
+        .delete(calendarEventAttachment)
+        .where(inArray(calendarEventAttachment.eventId, ids)),
       db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, ids)),
       db
         .delete(calendarEventException)
@@ -602,6 +633,7 @@ function cancelledAt(originalStartAt: number): ImportedException {
     cancelled: true,
     title: null,
     description: null,
+    location: null,
     startAt: null,
     endAt: null,
     externalId: null,
@@ -630,6 +662,7 @@ function exceptionOf(
       cancelled: false,
       title: values.title,
       description: values.description,
+      location: values.location,
       startAt: values.startAt,
       endAt: values.endAt,
       externalId: instance.id,
@@ -660,19 +693,33 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
   if (!Number.isFinite(startAt) || !Number.isFinite(endAt)) return null;
   // Matron's events end after they start; Google allows zero-length ones.
   endAt = Math.max(endAt, startAt + 60_000);
-  const location = event.location?.trim();
-  const description = [location && `Location: ${location}`, event.description?.trim()]
-    .filter(Boolean)
-    .join("\n\n");
   return {
     title: (event.summary?.trim() || "(No title)").slice(0, 200),
-    description: description.slice(0, 5000),
+    description: (event.description?.trim() ?? "").slice(0, 5000),
+    location: (event.location?.trim() ?? "").slice(0, 500),
     allDay,
     startAt: new Date(startAt),
     endAt: new Date(endAt),
     timeZone,
     externalUrl: event.htmlLink?.startsWith("https://") ? event.htmlLink : null,
   };
+}
+
+/** A Google event's attachments (Drive files and the like) as links to open at Google. */
+function attachmentsOf(event: GoogleEvent): ImportedAttachment[] {
+  return importedLinks(
+    (event.attachments ?? []).flatMap((item) =>
+      item.fileUrl
+        ? [
+            {
+              url: item.fileUrl,
+              title: item.title ?? "",
+              mimeType: item.mimeType ?? null,
+            },
+          ]
+        : [],
+    ),
+  );
 }
 
 function midnight(day: string, timeZone: string): number {

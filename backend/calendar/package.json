@@ -10,6 +10,7 @@
     "@backend/arch-settings": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
+    "@backend/files": "workspace:*",
     "@shared/contract": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "rrule": "2.8.1",

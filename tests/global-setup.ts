@@ -36,6 +36,7 @@ export default async function globalSetup(): Promise<void> {
     "DELETE FROM calendar_event_exception",
     "DELETE FROM calendar_event_label",
     "DELETE FROM calendar_event_hidden",
+    "DELETE FROM calendar_event_attachment",
     "DELETE FROM calendar_label",
     "DELETE FROM calendar_event",
     "DELETE FROM calendar_share",

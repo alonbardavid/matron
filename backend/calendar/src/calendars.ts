@@ -6,6 +6,7 @@ import type { Principal } from "@backend/commons/principal";
 import {
   calendar,
   calendarEvent,
+  calendarEventAttachment,
   calendarEventHidden,
   calendarEventLabel,
   calendarEventShare,
@@ -329,6 +330,10 @@ export async function deleteCalendars(ids: string[]): Promise<void> {
   await db.batch([
     db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, events)),
     db.delete(calendarEventLabel).where(inArray(calendarEventLabel.eventId, events)),
+    // Files uploaded to these events stay in the bucket, unreferenced.
+    db
+      .delete(calendarEventAttachment)
+      .where(inArray(calendarEventAttachment.eventId, events)),
     db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, events)),
     db
       .update(calendarEventShare)

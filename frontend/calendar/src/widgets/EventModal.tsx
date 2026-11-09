@@ -25,9 +25,15 @@ import type {
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
-import { IconEyeOff } from "@frontend/ds/icons";
+import { IconEyeOff, IconMapPin } from "@frontend/ds/icons";
 import { describeRule } from "../rrule";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
+import {
+  AttachmentsField,
+  attachmentProblem,
+  type AttachmentItem,
+  type LinkDraft,
+} from "./AttachmentsField";
 import { LabelPicker } from "./LabelPicker";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
@@ -46,11 +52,13 @@ export interface EventDraft {
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
   labelIds: string[];
+  location: string;
 }
 
 export interface EventSubmit {
   title: string;
   description: string;
+  location: string;
   allDay: boolean;
   startAt: number;
   endAt: number;
@@ -59,6 +67,9 @@ export interface EventSubmit {
   attendees: string[];
   calendarId?: string;
   labelIds: string[];
+  /** For a new event: files and links to attach once it is saved. */
+  pendingFiles: File[];
+  pendingLinks: LinkDraft[];
 }
 
 /** The occurrence of a series that was opened. */
@@ -93,6 +104,16 @@ interface EventModalProps {
   onPlace?: (calendarId: string) => Promise<void>;
   /** Hides the event from the caller's own calendar, or shows it again. */
   onHide?: (hidden: boolean) => Promise<void>;
+  /** For an existing event: attach at once, or remove one attached here. */
+  onAttachFiles?: (files: File[]) => Promise<void>;
+  onAttachLink?: (link: LinkDraft) => Promise<void>;
+  onDetach?: (attachmentId: string) => Promise<void>;
+}
+
+/** Where a place opens on a map: any maps app on a phone, Google Maps elsewhere. */
+function mapsUrl(place: string): string {
+  if (/^https?:\/\//i.test(place)) return place;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
 }
 
 /** "one": the opened occurrence alone; "all": the whole series. */
@@ -114,6 +135,7 @@ function draftOf(
   return {
     title: occurrence?.title ?? event?.title ?? "",
     description: own?.description ?? event?.description ?? "",
+    location: own?.location ?? event?.location ?? "",
     allDay,
     start: allDay ? toDayString(startAt) : toDateTimeString(startAt),
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
@@ -141,12 +163,17 @@ export function EventModal({
   onEditOccurrence,
   onCancelOccurrence,
   onHide,
+  onAttachFiles,
+  onAttachLink,
+  onDetach,
 }: EventModalProps) {
   const { me } = useMe();
   const [scope, setScope] = useState<Scope>("all");
   const [draft, setDraft] = useState<EventDraft>(() => draftOf(event, initial, null));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new event's attachments wait for it to be saved.
+  const [pending, setPending] = useState<AttachmentItem[]>([]);
   // An occurrence of a series opens on itself; anything else on the whole event.
   const series = Boolean(event?.rrule && occurrence);
   useEffect(() => {
@@ -155,6 +182,7 @@ export function EventModal({
       setScope(start);
       setDraft(draftOf(event, initial, start === "one" ? occurrence : null));
       setError(null);
+      setPending([]);
     }
   }, [opened, loading, event, initial, occurrence]);
   const changeScope = (next: Scope) => {
@@ -223,6 +251,7 @@ export function EventModal({
         await onEditOccurrence(occurrence.originalStartAt, {
           title: draft.title.trim(),
           description: draft.description.trim(),
+          location: draft.location.trim(),
           ...span,
         });
         onClose();
@@ -231,6 +260,7 @@ export function EventModal({
       await onSave({
         title: draft.title.trim(),
         description: draft.description.trim(),
+        location: draft.location.trim(),
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
@@ -238,6 +268,12 @@ export function EventModal({
         attendees: draft.attendees,
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
         labelIds: draft.labelIds,
+        pendingFiles: pending.flatMap((item) =>
+          item.state === "pending-file" ? [item.file] : [],
+        ),
+        pendingLinks: pending.flatMap((item) =>
+          item.state === "pending-link" ? [item.link] : [],
+        ),
       });
       onClose();
     } catch (err) {
@@ -245,6 +281,53 @@ export function EventModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  // Attached ones act at once on a saved event; a new one keeps them until it is saved.
+  const attachmentItems: AttachmentItem[] = [
+    ...(event?.attachments ?? []).map((attachment): AttachmentItem => ({
+      state: "attached",
+      attachment,
+    })),
+    ...pending,
+  ];
+  const addFiles = async (files: File[]) => {
+    const problem = files.map(attachmentProblem).find(Boolean);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setError(null);
+    if (event && onAttachFiles) {
+      await onAttachFiles(files).catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Could not attach the file"),
+      );
+      return;
+    }
+    setPending((prev) => [
+      ...prev,
+      ...files.map((file): AttachmentItem => ({
+        state: "pending-file",
+        key: crypto.randomUUID(),
+        file,
+      })),
+    ]);
+  };
+  const addLink = async (link: LinkDraft) => {
+    if (event && onAttachLink) {
+      await onAttachLink(link).catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Could not add the link"),
+      );
+      return;
+    }
+    setPending((prev) => [
+      ...prev,
+      { state: "pending-link", key: crypto.randomUUID(), link },
+    ]);
+  };
+  const removeAttachment = async (item: AttachmentItem) => {
+    if (item.state === "attached") await onDetach?.(item.attachment.id);
+    else setPending((prev) => prev.filter((p) => p !== item));
   };
 
   const startForRule = draft.allDay
@@ -362,6 +445,28 @@ export function EventModal({
                 onChange={(e) => set("title", e.currentTarget.value)}
                 data-autofocus
               />
+              <Stack gap={2}>
+                <TextInput
+                  label="Location"
+                  placeholder="Add a place or a link"
+                  leftSection={<IconMapPin size={16} />}
+                  value={draft.location}
+                  onChange={(e) => set("location", e.currentTarget.value)}
+                />
+                {draft.location.trim() && (
+                  <Anchor
+                    href={mapsUrl(draft.location.trim())}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="xs"
+                    w="fit-content"
+                  >
+                    {/^https?:\/\//i.test(draft.location.trim())
+                      ? "Open link"
+                      : "Open in Maps"}
+                  </Anchor>
+                )}
+              </Stack>
               {pickCalendar && !one && (
                 <Select
                   label="Calendar"
@@ -435,6 +540,13 @@ export function EventModal({
             style={{ border: 0, padding: 0, margin: 0 }}
           >
             <Stack gap="sm">
+              <AttachmentsField
+                items={attachmentItems}
+                canEdit={!readOnly}
+                onAddFiles={addFiles}
+                onAddLink={addLink}
+                onRemove={removeAttachment}
+              />
               <LabelPicker
                 value={draft.labelIds}
                 onChange={(ids) => set("labelIds", ids)}

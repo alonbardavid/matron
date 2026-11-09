@@ -25,6 +25,7 @@ export const occurrenceExceptionSchema = z.object({
   cancelled: z.boolean(),
   title: z.string().nullable(),
   description: z.string().nullable(),
+  location: z.string().nullable(),
   startAt: z.number().nullable(),
   endAt: z.number().nullable(),
 });
@@ -96,11 +97,50 @@ export type Label = z.infer<typeof labelSchema>;
 const labelName = z.string().trim().min(1, "Give the label a name").max(40);
 const labelIds = z.array(z.string()).max(20);
 
+/**
+ * Something attached to an event: a file uploaded here (its `url` serves it)
+ * or a link. Ones imported from Google are links with the source `google`,
+ * changed there; those added here are removed by whoever may edit the event.
+ */
+export const attachmentSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["file", "link"]),
+  title: z.string(),
+  url: z.string(),
+  mimeType: z.string().nullable(),
+  source: calendarSourceSchema,
+  createdBy: z.string().nullable(),
+});
+export type Attachment = z.infer<typeof attachmentSchema>;
+
+/** What may be uploaded to an event: pictures, PDFs, plain text and office documents. */
+export const ATTACHMENT_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/heic",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+] as const;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_EVENT = 20;
+
 /** An event as stored: a single one, or the series a recurrence generates. */
 export const calendarEventSchema = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
+  /** Where it happens, as written; empty when not given. */
+  location: z.string(),
+  attachments: z.array(attachmentSchema),
   creatorId: z.string(),
   allDay: z.boolean(),
   /** Milliseconds since the epoch; an all-day event starts at midnight in `timeZone` and ends at the next. */
@@ -147,6 +187,8 @@ export const occurrenceSchema = z.object({
   /** Whether this occurrence was changed on its own. */
   changed: z.boolean(),
   title: z.string(),
+  /** Where this occurrence happens; empty when not given. */
+  location: z.string(),
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
@@ -166,11 +208,13 @@ export type Occurrence = z.infer<typeof occurrenceSchema>;
 
 const title = z.string().trim().min(1, "Give the event a title").max(200);
 const description = z.string().trim().max(5000);
+const location = z.string().trim().max(500);
 const userIds = z.array(z.string()).max(100);
 
 export const calendarEventCreateSchema = z.object({
   title,
   description: description.optional(),
+  location: location.optional(),
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
@@ -192,6 +236,7 @@ export type CalendarEventUpdate = z.infer<typeof calendarEventUpdateSchema>;
 export const occurrenceUpdateSchema = z.object({
   title: title.optional(),
   description: description.optional(),
+  location: location.optional(),
   startAt: z.number().optional(),
   endAt: z.number().optional(),
 });
@@ -365,6 +410,38 @@ export const calendarContract = {
     .route({ method: "DELETE", path: "/api/app/calendar/events/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
+  /** Uploads a file to the event (every occurrence). */
+  attachFile: oc
+    .route({ method: "POST", path: "/api/app/calendar/events/{id}/attachments/files" })
+    .input(z.object({ id: z.string(), file: z.file() }))
+    .output(calendarEventSchema),
+  /** Attaches a link to the event (every occurrence). */
+  attachLink: oc
+    .route({ method: "POST", path: "/api/app/calendar/events/{id}/attachments/links" })
+    .input(
+      z.object({
+        id: z.string(),
+        url: z
+          .string()
+          .trim()
+          .max(2000)
+          .url("A web address")
+          .refine(
+            (value) => /^https?:\/\//i.test(value),
+            "A web address (http or https)",
+          ),
+        title: z.string().trim().max(200).optional(),
+      }),
+    )
+    .output(calendarEventSchema),
+  /** Removes something attached here; imported attachments change at their source. */
+  detach: oc
+    .route({
+      method: "DELETE",
+      path: "/api/app/calendar/events/{id}/attachments/{attachmentId}",
+    })
+    .input(z.object({ id: z.string(), attachmentId: z.string() }))
+    .output(calendarEventSchema),
   /** Hides the event (every occurrence) from the caller's own calendar, or shows it again. */
   hide: oc
     .route({ method: "PUT", path: "/api/app/calendar/events/{id}/hidden" })
