@@ -144,6 +144,15 @@ export interface GoogleEvent {
   summary?: string;
   description?: string;
   location?: string;
+  /** The guests and their answers; `self` marks the calendar's owner, `resource` a room. */
+  attendees?: {
+    email?: string;
+    displayName?: string;
+    responseStatus?: string;
+    organizer?: boolean;
+    self?: boolean;
+    resource?: boolean;
+  }[];
   /** Files attached at Google, such as Drive documents: where to open each. */
   attachments?: { fileUrl?: string; title?: string; mimeType?: string }[];
   /** On a repeating event: its iCalendar lines, `RRULE:...`, `EXDATE...`, `RDATE...`. */

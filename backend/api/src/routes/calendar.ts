@@ -10,6 +10,7 @@ import {
   listOccurrences,
   placeEvent,
   removeEvent,
+  replyToEvent,
   stopRecurrence,
   updateEvent,
 } from "@backend/calendar/service";
@@ -76,6 +77,9 @@ export const calendar = app.calendar.router({
   ),
   detach: app.calendar.detach.handler(({ context, input }) =>
     detachFromEvent(context.principal, context.branch, input.id, input.attachmentId),
+  ),
+  reply: app.calendar.reply.handler(({ context, input }) =>
+    replyToEvent(context.principal, input.id, input.response),
   ),
   hide: app.calendar.hide.handler(({ context, input }) =>
     hideEvent(context.principal, input.id, input.hidden),

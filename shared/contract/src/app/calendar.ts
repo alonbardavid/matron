@@ -133,6 +133,27 @@ export const ATTACHMENT_MIME_TYPES = [
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_EVENT = 20;
 
+/** A guest's answer to an event: as in iCalendar, and Google Calendar. */
+export const EVENT_RESPONSES = [
+  "needs_action",
+  "accepted",
+  "tentative",
+  "declined",
+] as const;
+export const eventResponseSchema = z.enum(EVENT_RESPONSES);
+export type EventResponse = z.infer<typeof eventResponseSchema>;
+
+/** A guest of an imported event at its source, matched to a member by email where one is. */
+export const externalGuestSchema = z.object({
+  email: z.string(),
+  name: z.string().nullable(),
+  response: eventResponseSchema,
+  organizer: z.boolean(),
+  /** The household member with this email, if any. */
+  userId: z.string().nullable(),
+});
+export type ExternalGuest = z.infer<typeof externalGuestSchema>;
+
 /** An event as stored: a single one, or the series a recurrence generates. */
 export const calendarEventSchema = z.object({
   id: z.string(),
@@ -156,6 +177,10 @@ export const calendarEventSchema = z.object({
   sharedWith: z.array(z.string()),
   /** User ids attending; by default everyone the event is shared with, and the creator. */
   attendees: z.array(z.string()),
+  /** Each attendee's answer, by user id. */
+  replies: z.record(z.string(), eventResponseSchema),
+  /** For an imported event: its guests at the source and their answers, read-only. */
+  externalGuests: z.array(externalGuestSchema),
   /** The creator's calendar it belongs to. */
   calendarId: z.string(),
   /** The calendar it shows in for the caller: theirs for an event shared with them, or the shared calendar it came through. */
@@ -203,6 +228,8 @@ export const occurrenceSchema = z.object({
   labelIds: z.array(z.string()),
   /** Whether the caller hid the event; listed all the same, for the calendar to show or leave out. */
   hidden: z.boolean(),
+  /** The caller's own answer when they attend; null otherwise. */
+  response: eventResponseSchema.nullable(),
 });
 export type Occurrence = z.infer<typeof occurrenceSchema>;
 
@@ -441,6 +468,19 @@ export const calendarContract = {
       path: "/api/app/calendar/events/{id}/attachments/{attachmentId}",
     })
     .input(z.object({ id: z.string(), attachmentId: z.string() }))
+    .output(calendarEventSchema),
+  /**
+   * The caller answers an event they were given or made: yes, maybe or no,
+   * for every occurrence. Yes and maybe make them an attendee.
+   */
+  reply: oc
+    .route({ method: "PUT", path: "/api/app/calendar/events/{id}/reply" })
+    .input(
+      z.object({
+        id: z.string(),
+        response: z.enum(["accepted", "tentative", "declined"]),
+      }),
+    )
     .output(calendarEventSchema),
   /** Hides the event (every occurrence) from the caller's own calendar, or shows it again. */
   hide: oc

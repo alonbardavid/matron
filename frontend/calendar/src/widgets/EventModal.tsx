@@ -20,6 +20,7 @@ import dayjs from "dayjs";
 import type {
   Calendar,
   CalendarEvent,
+  EventResponse,
   OccurrenceUpdate,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
@@ -34,6 +35,7 @@ import {
   type AttachmentItem,
   type LinkDraft,
 } from "./AttachmentsField";
+import { ExternalGuestsList, RepliesList, ReplyControl } from "./GuestReplies";
 import { LabelPicker } from "./LabelPicker";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
@@ -108,6 +110,8 @@ interface EventModalProps {
   onAttachFiles?: (files: File[]) => Promise<void>;
   onAttachLink?: (link: LinkDraft) => Promise<void>;
   onDetach?: (attachmentId: string) => Promise<void>;
+  /** The caller's own answer: going, maybe or not. */
+  onReply?: (response: Exclude<EventResponse, "needs_action">) => Promise<void>;
 }
 
 /** Where a place opens on a map: any maps app on a phone, Google Maps elsewhere. */
@@ -166,6 +170,7 @@ export function EventModal({
   onAttachFiles,
   onAttachLink,
   onDetach,
+  onReply,
 }: EventModalProps) {
   const { me } = useMe();
   const [scope, setScope] = useState<Scope>("all");
@@ -204,6 +209,15 @@ export function EventModal({
     event.creatorId !== me?.id &&
     event.sharedWith.includes(me?.id ?? "");
   const shownCalendar = event ? calendars.find((c) => c.id === event.shownIn) : undefined;
+  // Whoever made it or was given it answers it; an event imported to your own
+  // calendar is answered at its source.
+  const iMadeIt = !!event && event.creatorId === me?.id;
+  const canReply =
+    !!event &&
+    !readOnly &&
+    (event.sharedWith.includes(me?.id ?? "") || (iMadeIt && !imported));
+  const myResponse =
+    event && me ? (event.replies[me.id] ?? (iMadeIt ? "accepted" : null)) : null;
   const writable = calendars.filter((c) => c.access === "owner" && c.source === "matron");
   const defaultCalendar = writable.find((c) => c.isDefault) ?? writable[0];
   // Moving between calendars is the creator's, among their own Matron calendars.
@@ -422,6 +436,17 @@ export function EventModal({
               maw={280}
             />
           )}
+          {event && canReply && onReply && (
+            <ReplyControl
+              value={myResponse}
+              onChange={(response) => {
+                setError(null);
+                void onReply(response).catch((err: unknown) =>
+                  setError(err instanceof Error ? err.message : "Could not answer"),
+                );
+              }}
+            />
+          )}
           {series && editable && (
             <SegmentedControl
               value={scope}
@@ -581,6 +606,8 @@ export function EventModal({
                 value={draft.attendees}
                 onChange={(ids) => set("attendees", ids)}
               />
+              {event && <RepliesList replies={event.replies} />}
+              {event && <ExternalGuestsList guests={event.externalGuests} />}
             </Stack>
           </fieldset>
           {error && (

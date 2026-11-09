@@ -20,6 +20,7 @@ import {
 import { getDb } from "@backend/db-models/db";
 import {
   CALENDAR_COLORS,
+  type EventResponse,
   type GoogleCalendar,
   type GoogleStatus,
 } from "@shared/contract/app/calendar";
@@ -697,12 +698,35 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
     title: (event.summary?.trim() || "(No title)").slice(0, 200),
     description: (event.description?.trim() ?? "").slice(0, 5000),
     location: (event.location?.trim() ?? "").slice(0, 500),
+    externalGuests: guestsOf(event),
     allDay,
     startAt: new Date(startAt),
     endAt: new Date(endAt),
     timeZone,
     externalUrl: event.htmlLink?.startsWith("https://") ? event.htmlLink : null,
   };
+}
+
+const GOOGLE_RESPONSES: Record<string, EventResponse> = {
+  needsAction: "needs_action",
+  accepted: "accepted",
+  tentative: "tentative",
+  declined: "declined",
+};
+
+/** A Google event's guests (rooms left out) and their answers, as stored; null when it has none. */
+function guestsOf(event: GoogleEvent): string | null {
+  const guests = (event.attendees ?? [])
+    .filter((guest) => guest.email && !guest.resource)
+    .slice(0, 200)
+    .map((guest) => ({
+      email: guest.email!.slice(0, 320),
+      name: guest.displayName?.slice(0, 200) ?? null,
+      response: GOOGLE_RESPONSES[guest.responseStatus ?? ""] ?? "needs_action",
+      organizer: guest.organizer === true,
+      self: guest.self === true,
+    }));
+  return guests.length ? JSON.stringify(guests) : null;
 }
 
 /** A Google event's attachments (Drive files and the like) as links to open at Google. */

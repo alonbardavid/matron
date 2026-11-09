@@ -87,6 +87,11 @@ export const calendarEvent = sqliteTable(
     externalSeriesId: text("external_series_id"),
     /** For an imported event: where to open it at the source. */
     externalUrl: text("external_url"),
+    /**
+     * For an imported event: its guests at the source and their answers, as
+     * JSON (`[{ email, name, response, organizer }]`). Read-only here.
+     */
+    externalGuests: text("external_guests"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -99,6 +104,15 @@ export const calendarEvent = sqliteTable(
   ],
 );
 
+/** A guest's answer to an event: as in iCalendar's PARTSTAT, and Google's responseStatus. */
+export const EVENT_RESPONSES = [
+  "needs_action",
+  "accepted",
+  "tentative",
+  "declined",
+] as const;
+export type EventResponse = (typeof EVENT_RESPONSES)[number];
+
 export const calendarEventShare = sqliteTable(
   "calendar_event_share",
   {
@@ -106,6 +120,10 @@ export const calendarEventShare = sqliteTable(
     eventId: text("event_id").notNull(),
     userId: text("user_id").notNull(),
     attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
+    /** The member's own answer, which they give; whoever made the event starts as accepted. */
+    response: text("response", { enum: EVENT_RESPONSES })
+      .notNull()
+      .default("needs_action"),
     /** The recipient's own calendar it shows in; their calendar for shared events when null. */
     calendarId: text("calendar_id"),
     createdAt: createdAt(),

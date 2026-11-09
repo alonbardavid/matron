@@ -7,6 +7,7 @@ import {
   getEvent,
   listOccurrences,
   removeEvent,
+  replyToEvent,
   stopRecurrence,
   updateEvent,
 } from "@backend/calendar/service";
@@ -127,6 +128,15 @@ export function householdTools(ctx: ToolContext): ToolSet {
       inputSchema: z.object({ id: z.string(), originalStartAt: z.number() }),
       execute: ({ id, originalStartAt }) =>
         cancelOccurrence(principal, id, originalStartAt),
+    }),
+    reply_to_event: tool({
+      description:
+        "Answer an event the user made or was given, for every occurrence: accepted (going), tentative (maybe) or declined.",
+      inputSchema: z.object({
+        id: z.string(),
+        response: z.enum(["accepted", "tentative", "declined"]),
+      }),
+      execute: ({ id, response }) => replyToEvent(principal, id, response),
     }),
     stop_recurrence: tool({
       description: "Stop a repeating event from a day on; earlier occurrences stay.",
