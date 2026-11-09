@@ -177,3 +177,56 @@ export function useLabelActions() {
   );
   return { create, update, remove };
 }
+
+/** Where an occurrence is moved or resized to. */
+export interface EventMove {
+  /** The occurrence's id on the calendar. */
+  occurrenceId: string;
+  eventId: string;
+  /** For an occurrence of a series: which one, so it alone moves. */
+  originalStartAt: number | null;
+  startAt: number;
+  endAt: number;
+}
+
+/**
+ * Moves or resizes what is on the calendar between `from` and `to`: shown in
+ * its new place at once, then saved; put back if saving fails. An occurrence
+ * of a series moves alone, as "this event" would in the dialog.
+ */
+export function useMoveEvent(from: number, to: number) {
+  const queryClient = useQueryClient();
+  const key = orpc.calendar.occurrences.queryKey({ input: { from, to } });
+  const update = useMutation(orpc.calendar.update.mutationOptions());
+  const editOccurrence = useMutation(orpc.calendar.editOccurrence.mutationOptions());
+  return async (move: EventMove) => {
+    await queryClient.cancelQueries({ queryKey: key });
+    queryClient.setQueryData(key, (old) =>
+      old?.map((item) =>
+        item.id === move.occurrenceId
+          ? { ...item, startAt: move.startAt, endAt: move.endAt, changed: true }
+          : item,
+      ),
+    );
+    try {
+      if (move.originalStartAt !== null) {
+        await editOccurrence.mutateAsync({
+          id: move.eventId,
+          originalStartAt: move.originalStartAt,
+          startAt: move.startAt,
+          endAt: move.endAt,
+        });
+      } else {
+        await update.mutateAsync({
+          id: move.eventId,
+          startAt: move.startAt,
+          endAt: move.endAt,
+        });
+      }
+    } catch (err) {
+      notifyError(err, "Could not move the event");
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: orpc.calendar.key() });
+    }
+  };
+}

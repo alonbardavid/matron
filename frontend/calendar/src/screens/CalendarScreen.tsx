@@ -39,6 +39,7 @@ import {
   useEventActions,
   useGoogleAutoSync,
   useLabels,
+  useMoveEvent,
   useOccurrences,
 } from "../useCalendar";
 import { FiltersButton } from "../widgets/FiltersButton";
@@ -89,6 +90,11 @@ type ItemPayload =
       location: string;
       /** The caller said they are not going: drawn crossed out. */
       declined: boolean;
+      /** Whether the caller may drag it to move or resize it. */
+      editable: boolean;
+      allDay: boolean;
+      startAt: number;
+      endAt: number;
     }
   | { kind: "task"; task: Task };
 
@@ -177,6 +183,10 @@ export function CalendarScreen() {
       hidden: item.hidden,
       location: item.location,
       declined: item.response === "declined",
+      editable: item.editable,
+      allDay: item.allDay,
+      startAt: item.startAt,
+      endAt: item.endAt,
       occurrence:
         item.originalStartAt === null
           ? null
@@ -244,6 +254,52 @@ export function CalendarScreen() {
     for (const file of pendingFiles) await attachFile.mutateAsync({ id: made.id, file });
     for (const link of pendingLinks)
       await attachLink.mutateAsync({ id: made.id, url: link.url, title: link.title });
+  };
+
+  const moveEvent = useMoveEvent(window.from, window.to);
+  /**
+   * Drops an item where it was dragged, or stretches it to its new edges. An
+   * all-day event keeps its length in days; a task takes the day as its due date.
+   */
+  const dropped = ({
+    event: item,
+    newStart,
+    newEnd,
+  }: {
+    event: ScheduleEventData;
+    newStart: string;
+    newEnd: string;
+  }) => {
+    const payload = payloadOf(item);
+    if (payload?.kind === "task") {
+      const day = toDayString(fromDateTimeString(newStart));
+      if (day !== payload.task.dueDate)
+        taskActions.update.mutate({ id: payload.task.id, dueDate: day });
+      return;
+    }
+    if (!payload?.editable) return;
+    const startAt = payload.allDay
+      ? dayjs(newStart).startOf("day").valueOf()
+      : fromDateTimeString(newStart);
+    const endAt = payload.allDay
+      ? startAt + (payload.endAt - payload.startAt)
+      : fromDateTimeString(newEnd);
+    if (startAt === payload.startAt && endAt === payload.endAt) return;
+    void moveEvent({
+      occurrenceId: String(item.id),
+      eventId: payload.eventId,
+      originalStartAt: payload.occurrence?.originalStartAt ?? null,
+      startAt,
+      endAt,
+    });
+  };
+  const draggable = (item: ScheduleEventData) => {
+    const payload = payloadOf(item);
+    return payload?.kind === "task" || (payload?.kind === "event" && payload.editable);
+  };
+  const resizable = (item: ScheduleEventData) => {
+    const payload = payloadOf(item);
+    return payload?.kind === "event" && payload.editable && !payload.allDay;
   };
 
   const filtersButton = (compact: boolean) => (
@@ -356,6 +412,12 @@ export function CalendarScreen() {
           onViewChange={(next) => setView(next)}
           layout="default"
           withDragSlotSelect
+          withEventsDragAndDrop
+          canDragEvent={draggable}
+          onEventDrop={dropped}
+          withEventResize
+          canResizeEvent={resizable}
+          onEventResize={dropped}
           onTimeSlotClick={({ slotStart, slotEnd }) =>
             openNew({
               allDay: false,

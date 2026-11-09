@@ -230,6 +230,8 @@ export const occurrenceSchema = z.object({
   hidden: z.boolean(),
   /** The caller's own answer when they attend; null otherwise. */
   response: eventResponseSchema.nullable(),
+  /** Whether the caller may move or resize it: an event made in Matron they may change. */
+  editable: z.boolean(),
 });
 export type Occurrence = z.infer<typeof occurrenceSchema>;
 
