@@ -133,6 +133,15 @@ export const ATTACHMENT_MIME_TYPES = [
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_EVENT = 20;
 
+/**
+ * What someone an event is shared with may do: see it; edit it (times,
+ * details, repetition, single occurrences, labels, attachments); or manage it
+ * too (who it is shared with and at what level, who attends, removing it).
+ */
+export const SHARE_PERMISSIONS = ["view", "edit", "manage"] as const;
+export const sharePermissionSchema = z.enum(SHARE_PERMISSIONS);
+export type SharePermission = z.infer<typeof sharePermissionSchema>;
+
 /** A guest's answer to an event: as in iCalendar, and Google Calendar. */
 export const EVENT_RESPONSES = [
   "needs_action",
@@ -179,6 +188,13 @@ export const calendarEventSchema = z.object({
   attendees: z.array(z.string()),
   /** Each attendee's answer, by user id. */
   replies: z.record(z.string(), eventResponseSchema),
+  /** What each member it is shared with may do, by user id. */
+  permissions: z.record(z.string(), sharePermissionSchema),
+  /**
+   * What the caller may do with it: `edit` its details, occurrences, labels
+   * and attachments; `manage` who it is shared with and who attends, and remove it.
+   */
+  can: z.object({ edit: z.boolean(), manage: z.boolean() }),
   /** For an imported event: its guests at the source and their answers, read-only. */
   externalGuests: z.array(externalGuestSchema),
   /** The creator's calendar it belongs to. */
@@ -253,6 +269,8 @@ export const calendarEventCreateSchema = z.object({
   rrule: rruleString.nullable().optional(),
   sharedWith: userIds.optional(),
   attendees: userIds.optional(),
+  /** What members it is shared with may do, by user id; edit for anyone not named. */
+  permissions: z.record(z.string(), sharePermissionSchema).optional(),
   /** Household labels to tag it with. */
   labelIds: labelIds.optional(),
 });
@@ -484,6 +502,11 @@ export const calendarContract = {
       }),
     )
     .output(calendarEventSchema),
+  /** The caller stops being given an event someone shared with them. */
+  leave: oc
+    .route({ method: "DELETE", path: "/api/app/calendar/events/{id}/share" })
+    .input(z.object({ id: z.string() }))
+    .output(z.object({ ok: z.literal(true) })),
   /** Hides the event (every occurrence) from the caller's own calendar, or shows it again. */
   hide: oc
     .route({ method: "PUT", path: "/api/app/calendar/events/{id}/hidden" })

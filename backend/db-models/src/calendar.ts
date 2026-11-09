@@ -113,6 +113,14 @@ export const EVENT_RESPONSES = [
 ] as const;
 export type EventResponse = (typeof EVENT_RESPONSES)[number];
 
+/**
+ * What someone an event is shared with may do: see it; edit it (its times,
+ * details, repetition, single occurrences, labels and attachments); or manage
+ * it too (who it is shared with and at what level, who attends, removing it).
+ */
+export const SHARE_PERMISSIONS = ["view", "edit", "manage"] as const;
+export type SharePermission = (typeof SHARE_PERMISSIONS)[number];
+
 export const calendarEventShare = sqliteTable(
   "calendar_event_share",
   {
@@ -120,6 +128,8 @@ export const calendarEventShare = sqliteTable(
     eventId: text("event_id").notNull(),
     userId: text("user_id").notNull(),
     attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
+    /** What the member may do with it: view, edit it, or manage it (share it, remove it). */
+    permission: text("permission", { enum: SHARE_PERMISSIONS }).notNull().default("edit"),
     /** The member's own answer, which they give; whoever made the event starts as accepted. */
     response: text("response", { enum: EVENT_RESPONSES })
       .notNull()

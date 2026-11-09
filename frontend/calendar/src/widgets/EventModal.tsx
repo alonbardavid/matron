@@ -22,6 +22,7 @@ import type {
   CalendarEvent,
   EventResponse,
   OccurrenceUpdate,
+  SharePermission,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
@@ -37,6 +38,7 @@ import {
 } from "./AttachmentsField";
 import { ExternalGuestsList, RepliesList, ReplyControl } from "./GuestReplies";
 import { LabelPicker } from "./LabelPicker";
+import { SharePermissions } from "./SharePermissions";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -55,6 +57,7 @@ export interface EventDraft {
   calendarId: string | null;
   labelIds: string[];
   location: string;
+  permissions: Record<string, SharePermission>;
 }
 
 export interface EventSubmit {
@@ -69,6 +72,8 @@ export interface EventSubmit {
   attendees: string[];
   calendarId?: string;
   labelIds: string[];
+  /** What each member it is shared with may do; sent only by whoever manages it. */
+  permissions?: Record<string, SharePermission>;
   /** For a new event: files and links to attach once it is saved. */
   pendingFiles: File[];
   pendingLinks: LinkDraft[];
@@ -112,6 +117,8 @@ interface EventModalProps {
   onDetach?: (attachmentId: string) => Promise<void>;
   /** The caller's own answer: going, maybe or not. */
   onReply?: (response: Exclude<EventResponse, "needs_action">) => Promise<void>;
+  /** Stops the event someone shared with the caller being theirs. */
+  onLeave?: () => Promise<void>;
 }
 
 /** Where a place opens on a map: any maps app on a phone, Google Maps elsewhere. */
@@ -148,6 +155,7 @@ function draftOf(
     attendees: event?.attendees ?? [],
     calendarId: event?.calendarId ?? null,
     labelIds: event?.labelIds ?? [],
+    permissions: event?.permissions ?? {},
   };
 }
 
@@ -171,6 +179,7 @@ export function EventModal({
   onAttachLink,
   onDetach,
   onReply,
+  onLeave,
 }: EventModalProps) {
   const { me } = useMe();
   const [scope, setScope] = useState<Scope>("all");
@@ -197,7 +206,10 @@ export function EventModal({
   const one = scope === "one" && series;
 
   const creatorId = event?.creatorId ?? me?.id ?? "";
-  const mine = !event || event.creatorId === me?.id || me?.role === "owner";
+  // What the caller may do, as the server says: edit its details, or manage
+  // who it is shared with, who attends, and removing it.
+  const canEdit = !event || event.can.edit;
+  const canManage = !event || event.can.manage;
   // An event imported from Google changes there; here only who it is shared with.
   const imported = event?.source === "google";
   // Seen only through a calendar shared with the caller: nothing here changes it.
@@ -282,6 +294,7 @@ export function EventModal({
         attendees: draft.attendees,
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
         labelIds: draft.labelIds,
+        ...(canManage && { permissions: draft.permissions }),
         pendingFiles: pending.flatMap((item) =>
           item.state === "pending-file" ? [item.file] : [],
         ),
@@ -347,7 +360,7 @@ export function EventModal({
   const startForRule = draft.allDay
     ? dayjs(draft.start).valueOf()
     : fromDateTimeString(draft.start);
-  const editable = !imported && !readOnly;
+  const editable = !imported && !readOnly && canEdit;
 
   return (
     <Modal
@@ -411,7 +424,13 @@ export function EventModal({
                   ? "From a calendar shared with you, read-only."
                   : imported
                     ? "From Google Calendar: change it there. Here you can share it."
-                    : "Shared with you."}
+                    : `Shared with you: you ${
+                        canManage
+                          ? "can manage it"
+                          : canEdit
+                            ? "can edit it"
+                            : "can view it"
+                      }.`}
                 {imported &&
                   (event.rrule
                     ? ` ${describeRule(event.rrule)}.`
@@ -460,7 +479,7 @@ export function EventModal({
             />
           )}
           <fieldset
-            disabled={imported || readOnly}
+            disabled={imported || readOnly || !canEdit}
             style={{ border: 0, padding: 0, margin: 0 }}
           >
             <Stack gap="sm">
@@ -567,7 +586,7 @@ export function EventModal({
             <Stack gap="sm">
               <AttachmentsField
                 items={attachmentItems}
-                canEdit={!readOnly}
+                canEdit={!readOnly && canEdit}
                 onAddFiles={addFiles}
                 onAddLink={addLink}
                 onRemove={removeAttachment}
@@ -575,12 +594,12 @@ export function EventModal({
               <LabelPicker
                 value={draft.labelIds}
                 onChange={(ids) => set("labelIds", ids)}
-                disabled={readOnly}
+                disabled={readOnly || !canEdit}
               />
               {!readOnly && (
                 <PeoplePicker
                   label="Shared with"
-                  placeholder="Only you"
+                  placeholder={draft.sharedWith.length ? undefined : "Only you"}
                   value={draft.sharedWith}
                   onChange={(ids) =>
                     setDraft((prev) => ({
@@ -596,15 +615,23 @@ export function EventModal({
                     }))
                   }
                   exclude={[creatorId]}
-                  disabled={!mine}
+                  disabled={!canManage}
+                />
+              )}
+              {!readOnly && canManage && (
+                <SharePermissions
+                  people={draft.sharedWith}
+                  value={draft.permissions}
+                  onChange={(permissions) => set("permissions", permissions)}
                 />
               )}
               <PeoplePicker
                 label="Attending"
                 description="Anyone attending sees the event too."
-                placeholder="No one"
+                placeholder={draft.attendees.length ? undefined : "No one"}
                 value={draft.attendees}
                 onChange={(ids) => set("attendees", ids)}
+                disabled={!canManage}
               />
               {event && <RepliesList replies={event.replies} />}
               {event && <ExternalGuestsList guests={event.externalGuests} />}
@@ -617,7 +644,7 @@ export function EventModal({
           )}
           <Group justify="space-between" mt="xs">
             <Group gap="xs">
-              {one && occurrence && onCancelOccurrence && (
+              {one && editable && occurrence && onCancelOccurrence && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
@@ -631,7 +658,7 @@ export function EventModal({
                   Remove this one
                 </ConfirmButton>
               )}
-              {event && onRemove && mine && editable && !one && (
+              {event && onRemove && canManage && editable && !one && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
@@ -662,7 +689,21 @@ export function EventModal({
                   {event.rrule ? "Hide series" : "Hide"}
                 </Button>
               )}
-              {event?.rrule && onStop && occurrence && mine && editable && (
+              {event && placing && onLeave && (
+                <ConfirmButton
+                  variant="subtle"
+                  color="gray"
+                  message="Leave this event? It goes from your calendar, and whoever shared it can share it again."
+                  confirmLabel="Leave"
+                  onConfirm={async () => {
+                    await onLeave();
+                    onClose();
+                  }}
+                >
+                  Leave
+                </ConfirmButton>
+              )}
+              {event?.rrule && onStop && occurrence && editable && (
                 <ConfirmButton
                   variant="subtle"
                   message="Stop repeating from this one on? Earlier ones stay."
@@ -676,7 +717,7 @@ export function EventModal({
                 </ConfirmButton>
               )}
             </Group>
-            {readOnly ? (
+            {readOnly || !(canEdit || canManage) ? (
               <Button variant="default" onClick={onClose}>
                 Close
               </Button>
