@@ -10,7 +10,8 @@ import {
   useConversations,
 } from "../useConversations";
 import { AskComposer } from "./AskComposer";
-import { AskConversation, Thinking } from "./AskConversation";
+import { AskConversation } from "./AskConversation";
+import { Thinking } from "@frontend/ds/chat/Thinking";
 import { AskMessage } from "./AskMessage";
 
 /**

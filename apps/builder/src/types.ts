@@ -9,10 +9,10 @@
  * agent's CLI in the checkout.
  */
 
-export type JobMode = "build" | "continue" | "merge" | "abandon";
+export type RunMode = "build" | "continue" | "merge" | "abandon";
 
-export type BuilderJob = {
-  mode: JobMode;
+export type BuilderRun = {
+  mode: RunMode;
   sessionId: string;
   branch: {
     id: string;
@@ -34,6 +34,7 @@ export type BuilderJob = {
   request: string;
   plan?: string;
   message?: string;
+  files?: BuilderFile[];
   builderImage?: string;
 };
 
@@ -50,19 +51,27 @@ export type StepName =
   | "deploy-production"
   | "cleanup";
 
+/** A file the user attached to a message for the agent: written to the attachments folder, named in the prompt. */
+export interface BuilderFile {
+  name: string;
+  mediaType: string;
+  /** The bytes, base64. */
+  data: string;
+}
+
 /** How the agent's prompt for one turn is built; the templates live in /app/prompts. */
 export type AgentPrompt =
-  | { kind: "build"; extra: string }
-  | { kind: "continue"; message: string; sync: string }
+  | { kind: "build"; extra: string; files?: BuilderFile[] }
+  | { kind: "continue"; message: string; sync: string; files?: BuilderFile[] }
   | { kind: "fix"; command: string; output: string };
 
-/** What a step reads besides the job, when it needs more. */
+/** What a step reads besides the run, when it needs more. */
 export type StepInput = { summary: string; reasoning: string; request: string };
 
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
 export type TurnRequest =
-  | { kind: "step"; step: StepName; job: BuilderJob; input?: StepInput }
-  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob; model: string };
+  | { kind: "step"; step: StepName; run: BuilderRun; input?: StepInput }
+  | { kind: "agent"; prompt: AgentPrompt; run: BuilderRun; model: string };
 
 /** One line of a step's output; anything that is not JSON is a log line. */
 export type StepLine =
@@ -92,12 +101,12 @@ export type DeployResult = {
 };
 
 /** Raised for failures that should reach the user as a readable builder message. */
-export class JobError extends Error {
+export class BuilderError extends Error {
   constructor(
     message: string,
     readonly output?: string,
   ) {
     super(message);
-    this.name = "JobError";
+    this.name = "BuilderError";
   }
 }

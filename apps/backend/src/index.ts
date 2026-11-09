@@ -3,6 +3,8 @@ import { router } from "./router";
 
 export { BuildSessionObject } from "@backend/arch-sessions/session-object";
 export { BuilderObject } from "@backend/arch-builder/builder-object";
+// Each builder run is a child of its session; the handle class is found by name when a run starts.
+export { BuilderRunHandle } from "@backend/arch-builder/run-handle";
 export { AskSessionObject } from "@backend/ask/ask-object";
 // Adds the coding agent's credentials to its model requests outside the container.
 export { ContainerEgress } from "agents/harness/container";

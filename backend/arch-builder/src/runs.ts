@@ -3,34 +3,35 @@ import { DomainError } from "@backend/commons/errors";
 import { AI_GATEWAY, deploymentNames } from "@backend/commons/names";
 import { logger } from "@backend/commons/logger";
 import type {
-  AbandonJob,
-  BuildJob,
+  AbandonRun,
+  BuildRun,
   BuilderBranch,
-  BuilderJob,
-  ContinueJob,
-  MergeJob,
+  BuilderFile,
+  BuilderRun,
+  ContinueRun,
+  MergeRun,
 } from "./protocol";
 import { builderEnv } from "./env";
 import { writeToken } from "@backend/arch-repository/service";
 
-const log = logger("arch-builder/jobs");
+const log = logger("arch-builder/runs");
 
-/** A build can run for a long while; the token outlives any single job. */
+/** A build can run for a long while; the token outlives any single run. */
 const TOKEN_TTL_SECONDS = 60 * 60 * 24;
 
-type JobCommon = Omit<BuilderJob, "mode" | "plan" | "message">;
+type RunCommon = Omit<BuilderRun, "mode" | "plan" | "message" | "files">;
 
 /**
- * Everything a job carries besides what distinguishes its mode: credentials
+ * Everything a run carries besides what distinguishes its mode: credentials
  * minted now, and the deployment coordinates.
  * `CLOUDFLARE_ACCOUNT_ID` may be unset locally; the container then fails with
  * a clear message instead of the router refusing to start.
  */
-async function jobCommon(
+async function runCommon(
   sessionId: string,
   branch: BranchRow,
   request: string,
-): Promise<JobCommon> {
+): Promise<RunCommon> {
   const env = builderEnv();
   const repository = await writeToken(TOKEN_TTL_SECONDS);
   return {
@@ -61,58 +62,62 @@ function toBuilderBranch(branch: BranchRow): BuilderBranch {
   };
 }
 
-export async function buildJob(input: {
+export async function buildRun(input: {
   sessionId: string;
   branch: BranchRow;
   request: string;
   plan: string;
-}): Promise<BuildJob> {
+  files: BuilderFile[];
+}): Promise<BuildRun> {
   return {
-    ...(await jobCommon(input.sessionId, input.branch, input.request)),
+    ...(await runCommon(input.sessionId, input.branch, input.request)),
     mode: "build",
     plan: input.plan,
+    ...(input.files.length ? { files: input.files } : {}),
   };
 }
 
-/** A continuation for a session whose container stopped; the branch is looked up by session. */
-export async function continueJob(input: {
+/** A continuation for a session whose builder is idle; the branch is looked up by session. */
+export async function continueRun(input: {
   sessionId: string;
   request: string;
   message: string;
-}): Promise<ContinueJob> {
+  files: BuilderFile[];
+}): Promise<ContinueRun> {
   const branch = await branchForSession(input.sessionId);
   if (!branch)
     throw new DomainError("NOT_FOUND", "This session has no branch to continue");
   return {
-    ...(await jobCommon(input.sessionId, branch, input.request)),
+    ...(await runCommon(input.sessionId, branch, input.request)),
     mode: "continue",
     message: input.message,
+    ...(input.files.length ? { files: input.files } : {}),
   };
 }
 
-export async function mergeJob(branch: BranchRow): Promise<MergeJob> {
+export async function mergeRun(branch: BranchRow): Promise<MergeRun> {
   return {
-    ...(await jobCommon(branch.buildSessionId, branch, `Merge ${branch.name}`)),
+    ...(await runCommon(branch.buildSessionId, branch, `Merge ${branch.name}`)),
     mode: "merge",
   };
 }
 
-export async function abandonJob(branch: BranchRow): Promise<AbandonJob> {
+export async function abandonRun(branch: BranchRow): Promise<AbandonRun> {
   return {
-    ...(await jobCommon(branch.buildSessionId, branch, `Abandon ${branch.name}`)),
+    ...(await runCommon(branch.buildSessionId, branch, `Abandon ${branch.name}`)),
     mode: "abandon",
   };
 }
 
-/** Hands a merge to the branch's builder; the row is already marked merging. */
+/** Hands a merge to the branch's session, which runs it on the builder; the row is already marked merging. */
 export async function startMerge(branch: BranchRow): Promise<void> {
-  const job = await mergeJob(branch);
-  log.info("merge job sent", { branchId: branch.id, sessionId: branch.buildSessionId });
-  await builderEnv().BUILDERS.getByName(branch.buildSessionId).startMerge(job);
+  const run = await mergeRun(branch);
+  log.info("merge sent", { branchId: branch.id, sessionId: branch.buildSessionId });
+  await builderEnv().BUILD_SESSIONS.getByName(branch.buildSessionId).startRun(run);
 }
 
 export async function startAbandon(branch: BranchRow): Promise<void> {
-  const job = await abandonJob(branch);
-  log.info("abandon job sent", { branchId: branch.id, sessionId: branch.buildSessionId });
-  await builderEnv().BUILDERS.getByName(branch.buildSessionId).startAbandon(job);
+  const run = await abandonRun(branch);
+  log.info("abandon sent", { branchId: branch.id, sessionId: branch.buildSessionId });
+  await builderEnv().BUILD_SESSIONS.getByName(branch.buildSessionId).startRun(run);
 }

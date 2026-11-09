@@ -1,5 +1,5 @@
 import type { RelayedStatus } from "./events";
-import type { BuilderStatusDetail } from "./protocol";
+import type { BuilderRun, BuilderStatusDetail } from "./protocol";
 
 /**
  * What the builder tells the session it works for, as RPC on the session's
@@ -7,7 +7,9 @@ import type { BuilderStatusDetail } from "./protocol";
  * this much about it.
  */
 export interface BuildSessionLink extends Rpc.DurableObjectBranded {
-  progress(text: string, kind?: "log"): Promise<void>;
-  relay(frame: { role: "builder"; text: string }): Promise<void>;
+  /** A builder message for the chat, markdown. */
+  relay(text: string): Promise<void>;
   builderStatus(status: RelayedStatus, detail?: BuilderStatusDetail): Promise<void>;
+  /** A merge or an abandon from the branch menu: the session runs it as a run of the builder. */
+  startRun(run: BuilderRun): Promise<void>;
 }

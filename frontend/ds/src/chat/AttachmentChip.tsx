@@ -1,5 +1,5 @@
 import { ActionIcon, Group, Paper, Text } from "@mantine/core";
-import { IconFile, IconX } from "@frontend/ds/icons";
+import { IconFile, IconX } from "../icons";
 
 interface AttachmentChipProps {
   name: string;

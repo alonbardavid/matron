@@ -17,12 +17,12 @@ import {
   type WranglerContext,
 } from "./cloudflare.js";
 import * as git from "./git.js";
-import { combined, describeFailure, run, tail } from "./run.js";
+import { combined, describeFailure, exec, tail } from "./exec.js";
 import type { Paths } from "./state.js";
-import { JobError, type BuilderJob, type DeployResult } from "./types.js";
+import { BuilderError, type BuilderRun, type DeployResult } from "./types.js";
 
 export type DeployContext = {
-  job: BuilderJob;
+  run: BuilderRun;
   paths: Paths;
   gitScheme?: git.GitAuthScheme;
   log: (text: string) => void;
@@ -58,14 +58,14 @@ export function generatedConfigPath(
 
 /** Builds the repository (`pnpm build` in the clone). */
 export async function buildRepo(ctx: DeployContext): Promise<void> {
-  const result = await run("pnpm", ["build"], {
+  const result = await exec("pnpm", ["build"], {
     cwd: ctx.paths.repo,
     timeoutMs: 20 * 60 * 1000,
     onOutput: ctx.onOutput,
     env: { CI: "true" },
   });
   if (result.code !== 0)
-    throw new JobError(describeFailure("pnpm build", result), tail(combined(result)));
+    throw new BuilderError(describeFailure("pnpm build", result), tail(combined(result)));
 }
 
 /**
@@ -78,29 +78,29 @@ export async function generateConfig(
   target: "preview" | "production",
   db: { name: string; id: string },
 ): Promise<string> {
-  const { job } = ctx;
+  const { run } = ctx;
   const env: NodeJS.ProcessEnv = {
     TARGET: target,
-    WORKER_NAME: job.cloudflare.workerName,
+    WORKER_NAME: run.cloudflare.workerName,
     DB_NAME: db.name,
     DB_ID: db.id,
-    APP_ORIGIN: job.cloudflare.appOrigin,
-    ACCOUNT_ID: job.cloudflare.accountId,
+    APP_ORIGIN: run.cloudflare.appOrigin,
+    ACCOUNT_ID: run.cloudflare.accountId,
   };
-  if (job.builderImage) env.BUILDER_IMAGE = job.builderImage;
-  const result = await run("node", ["scripts/gen-wrangler-config.mjs"], {
+  if (run.builderImage) env.BUILDER_IMAGE = run.builderImage;
+  const result = await exec("node", ["scripts/gen-wrangler-config.mjs"], {
     cwd: ctx.paths.repo,
     env,
     onOutput: ctx.onOutput,
   });
   if (result.code !== 0)
-    throw new JobError(
+    throw new BuilderError(
       describeFailure("gen-wrangler-config", result),
       tail(combined(result)),
     );
   const config = generatedConfigPath(backendDir(ctx), target);
   if (!existsSync(config)) {
-    throw new JobError(
+    throw new BuilderError(
       `gen-wrangler-config did not write ${config}`,
       tail(combined(result)),
     );
@@ -113,21 +113,21 @@ export function backendDir(ctx: DeployContext): string {
 }
 
 export function wranglerContext(ctx: DeployContext): WranglerContext {
-  return { job: ctx.job, cwd: backendDir(ctx), onOutput: ctx.onOutput };
+  return { run: ctx.run, cwd: backendDir(ctx), onOutput: ctx.onOutput };
 }
 
 /** Creates the branch database as a clone of production when it does not exist yet. */
 export async function ensureBranchDatabase(ctx: DeployContext): Promise<string> {
   const w = wranglerContext(ctx);
-  const name = ctx.job.branch.databaseName;
+  const name = ctx.run.branch.databaseName;
   const existing = await d1Find(w, name);
   if (existing) {
     ctx.log(`D1 ${name} exists (${existing.uuid})`);
     return existing.uuid;
   }
   const dump = join(ctx.paths.work, "dump.sql");
-  ctx.log(`exporting ${ctx.job.cloudflare.productionDatabaseName}`);
-  await d1Export(w, ctx.job.cloudflare.productionDatabaseName, dump);
+  ctx.log(`exporting ${ctx.run.cloudflare.productionDatabaseName}`);
+  await d1Export(w, ctx.run.cloudflare.productionDatabaseName, dump);
   ctx.log(`creating D1 ${name}`);
   await d1Create(w, name);
   try {
@@ -137,19 +137,20 @@ export async function ensureBranchDatabase(ctx: DeployContext): Promise<string> 
     rmSync(dump, { force: true });
   }
   const created = (await d1Info(w, name)) ?? (await d1Find(w, name));
-  if (!created) throw new JobError(`Created D1 ${name} but could not resolve its id.`);
+  if (!created)
+    throw new BuilderError(`Created D1 ${name} but could not resolve its id.`);
   return created.uuid;
 }
 
 export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
-  const { job } = ctx;
+  const { run } = ctx;
   const w = wranglerContext(ctx);
 
   ctx.log("building");
   await buildRepo(ctx);
   const databaseId = await ensureBranchDatabase(ctx);
   const config = await generateConfig(ctx, "preview", {
-    name: job.branch.databaseName,
+    name: run.branch.databaseName,
     id: databaseId,
   });
   ctx.log("applying migrations to the branch database");
@@ -166,15 +167,15 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
   writeFileSync(
     secretsFile,
     JSON.stringify({
-      SIGNING_KEY: job.signingKey,
+      SIGNING_KEY: run.signingKey,
       BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
-      CLOUDFLARE_API_TOKEN: job.cloudflare.apiToken,
+      CLOUDFLARE_API_TOKEN: run.cloudflare.apiToken,
     }),
     { mode: 0o600 },
   );
   let previewUrl: string | null;
   try {
-    ctx.log(`deploying preview ${job.branch.previewName}`);
+    ctx.log(`deploying preview ${run.branch.previewName}`);
     const result = await wrangler(
       w,
       [
@@ -182,9 +183,9 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
         "--config",
         config,
         "--name",
-        job.branch.previewName,
+        run.branch.previewName,
         "--worker-name",
-        job.cloudflare.workerName,
+        run.cloudflare.workerName,
         "--secrets-file",
         secretsFile,
         "--json",
@@ -193,32 +194,32 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
     );
     const recorded = readOutputFile(outputFile);
     if (result.code !== 0)
-      throw new JobError(
+      throw new BuilderError(
         describeFailure("wrangler preview", result),
         tail(combined(result)),
       );
     previewUrl =
-      parsePreviewUrl(recorded, job.branch.previewName, job.cloudflare.workerName) ??
+      parsePreviewUrl(recorded, run.branch.previewName, run.cloudflare.workerName) ??
       parsePreviewUrl(
         combined(result),
-        job.branch.previewName,
-        job.cloudflare.workerName,
+        run.branch.previewName,
+        run.cloudflare.workerName,
       );
   } finally {
     rmSync(secretsFile, { force: true });
     rmSync(outputFile, { force: true });
   }
   if (!previewUrl) {
-    const subdomain = await workersSubdomain(job);
+    const subdomain = await workersSubdomain(run);
     if (!subdomain)
-      throw new JobError("Preview deployed but its URL could not be determined.");
+      throw new BuilderError("Preview deployed but its URL could not be determined.");
     previewUrl = composePreviewUrl(
-      job.branch.previewName,
-      job.cloudflare.workerName,
+      run.branch.previewName,
+      run.cloudflare.workerName,
       subdomain,
     );
   }
-  const g = { repo: ctx.paths.repo, token: job.repository.token, scheme: ctx.gitScheme };
+  const g = { repo: ctx.paths.repo, token: run.repository.token, scheme: ctx.gitScheme };
   const headCommit = await git.revParse(g);
   const baseCommit = await git.mergeBaseWithMain(g);
   return { previewUrl, databaseId, headCommit, baseCommit };
@@ -227,11 +228,11 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
 /** Production: migrations on the production D1, then `wrangler deploy`. */
 export async function deployProduction(ctx: DeployContext): Promise<void> {
   const w = wranglerContext(ctx);
-  const production = ctx.job.cloudflare.productionDatabaseName;
+  const production = ctx.run.cloudflare.productionDatabaseName;
   ctx.log("building");
   await buildRepo(ctx);
   const db = await d1Find(w, production);
-  if (!db) throw new JobError(`The production database ${production} was not found.`);
+  if (!db) throw new BuilderError(`The production database ${production} was not found.`);
   const config = await generateConfig(ctx, "production", {
     name: production,
     id: db.uuid,

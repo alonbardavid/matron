@@ -107,27 +107,21 @@ All tables live in the production D1. A branch database is a clone and carries t
 
 ## Build sessions
 
-The application has a build button that opens a chat. The first message starts a session: a row for the session, a Durable Object holding the chat connection and transcript, and a planning agent. Opening the chat alone stores nothing.
+The application has a build button that opens a chat. The first message starts a session: a row for the session, a Durable Object holding the conversation, and a planning agent. Opening the chat alone stores nothing.
 
-The planning agent runs inside the Worker. It is Claude with three tools that list, read and search the files on main through the Artifacts binding; it reads what the request needs and turns the request into a plan the builder can execute. It can ask the user clarifying questions, or answer that the change is not possible.
+The planning agent runs inside the Worker as the session's chat agent (Think, on the Agents SDK). It is Claude with three tools that list, read and search the files on main through the Artifacts binding, and with the session's own tools: one records the plan and the change's short name, one starts the build once the member agrees, and one passes the member's words to the builder while a build is under way. It reads what the request needs and turns the request into a plan the builder can execute. It can ask the user clarifying questions, or answer that the change is not possible. A message may carry pictures, PDFs or text files; the planner reads them, and the tool that passes a message to the builder sends the files of that message along.
 
-When the plan is agreed, the router starts a builder workflow.
+When the plan is agreed, the planner's tool starts a builder run.
 
 ## Build chat protocol
 
 Once a session exists, all communication between the client and the session goes over the WebSocket. The only REST call is creating the session.
 
-The session's Durable Object is an Agent (Agents SDK); the client connects with the Agents SDK client, which reconnects on its own. On connect the server replays the transcript from after the frame id named in the `after` query parameter (all of it when absent or unknown), sends one `synced` frame, then sends every new frame live for as long as the socket is open. Connections hibernate between frames.
+The session's Durable Object is a chat agent, and the socket speaks the Agents SDK chat protocol: the client connects with the Agents SDK client, which reconnects on its own, gets the conversation replayed, and streams each turn as it is generated. Each turn carries only the message just sent; the object keeps the conversation. The object's state, the session's phase (planning, building, waiting, deployed, failed, timed out, closed), is synced to every client as it changes.
 
-The client sends one frame type, `send`: `{ type: "send", text }`, a user message. The server stamps the id, timestamp and role, stores it, and broadcasts it to every connection. Blank text or an unknown connection get an `error` frame back.
+The conversation holds three kinds of messages: the member's, the planner's replies with the tool calls they made, and the builder's. A builder message is stored on the member's side of the conversation, marked as the builder's in its metadata and prefixed so the planner knows who speaks; the chat shows it as the builder's own bubble. Attachments are moved out of the conversation once the turns that read them are done, and marked as such in place.
 
-Every frame has a `type`, a session-unique `id`, and a `ts`. The Durable Object stores every frame but `synced` and `error` in the transcript, in order. Three stored frame types:
-
-- `message`: `{ role, text }`. From the user, `role` is `user` and `text` is what the user typed: requests, answers, plan approval and the update action. From the server, `role` is `planner` or `builder` and `text` is markdown. Plans, questions, deploy links, and failures are all messages.
-- `progress`: `{ text, kind? }`. Server to client only: what the planner or builder is doing right now: a step (cloning, building, deploying), a thought, the agent's words, a tool call, or with `kind` `log` a run of command output. The client folds consecutive lines into one entry that shows the latest line and expands to all of them.
-- `error`: `{ text }`. Server to client only, not stored.
-
-The builder's Durable Object posts the builder's messages and progress into the session the same way, and the user's replies reach the builder through it.
+A builder run is the session's sub-agent, dispatched by the planner's tool and shown beside that tool call: the run's status, what it is doing now, and every line of what it did (a step, a thought, a tool call, the coding agent's words, or a run of command output), collapsed to the latest line and expandable. The lines are the run's stored chunks, so a reload shows them again. Merges and abandons, started from the branch menu, are runs too, shown at the end of the chat.
 
 ## Builder
 
@@ -135,9 +129,9 @@ Starting the builder:
 
 1. Creates a branch row in the production D1. The branch, its Preview and its database share one slug made from the planner's short name for the change, two plain words as a rule (`shopping-list`); a name a branch had before gets a digit (`shopping-list-2`).
 2. Mints a write token for the code repository through the Artifacts binding.
-3. Starts a container and writes the job into it: the repository token, `CLOUDFLARE_API_TOKEN` for AI Gateway and deployment, and the plan.
+3. Starts a container and hands the run to it: the repository token, `CLOUDFLARE_API_TOKEN` for AI Gateway and deployment, and the plan.
 
-The builder's Durable Object runs the job as a sequence of turns in the container, each a step (clone the repository and create the branch from main, install, verify, commit and push, deploy) or a turn of the coding agent. The container harness keeps each turn durable and relays its events into the session's chat; the job itself is checkpointed after every turn, so an evicted object resumes where it was. The agent's model calls leave the container through the harness, which adds the gateway and its credentials outside it. The container never calls the production URL or the Worker.
+The builder's Durable Object runs the work as a sequence of turns in the container, each a step (clone the repository and create the branch from main, install, verify, commit and push, deploy) or a turn of the coding agent. The container harness keeps each turn durable and the object keeps its events as the run's lines, which the session streams into the chat; the run itself is checkpointed after every turn, so an evicted object resumes where it was. Files the member attached, while the plan was made or in a reply, are written into the container's attachments folder, outside the checkout, and named in the agent's prompt for that turn. The agent's model calls leave the container through the harness, which adds the gateway and its credentials outside it. The container never calls the production URL or the Worker.
 
 The builder talks to the planning agent, which talks to the user. Whenever the builder stops for direction it waits. If no answer arrives within 5 minutes the container filesystem is snapshotted and the container shuts down. When the chat continues after a shutdown, the builder starts from the last snapshot with the new information. The container uses the `durable_object` scheduling policy, which snapshots require.
 
