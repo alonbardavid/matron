@@ -1,26 +1,11 @@
-import { Box, Group, Paper, Stack, Text } from "@mantine/core";
+import { Box, Paper, Stack } from "@mantine/core";
 import type { FileUIPart, UIMessage } from "ai";
 import { Markdown } from "@frontend/ds/Markdown";
 import { palette } from "@frontend/ds/palette";
-import { attachmentNote } from "../attachments";
-import { AttachmentChip } from "./AttachmentChip";
+import { attachmentNote } from "@frontend/ds/chat/attachments";
+import { AttachmentChip } from "@frontend/ds/chat/AttachmentChip";
 
-const TOOL_LABELS: Record<string, string> = {
-  list_tasks: "looking at the tasks",
-  create_task: "adding a task",
-  update_task: "updating a task",
-  remove_task: "removing a task",
-  list_events: "looking at the calendar",
-  get_event: "looking at an event",
-  create_event: "adding an event",
-  update_event: "updating an event",
-  stop_recurrence: "stopping a repetition",
-  remove_event: "removing an event",
-  list_household_members: "checking who is in the household",
-  query_database: "looking something up",
-};
-
-/** One message of the assistant's chat: the user's text, or the assistant's text and what it did. */
+/** One message of the assistant's chat: the user's text or the assistant's answer. */
 export function AskMessage({ message }: { message: UIMessage }) {
   if (message.role === "user") {
     const texts: string[] = [];
@@ -45,7 +30,12 @@ export function AskMessage({ message }: { message: UIMessage }) {
                   key={index}
                   src={file.url}
                   alt={file.filename ?? "picture"}
-                  style={{ maxWidth: "100%", maxHeight: 240, borderRadius: 4, display: "block" }}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: 240,
+                    borderRadius: 4,
+                    display: "block",
+                  }}
                 />
               ) : (
                 <AttachmentChip key={index} name={file.filename ?? file.mediaType} />
@@ -60,25 +50,14 @@ export function AskMessage({ message }: { message: UIMessage }) {
       </Box>
     );
   }
-  const lines: string[] = [];
   const texts: string[] = [];
   for (const part of message.parts) {
     if (part.type === "text") texts.push(part.text);
-    else if (part.type.startsWith("tool-")) {
-      const name = part.type.slice("tool-".length);
-      lines.push(TOOL_LABELS[name] ?? `using ${name}`);
-    }
   }
   const text = texts.join("");
+  if (!text) return null;
   return (
     <Box mr="10%">
-      {lines.length > 0 && (
-        <Group gap={6} mb={4}>
-          <Text size="xs" c="dimmed">
-            {lines.join(", ")}
-          </Text>
-        </Group>
-      )}
       {text && (
         <Paper bg={palette.bubbleAgent} withBorder px="sm" py="xs">
           <Markdown text={text} />

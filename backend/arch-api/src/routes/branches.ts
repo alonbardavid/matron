@@ -1,5 +1,5 @@
 import { beginAbandon, beginMerge, listBranches } from "@backend/arch-branches/service";
-import { startAbandon, startMerge } from "@backend/arch-builder/jobs";
+import { startAbandon, startMerge } from "@backend/arch-builder/runs";
 import { mainHead } from "@backend/arch-repository/service";
 import { arch } from "../implementer";
 

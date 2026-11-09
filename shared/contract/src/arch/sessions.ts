@@ -55,56 +55,49 @@ export const sessionsContract = {
 
 // ── The build chat, over the session's WebSocket ──────────────────────────────
 
-export const CHAT_ROLES = ["user", "planner", "builder"] as const;
-export type ChatRole = (typeof CHAT_ROLES)[number];
+/**
+ * What the session is doing, synced to every connected client as it changes.
+ * A session plans until a build starts, then follows the builder; a closed
+ * session (archived, merged or abandoned) answers nothing more.
+ */
+export const BUILD_PHASES = [
+  "planning",
+  "building",
+  "waiting",
+  "deployed",
+  "failed",
+  "timed_out",
+  "closed",
+] as const;
+export type BuildPhase = (typeof BUILD_PHASES)[number];
 
 /**
- * Everything kept in a session's transcript. `message` from the server has
- * `role` planner or builder and markdown `text`; from the user it is what they
- * typed. `progress` is what the planner or builder is doing right now (a step,
- * a thought, a tool call, or with `kind` "log" a run of command output).
- * `error` is not stored; it tells the client something went wrong.
+ * The chat itself is the agent's conversation, carried by the Agents SDK chat
+ * protocol: the member's messages, the planner's answers with the tools it
+ * called, and the builder's words. A builder message is kept on the member's
+ * side of the conversation, marked by its metadata, so the planner reads it
+ * as something said to it rather than something it said.
  */
-export const chatFrameSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("message"),
-    id: z.string(),
-    ts: z.number(),
-    role: z.enum(CHAT_ROLES),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("progress"),
-    id: z.string(),
-    ts: z.number(),
-    text: z.string(),
-    kind: z.literal("log").optional(),
-  }),
-  z.object({
-    type: z.literal("error"),
-    id: z.string(),
-    ts: z.number(),
-    text: z.string(),
-  }),
-]);
-export type ChatFrame = z.infer<typeof chatFrameSchema>;
-
-/**
- * Sent once per connection, after the transcript replay: the client has
- * everything stored so far and what follows is live. Not kept in the transcript.
- */
-export const syncedFrameSchema = z.object({ type: z.literal("synced") });
-
-/** What the server sends: transcript frames and the sync marker. */
-export const serverFrameSchema = z.union([chatFrameSchema, syncedFrameSchema]);
-export type ServerFrame = z.infer<typeof serverFrameSchema>;
-
-/** What the client sends on the socket: a user message. The server stamps id, ts and role and broadcasts it. */
-export const clientFrameSchema = z.object({
-  type: z.literal("send"),
-  text: z.string().trim().min(1).max(20_000),
+export const buildMessageMetadataSchema = z.object({
+  author: z.literal("builder").optional(),
 });
-export type ClientFrame = z.infer<typeof clientFrameSchema>;
+export type BuildMessageMetadata = z.infer<typeof buildMessageMetadataSchema>;
+
+/** Prefixed to a builder message's text in the transcript; the chat shows the text without it. */
+export const BUILDER_SAYS = "The builder says:\n\n";
+
+/**
+ * A line of what the builder is doing, streamed from its run as a data part
+ * of this type: a step, a thought, a tool call, the coding agent's words, or
+ * with `kind` "log" a run of command output.
+ */
+export const BUILD_LINE_PART = "data-build-line";
+export const buildLineSchema = z.object({
+  text: z.string(),
+  kind: z.enum(["step", "log", "agent", "thought", "tool"]),
+  ts: z.number(),
+});
+export type BuildLine = z.infer<typeof buildLineSchema>;
 
 /** Where the router upgrades a session's chat socket. */
 export function sessionSocketPath(sessionId: string): string {

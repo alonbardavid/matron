@@ -1,21 +1,21 @@
 import { emit } from "./emit.js";
 import { ensureDirs, paths } from "./state.js";
 import { Steps } from "./steps.js";
-import { JobError, type StepName, type TurnRequest } from "./types.js";
+import { BuilderError, type StepName, type TurnRequest } from "./types.js";
 
 /**
  * `node /app/dist/cli.js <step>`, with the step's {@link TurnRequest} on
- * stdin: runs one step of a job and prints its result as the last line. A
+ * stdin: runs one of a run's steps and prints its result as the last line. A
  * failure prints an `error` line and exits 1.
  */
 async function main(step: StepName): Promise<unknown> {
   const request = JSON.parse(await readStdin()) as TurnRequest;
   if (request.kind !== "step" || request.step !== step) {
-    throw new JobError(`stdin does not carry a ${step} request`);
+    throw new BuilderError(`stdin does not carry a ${step} request`);
   }
   const p = paths();
   ensureDirs(p);
-  const steps = new Steps(request.job, p);
+  const steps = new Steps(request.run, p);
   switch (step) {
     case "prepare-build":
       return steps.prepareBuild();
@@ -29,7 +29,7 @@ async function main(step: StepName): Promise<unknown> {
     case "verify":
       return steps.verify();
     case "commit-push":
-      if (!request.input) throw new JobError("commit-push needs its input");
+      if (!request.input) throw new BuilderError("commit-push needs its input");
       return steps.commitPush(request.input);
     case "deploy-preview":
       return steps.deployPreview();
@@ -40,7 +40,7 @@ async function main(step: StepName): Promise<unknown> {
     case "cleanup":
       return steps.cleanup();
     default:
-      throw new JobError(`Unknown step ${String(step)}`);
+      throw new BuilderError(`Unknown step ${String(step)}`);
   }
 }
 
@@ -67,7 +67,7 @@ main(step).then(
     emit({
       type: "error",
       message: error instanceof Error ? error.message : String(error),
-      ...(error instanceof JobError && error.output ? { output: error.output } : {}),
+      ...(error instanceof BuilderError && error.output ? { output: error.output } : {}),
     });
     process.exit(1);
   },

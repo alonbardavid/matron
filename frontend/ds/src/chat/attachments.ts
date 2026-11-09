@@ -1,11 +1,11 @@
 import type { FileUIPart } from "ai";
 import {
-  ASK_ATTACHMENT_MAX_BYTES,
-  ASK_ATTACHMENT_TYPES,
-  ASK_ATTACHMENTS_PER_MESSAGE,
-} from "@shared/contract/app/conversations";
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENT_TYPES,
+  ATTACHMENTS_PER_MESSAGE,
+} from "@shared/contract/attachments";
 
-export const ATTACHMENT_ACCEPT = ASK_ATTACHMENT_TYPES.join(",");
+export const ATTACHMENT_ACCEPT = ATTACHMENT_TYPES.join(",");
 
 /** The longest edge a picture is shrunk to before it is sent: enough to read a receipt, far less to keep. */
 const PICTURE_MAX_EDGE = 1600;
@@ -17,24 +17,29 @@ export async function prepareAttachments(
   files: File[],
   alreadyAttached: number,
 ): Promise<FileUIPart[]> {
-  if (alreadyAttached + files.length > ASK_ATTACHMENTS_PER_MESSAGE) {
-    throw new Error(`At most ${ASK_ATTACHMENTS_PER_MESSAGE} files go with one message`);
+  if (alreadyAttached + files.length > ATTACHMENTS_PER_MESSAGE) {
+    throw new Error(`At most ${ATTACHMENTS_PER_MESSAGE} files go with one message`);
   }
   return Promise.all(files.map(prepareAttachment));
 }
 
 async function prepareAttachment(file: File): Promise<FileUIPart> {
-  if (!(ASK_ATTACHMENT_TYPES as readonly string[]).includes(file.type)) {
+  if (!(ATTACHMENT_TYPES as readonly string[]).includes(file.type)) {
     throw new Error(`${file.name}: pictures, PDFs and text files only`);
   }
   const isPicture = file.type.startsWith("image/") && file.type !== "image/gif";
   const blob = isPicture ? await shrinkPicture(file) : file;
-  if (blob.size > ASK_ATTACHMENT_MAX_BYTES) {
+  if (blob.size > ATTACHMENT_MAX_BYTES) {
     throw new Error(
-      `${file.name} is larger than ${Math.round(ASK_ATTACHMENT_MAX_BYTES / 1024 / 1024)} MB`,
+      `${file.name} is larger than ${Math.round(ATTACHMENT_MAX_BYTES / 1024 / 1024)} MB`,
     );
   }
-  return { type: "file", mediaType: blob.type, filename: file.name, url: await dataUrlOf(blob) };
+  return {
+    type: "file",
+    mediaType: blob.type,
+    filename: file.name,
+    url: await dataUrlOf(blob),
+  };
 }
 
 /** A phone photo at full size is mostly wasted on the model; a JPEG that fits the screen reads the same. */
@@ -79,6 +84,8 @@ function dataUrlOf(blob: Blob): Promise<string> {
 
 /** A text part left where an attachment was moved out of the conversation: the attachment's type. */
 export function attachmentNote(text: string): { name: string } | null {
-  const evicted = /^\[evicted (?:([^,\]]+), )?\d+ bytes; preserved at [^\]]+\]$/.exec(text);
+  const evicted = /^\[evicted (?:([^,\]]+), )?\d+ bytes; preserved at [^\]]+\]$/.exec(
+    text,
+  );
   return evicted ? { name: evicted[1] ?? "attachment" } : null;
 }

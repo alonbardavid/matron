@@ -11,7 +11,7 @@ import {
 } from "./deploy.js";
 import { log, progress } from "./emit.js";
 import * as git from "./git.js";
-import { combined, describeFailure, run, tail } from "./run.js";
+import { combined, describeFailure, exec, tail } from "./exec.js";
 import {
   readGitAuth,
   readInstalled,
@@ -20,8 +20,8 @@ import {
   type Paths,
 } from "./state.js";
 import {
-  JobError,
-  type BuilderJob,
+  BuilderError,
+  type BuilderRun,
   type CommitPushResult,
   type DeployResult,
   type MergeMainResult,
@@ -83,19 +83,19 @@ const VERIFICATION: { label: string; args: string[] }[] = [
 
 /**
  * The steps the BuilderObject runs, one harness turn each, in the order it
- * decides. Every step gets the job on stdin and reports through stdout
+ * decides. Every step gets the run on stdin and reports through stdout
  * lines; what the next step needs is left in /work/state.
  */
 export class Steps {
   constructor(
-    private readonly job: BuilderJob,
+    private readonly run: BuilderRun,
     private readonly paths: Paths,
   ) {}
 
   private gitContext(): git.GitContext {
     return {
       repo: this.paths.repo,
-      token: this.job.repository.token,
+      token: this.run.repository.token,
       scheme: readGitAuth(this.paths),
       onOutput: log,
     };
@@ -103,7 +103,7 @@ export class Steps {
 
   private deployContext(): DeployContext {
     return {
-      job: this.job,
+      run: this.run,
       paths: this.paths,
       gitScheme: readGitAuth(this.paths),
       log: progress,
@@ -115,7 +115,7 @@ export class Steps {
   private async clone(): Promise<git.GitContext> {
     const g = this.gitContext();
     progress(`cloning into ${this.paths.repo}`);
-    await git.clone(g, this.job.repository.remote, dirname(this.paths.repo));
+    await git.clone(g, this.run.repository.remote, dirname(this.paths.repo));
     if (g.scheme) writeGitAuth(this.paths, g.scheme);
     return g;
   }
@@ -123,7 +123,7 @@ export class Steps {
   /** A build: a fresh clone with the branch cut from main. */
   async prepareBuild(): Promise<void> {
     const g = await this.clone();
-    await git.checkoutNewBranch(g, this.job.branch.name, this.job.branch.baseCommit);
+    await git.checkoutNewBranch(g, this.run.branch.name, this.run.branch.baseCommit);
   }
 
   /**
@@ -138,7 +138,7 @@ export class Steps {
       log(`restored checkout:\n${tail(await git.status(g), 20)}`);
     } else {
       g = await this.clone();
-      await git.checkoutRemoteBranch(g, this.job.branch.name);
+      await git.checkoutRemoteBranch(g, this.run.branch.name);
     }
     progress("fetching main");
     const { behind } = await git.fetchMain(g);
@@ -171,12 +171,15 @@ export class Steps {
       onOutput: log,
       env: { CI: "true" },
     };
-    const frozen = await run("pnpm", ["install", "--frozen-lockfile"], options);
+    const frozen = await exec("pnpm", ["install", "--frozen-lockfile"], options);
     if (frozen.code !== 0) {
       progress("frozen install failed; retrying without --frozen-lockfile");
-      const loose = await run("pnpm", ["install"], options);
+      const loose = await exec("pnpm", ["install"], options);
       if (loose.code !== 0)
-        throw new JobError(describeFailure("pnpm install", loose), tail(combined(loose)));
+        throw new BuilderError(
+          describeFailure("pnpm install", loose),
+          tail(combined(loose)),
+        );
     }
     writeInstalled(this.paths, lockfileHash(this.paths.repo));
   }
@@ -205,7 +208,7 @@ export class Steps {
       while (!(await responds(server.url))) {
         if (Date.now() > deadline) {
           const file = join(logs, `${server.name}.log`);
-          throw new JobError(
+          throw new BuilderError(
             `The ${server.name} dev server did not start.`,
             existsSync(file) ? tail(readFileSync(file, "utf8"), 40) : undefined,
           );
@@ -220,7 +223,7 @@ export class Steps {
     await this.warmServers();
     for (const step of VERIFICATION) {
       progress(`running ${step.label}`);
-      const result = await run("pnpm", step.args, {
+      const result = await exec("pnpm", step.args, {
         cwd: this.paths.repo,
         timeoutMs: 20 * 60 * 1000,
         onOutput: log,
@@ -246,7 +249,7 @@ export class Steps {
     );
     const committed = await git.commitAll(g, message);
     progress(committed ? "committed" : "no file changes to commit");
-    await git.push(g, this.job.branch.name);
+    await git.push(g, this.run.branch.name);
     return { committed };
   }
 
@@ -258,9 +261,9 @@ export class Steps {
   async mergeMain(): Promise<MergeMainResult> {
     const g = await this.clone();
     await git.checkout(g, "main");
-    await git.fetch(g, this.job.branch.name);
-    if (!(await git.mergeFastForward(g, `origin/${this.job.branch.name}`))) {
-      throw new JobError("main has diverged");
+    await git.fetch(g, this.run.branch.name);
+    if (!(await git.mergeFastForward(g, `origin/${this.run.branch.name}`))) {
+      throw new BuilderError("main has diverged");
     }
     await git.push(g, "main");
     progress("main pushed");
@@ -274,7 +277,7 @@ export class Steps {
   /** Removes what the branch leaves behind (`cleanup-steps.ts` lists the cleanup steps); each tolerates failure. */
   async cleanup(): Promise<void> {
     await runCleanupSteps({
-      job: this.job,
+      run: this.run,
       wrangler: wranglerContext(this.deployContext()),
       git: this.gitContext(),
       progress,

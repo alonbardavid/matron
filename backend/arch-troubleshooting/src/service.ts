@@ -170,7 +170,7 @@ export async function listContainers(
   }
 }
 
-/** Stops a running instance through its builder: the workspace is snapshotted, a running job parks. */
+/** Stops a running instance through its builder: the workspace is snapshotted, a run in progress parks. */
 export async function stopContainer(principal: Principal, name: string): Promise<void> {
   troubleshootingPermissions.require(principal, "manage");
   await troubleshootingEnv().BUILDERS.getByName(name).stopContainer();
