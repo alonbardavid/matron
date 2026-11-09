@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Alert,
   Anchor,
   Badge,
   Button,
@@ -24,6 +25,7 @@ import type {
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { IconEyeOff } from "@frontend/ds/icons";
 import { describeRule } from "../rrule";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { LabelPicker } from "./LabelPicker";
@@ -89,6 +91,8 @@ interface EventModalProps {
   onCancelOccurrence?: (originalStartAt: number) => Promise<void>;
   /** For an event someone shared with the caller: which of their calendars it shows in. */
   onPlace?: (calendarId: string) => Promise<void>;
+  /** Hides the event from the caller's own calendar, or shows it again. */
+  onHide?: (hidden: boolean) => Promise<void>;
 }
 
 /** "one": the opened occurrence alone; "all": the whole series. */
@@ -136,6 +140,7 @@ export function EventModal({
   onPlace,
   onEditOccurrence,
   onCancelOccurrence,
+  onHide,
 }: EventModalProps) {
   const { me } = useMe();
   const [scope, setScope] = useState<Scope>("all");
@@ -269,6 +274,32 @@ export function EventModal({
         </Group>
       ) : (
         <Stack gap="sm">
+          {event?.hidden && onHide && (
+            <Alert
+              color="gray"
+              variant="light"
+              icon={<IconEyeOff size={18} />}
+              title="Hidden from your calendar"
+            >
+              <Group justify="space-between" gap="xs">
+                <Text size="sm">
+                  {event.rrule
+                    ? "Every occurrence is hidden, for you only."
+                    : "Hidden for you only; others still see it."}
+                </Text>
+                <Button
+                  size="compact-sm"
+                  variant="light"
+                  onClick={async () => {
+                    await onHide(false);
+                    onClose();
+                  }}
+                >
+                  Unhide
+                </Button>
+              </Group>
+            </Alert>
+          )}
           {event && (imported || readOnly || placing) && (
             <Group gap="xs">
               <Badge
@@ -478,6 +509,19 @@ export function EventModal({
                 >
                   Remove
                 </ConfirmButton>
+              )}
+              {event && !event.hidden && onHide && (
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  leftSection={<IconEyeOff size={16} />}
+                  onClick={async () => {
+                    await onHide(true);
+                    onClose();
+                  }}
+                >
+                  {event.rrule ? "Hide series" : "Hide"}
+                </Button>
               )}
               {event?.rrule && onStop && occurrence && mine && editable && (
                 <ConfirmButton

@@ -29,6 +29,18 @@ export function allDaySpan(
   };
 }
 
+/**
+ * Where the schedule should see an all-day span end: the midnight after its
+ * last day. A span made here ends a millisecond before (`allDaySpan`), which
+ * the schedule would draw as a timed block filling the day.
+ */
+export function allDayEnd(endAt: number): number {
+  return dayjs(endAt - 1)
+    .add(1, "day")
+    .startOf("day")
+    .valueOf();
+}
+
 /** The window of occurrences worth loading around a visible date: six weeks either side. */
 export function loadWindow(date: string): { from: number; to: number } {
   const center = dayjs(date);

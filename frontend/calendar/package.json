@@ -10,6 +10,7 @@
     "@frontend/api": "workspace:*",
     "@frontend/auth": "workspace:*",
     "@frontend/ds": "workspace:*",
+    "@frontend/tasks": "workspace:*",
     "@mantine/core": "9.7.4",
     "@mantine/dates": "9.7.4",
     "@mantine/form": "9.7.4",

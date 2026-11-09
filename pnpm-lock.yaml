@@ -1057,6 +1057,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/tasks':
+        specifier: workspace:*
+        version: link:../tasks
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

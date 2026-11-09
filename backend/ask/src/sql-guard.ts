@@ -19,6 +19,7 @@ export const APP_TABLES = [
   "calendar_event_exception",
   "calendar_label",
   "calendar_event_label",
+  "calendar_event_hidden",
   "ask_session",
 ] as const;
 

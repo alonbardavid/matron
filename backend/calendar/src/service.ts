@@ -7,6 +7,7 @@ import {
   calendar,
   calendarEvent,
   calendarEventException,
+  calendarEventHidden,
   calendarEventLabel,
   calendarEventShare,
 } from "@backend/db-models/calendar";
@@ -148,9 +149,10 @@ export async function listOccurrences(
       .where(eq(calendarEventShare.userId, principal.userId)),
   ]);
   const shareOf = new Map(myShares.map((share) => [share.eventId, share]));
-  const [exceptions, labels] = await Promise.all([
+  const [exceptions, labels, hidden] = await Promise.all([
     exceptionsOf(rows.filter((r) => r.rrule).map((r) => r.id)),
     labelsOfEvents(rows.map((r) => r.id)),
+    hiddenBy(principal.userId),
   ]);
   const out: Occurrence[] = [];
   for (const row of rows) {
@@ -158,6 +160,7 @@ export async function listOccurrences(
     const placement = placementOf(viewer, row, shareOf.get(row.id));
     if (!placement) continue;
     const labelIds = labels.get(row.id) ?? [];
+    const isHidden = hidden.has(row.id);
     if (!row.rrule) {
       out.push(
         toOccurrence(row, cal, placement, {
@@ -169,6 +172,7 @@ export async function listOccurrences(
           recurring: row.externalSeriesId !== null,
           changed: false,
           labelIds,
+          hidden: isHidden,
         }),
       );
       continue;
@@ -191,6 +195,7 @@ export async function listOccurrences(
           recurring: true,
           changed: window.changed,
           labelIds,
+          hidden: isHidden,
         }),
       );
     }
@@ -208,6 +213,50 @@ export async function getEvent(principal: Principal, id: string): Promise<Calend
     .get();
   if (!row) throw new DomainError("NOT_FOUND", "Event not found");
   return withShares(principal, row);
+}
+
+/** Hides the event, every occurrence, from the caller's own calendar; or shows it again. Others are unaffected. */
+export async function hideEvent(
+  principal: Principal,
+  id: string,
+  hidden: boolean,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "view");
+  await getEvent(principal, id);
+  const db = getDb();
+  if (hidden) {
+    await db
+      .insert(calendarEventHidden)
+      .values({
+        id: newEntityId("CALENDAR_EVENT_HIDDEN"),
+        eventId: id,
+        userId: principal.userId,
+      })
+      .onConflictDoNothing();
+  } else {
+    await db
+      .delete(calendarEventHidden)
+      .where(
+        and(
+          eq(calendarEventHidden.eventId, id),
+          eq(calendarEventHidden.userId, principal.userId),
+        ),
+      );
+  }
+  log.info(hidden ? "event hidden" : "event unhidden", {
+    eventId: id,
+    userId: principal.userId,
+  });
+  return getEvent(principal, id);
+}
+
+/** The ids of the events the user hid from their calendar. */
+async function hiddenBy(userId: string): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ eventId: calendarEventHidden.eventId })
+    .from(calendarEventHidden)
+    .where(eq(calendarEventHidden.userId, userId));
+  return new Set(rows.map((row) => row.eventId));
 }
 
 /** Shows an event shared with the caller in one of their Matron calendars, or (null) their calendar for shared events. */
@@ -511,6 +560,7 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
     db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
     db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
     db.delete(calendarEventLabel).where(eq(calendarEventLabel.eventId, id)),
+    db.delete(calendarEventHidden).where(eq(calendarEventHidden.eventId, id)),
     db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
   ]);
   log.info("event removed", { eventId: id, userId: principal.userId });
@@ -533,12 +583,22 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions, labels] = await Promise.all([
+  const [shares, calendars, viewer, exceptions, labels, hidden] = await Promise.all([
     sharesOf([row.id]),
     calendarsById([row.calendarId]),
     viewerOf(principal),
     row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
     labelsOfEvents([row.id]),
+    getDb()
+      .select({ id: calendarEventHidden.id })
+      .from(calendarEventHidden)
+      .where(
+        and(
+          eq(calendarEventHidden.eventId, row.id),
+          eq(calendarEventHidden.userId, principal.userId),
+        ),
+      )
+      .get(),
   ]);
   const list = shares.get(row.id) ?? [];
   const placement = placementOf(
@@ -554,6 +614,7 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     placement,
     exceptions.get(row.id) ?? [],
     labels.get(row.id) ?? [],
+    hidden !== undefined,
   );
 }
 
@@ -686,6 +747,7 @@ function toEvent(
   placement: Placement,
   exceptions: ExceptionRow[],
   labelIds: string[],
+  hidden: boolean,
 ): CalendarEvent {
   return {
     id: row.id,
@@ -704,6 +766,7 @@ function toEvent(
     shownIn: placement.shownIn,
     access: placement.access,
     labelIds,
+    hidden,
     source: cal?.source ?? "matron",
     repeatsAtSource: row.externalSeriesId !== null,
     externalUrl: row.externalUrl,
@@ -721,6 +784,7 @@ interface OccurrenceFields {
   recurring: boolean;
   changed: boolean;
   labelIds: string[];
+  hidden: boolean;
 }
 
 function toOccurrence(
