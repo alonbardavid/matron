@@ -30,7 +30,6 @@ export type BuilderRun = {
     appOrigin: string;
     aiGateway: string;
   };
-  signingKey: string;
   request: string;
   plan?: string;
   message?: string;

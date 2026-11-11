@@ -659,6 +659,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+      rrule:
+        specifier: 2.8.1
+        version: 2.8.1
       zod:
         specifier: ^4.1.0
         version: 4.6.7
@@ -1111,6 +1114,9 @@ importers:
       react-router-dom:
         specifier: ^7.13.1
         version: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      rrule:
+        specifier: 2.8.1
+        version: 2.8.1
       zod:
         specifier: ^4.1.0
         version: 4.6.7
@@ -1319,6 +1325,9 @@ importers:
       '@frontend/auth':
         specifier: workspace:*
         version: link:../auth
+      '@frontend/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds

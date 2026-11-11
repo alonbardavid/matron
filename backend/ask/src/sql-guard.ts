@@ -5,12 +5,18 @@
  * allow-list for the user's role. Nothing fancy; the prompt says the same.
  */
 
-/** The application's tables, readable by every member. */
+/**
+ * The application's tables, readable by every member. `google_calendar_connection`
+ * and `google_calendar_watch` are left off on purpose: no role reads them.
+ */
 export const APP_TABLES = [
   "task",
   "task_share",
+  "calendar",
+  "calendar_share",
   "calendar_event",
   "calendar_event_share",
+  "calendar_event_exception",
   "ask_session",
 ] as const;
 

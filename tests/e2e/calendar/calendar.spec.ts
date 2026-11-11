@@ -18,7 +18,7 @@ test.describe("calendar", () => {
         startAt: start,
         endAt: start + 60 * 60_000,
         timeZone,
-        recurrence: { frequency: "weekly", days: [1], until: null, count: 4 },
+        rrule: "FREQ=WEEKLY;BYDAY=MO;COUNT=4",
       },
     });
     expect(created.ok()).toBeTruthy();
@@ -70,6 +70,10 @@ test.describe("calendar", () => {
     await page.reload();
     await page.getByText("Dentist", { exact: true }).first().click();
     const dialog = page.getByRole("dialog");
+    // An event opens as it reads; the pencil turns it into the form.
+    await expect(dialog.getByRole("heading", { name: "Dentist" })).toBeVisible();
+    await expect(dialog.getByLabel("Title")).toBeHidden();
+    await dialog.getByRole("button", { name: "Edit event" }).click();
     await expect(dialog.getByLabel("Title")).toHaveValue("Dentist");
     await dialog.getByLabel("Title").fill("Dentist, moved");
     await dialog.getByRole("button", { name: "Save" }).click();
