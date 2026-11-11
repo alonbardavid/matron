@@ -51,7 +51,12 @@ in place, never append history.
   table adds its prefix there first and gets a migration.
 - **Log constant messages with props**: `log.info("task created", { taskId })`, through
   `logger("<package>/<file>")` from `@backend/commons/logger`. Never log secrets or tokens.
-- **Forms go through `@frontend/ds/forms`**, API calls through `@frontend/api/orpc`.
+- **Forms go through `@frontend/ds/forms`**, API calls through `@frontend/api/orpc`. Every
+  form is a real `<form>`: `StandardForm`, or `Form` when its state lives outside
+  `@mantine/form`. Enter submits it, so the save button is `type="submit"`, never an `onClick`
+  save. Tab reaches every field and button in visual order: no `tabIndex` above 0, no
+  clickable `div`s, and a popover with controls in it sets `trapFocus`. Controls that act at
+  once (a filter, a toggle) are not forms.
 - Use `pnpm` (and `pnpx`), never `npm`/`npx`.
 
 ## Traps

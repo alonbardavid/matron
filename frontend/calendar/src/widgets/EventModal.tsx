@@ -7,7 +7,6 @@ import {
   Modal,
   NumberInput,
   SegmentedControl,
-  Stack,
   Switch,
   Text,
   Textarea,
@@ -19,6 +18,7 @@ import type { CalendarEvent, Recurrence } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { Form } from "@frontend/ds/forms/Form";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -197,7 +197,7 @@ export function EventModal({
           <Loader size="sm" />
         </Group>
       ) : (
-        <Stack gap="sm">
+        <Form onSubmit={() => void save()}>
           <TextInput
             label="Title"
             value={draft.title}
@@ -406,11 +406,11 @@ export function EventModal({
                 </ConfirmButton>
               )}
             </Group>
-            <Button loading={saving} onClick={() => void save()}>
+            <Button type="submit" loading={saving}>
               {event ? "Save" : "Add event"}
             </Button>
           </Group>
-        </Stack>
+        </Form>
       )}
     </Modal>
   );

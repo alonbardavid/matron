@@ -21,6 +21,7 @@ import {
 import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { Card } from "@frontend/ds/Card";
+import { Form } from "@frontend/ds/forms/Form";
 import { Page } from "@frontend/ds/Page";
 
 const ANTHROPIC_OPTIONS = ANTHROPIC_MODELS.map((model) => ({
@@ -113,7 +114,7 @@ export function AppSettingsScreen() {
             {settings.isLoading ? (
               <Loader size="sm" />
             ) : (
-              <>
+              <Form onSubmit={() => dirty && model && update.mutate({ askModel: model })}>
                 <Autocomplete
                   label="Assistant model"
                   placeholder="anthropic/model or @cf/model"
@@ -127,14 +128,14 @@ export function AppSettingsScreen() {
                 />
                 <Group>
                   <Button
+                    type="submit"
                     disabled={!dirty || !model}
                     loading={update.isPending}
-                    onClick={() => update.mutate({ askModel: model })}
                   >
                     Save assistant model
                   </Button>
                 </Group>
-              </>
+              </Form>
             )}
           </Stack>
         </Card>

@@ -29,7 +29,14 @@ export function ConfirmButton({
   };
 
   return (
-    <Popover opened={opened} onChange={setOpened} position="bottom" withArrow shadow="md">
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom"
+      withArrow
+      shadow="md"
+      trapFocus
+    >
       <Popover.Target>
         <Button
           {...props}
