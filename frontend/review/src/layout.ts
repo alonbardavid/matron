@@ -6,12 +6,13 @@ export type DiffLayout = "unified" | "split";
 const STORAGE_KEY = "matron.review.layout";
 
 /**
- * Each diff's layout: a bracket or a file keeps the layout chosen for it
- * during this visit, and one not yet chosen opens with the reviewer's last
- * choice, which this browser remembers for every branch.
+ * Each diff's layout: every file and every range of a bracket keeps the
+ * layout chosen for it during this visit. One not yet chosen opens with the
+ * layout this browser last saved, so a choice never moves the diffs beside it;
+ * each choice is saved for the next visit.
  */
 export function useDiffLayouts() {
-  const [fallback, setFallback] = useState<DiffLayout>(load);
+  const [fallback] = useState<DiffLayout>(load);
   const [chosen, setChosen] = useState<Record<string, DiffLayout>>({});
 
   const layoutOf = useCallback(
@@ -21,7 +22,6 @@ export function useDiffLayouts() {
 
   const setLayout = useCallback((key: string, layout: DiffLayout) => {
     setChosen((current) => ({ ...current, [key]: layout }));
-    setFallback(layout);
     try {
       localStorage.setItem(STORAGE_KEY, layout);
     } catch {

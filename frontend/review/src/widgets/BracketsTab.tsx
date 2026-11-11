@@ -12,7 +12,7 @@ import {
 import { useMediaQuery } from "@mantine/hooks";
 import { Markdown } from "@frontend/ds/Markdown";
 import { changesIn, markKey } from "../diff";
-import type { DiffLayout, DiffLayouts } from "../layout";
+import type { DiffLayouts } from "../layout";
 import type { ReviewModel, ShownBracket } from "../model";
 import type { Viewed } from "../viewed";
 import { DiffView } from "./DiffView";
@@ -66,8 +66,6 @@ export function BracketsTab({
     );
   }
   const next = model.brackets[index + 1];
-  const layoutKey = `bracket:${index}:${bracket.title}`;
-  const layout = layouts.layoutOf(layoutKey);
 
   return (
     <Group align="flex-start" gap="lg" wrap={wide ? "nowrap" : "wrap"}>
@@ -112,18 +110,15 @@ export function BracketsTab({
       </Paper>
 
       <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
-        <BracketHeader
-          bracket={bracket}
-          viewed={viewed}
-          layout={layout}
-          onLayout={(next) => layouts.setLayout(layoutKey, next)}
-        />
+        <BracketHeader bracket={bracket} viewed={viewed} />
         {bracket.ranges.map((range, i) => {
           const file = model.files.get(range.path);
           const keys = file
             ? changesIn(file, range.start, range.end).map((c) => markKey(range.path, c))
             : [];
           const done = viewed.count(keys);
+          const layoutKey = `range:${range.path}:${range.start}-${range.end}`;
+          const layout = layouts.layoutOf(layoutKey);
           return (
             <Group
               key={`${range.path}:${range.start}-${range.end}`}
@@ -154,15 +149,23 @@ export function BracketsTab({
                       lines {range.start}–{range.end}
                     </Text>
                   </Group>
-                  {keys.length > 0 && (
-                    <MarkButton
-                      state={markState(done, keys.length)}
-                      label={`Viewed: ${range.path} lines ${range.start}–${range.end}`}
-                      onToggle={() => viewed.setViewed(keys, done < keys.length)}
-                    >
-                      Viewed
-                    </MarkButton>
-                  )}
+                  <Group gap="sm">
+                    {file && (
+                      <LayoutSwitch
+                        layout={layout}
+                        onChange={(next) => layouts.setLayout(layoutKey, next)}
+                      />
+                    )}
+                    {keys.length > 0 && (
+                      <MarkButton
+                        state={markState(done, keys.length)}
+                        label={`Viewed: ${range.path} lines ${range.start}–${range.end}`}
+                        onToggle={() => viewed.setViewed(keys, done < keys.length)}
+                      >
+                        Viewed
+                      </MarkButton>
+                    )}
+                  </Group>
                 </Group>
                 {range.note && (
                   <Text size="sm" px="sm" py={6} c="dimmed">
@@ -202,18 +205,8 @@ export function BracketsTab({
   );
 }
 
-/** The bracket's kind, title and description, its progress, and the layout of all its ranges' diffs. */
-function BracketHeader({
-  bracket,
-  viewed,
-  layout,
-  onLayout,
-}: {
-  bracket: ShownBracket;
-  viewed: Viewed;
-  layout: DiffLayout;
-  onLayout: (layout: DiffLayout) => void;
-}) {
+/** The bracket's kind, title and description, and its progress. */
+function BracketHeader({ bracket, viewed }: { bracket: ShownBracket; viewed: Viewed }) {
   const done = viewed.count(bracket.keys);
   const total = bracket.keys.length;
   return (
@@ -223,13 +216,10 @@ function BracketHeader({
           <Badge variant="default" radius="sm" tt="none">
             {KIND_LABELS[bracket.kind]}
           </Badge>
-          <Group gap="sm">
-            <Text size="xs" c="dimmed">
-              {plural(bracket.ranges.length, "range")} ·{" "}
-              {plural(fileCount(bracket), "file")}
-            </Text>
-            <LayoutSwitch layout={layout} onChange={onLayout} />
-          </Group>
+          <Text size="xs" c="dimmed">
+            {plural(bracket.ranges.length, "range")} ·{" "}
+            {plural(fileCount(bracket), "file")}
+          </Text>
         </Group>
         <Title order={3}>{bracket.title}</Title>
         {bracket.description && <Markdown text={bracket.description} />}
