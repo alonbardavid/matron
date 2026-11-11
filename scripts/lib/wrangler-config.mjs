@@ -4,9 +4,6 @@
 // wrangler-config.test.ts.
 /* global structuredClone */
 
-/** The image name under `containers[].images`; read as `ctx.container.images.builder`. */
-export const BUILDER_IMAGE_NAME = "builder";
-
 export const REQUIRED_COMPAT_FLAGS = [
   "nodejs_compat",
   "global_fetch_strictly_public",
@@ -120,7 +117,7 @@ export function generateWranglerConfig(emitted, options) {
           class_name: "BuilderObject",
           scheduling_policy: "durable_object",
           images: {
-            [BUILDER_IMAGE_NAME]: options.builderImage
+            builder: options.builderImage
               ? { image: options.builderImage }
               : { dockerfile: options.dockerfilePath },
           },
