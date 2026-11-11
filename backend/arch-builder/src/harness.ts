@@ -1,8 +1,6 @@
 import { ContainerHarness, containerAgent } from "agents/harness/container";
 import { AI_GATEWAY } from "@backend/commons/names";
 
-/** The image name in the generated config's `containers[].images` (scripts/lib/wrangler-config.mjs). */
-const BUILDER_IMAGE_NAME = "builder";
 // Two vCPUs: install, the builds and the tests are CPU-bound.
 const BUILDER_INSTANCE = "standard-3";
 /**
@@ -43,7 +41,8 @@ export function builderHarness(
     instance: BUILDER_INSTANCE,
     idleTimeoutMs: WAITING_GRACE_MS,
     agent: containerAgent({
-      image: container.images[BUILDER_IMAGE_NAME] as string,
+      // `builder` is the image's key in the generated config's `containers[].images`.
+      image: container.images.builder as string,
       adapter: "matron",
       env: {
         ANTHROPIC_BASE_URL: `http://${MODEL_HOST}`,

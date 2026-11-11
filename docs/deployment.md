@@ -40,7 +40,7 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
 4. Creates the Artifacts namespace `matron` if missing (REST API).
 5. Builds `apps/builder` with `wrangler containers build ... --push`, tagged with the git sha, and
    keeps the pushed digest: the config references
-   `registry.cloudflare.com/<account>/matron-builder@sha256:<digest>`.
+   `registry.cloudflare.com/<account>/matron@sha256:<digest>`.
 6. Writes `apps/backend/dist/worker/wrangler.generated.production.json`.
 7. Applies pending D1 migrations to the production database.
 8. Lists the Worker's secrets; generates `BETTER_AUTH_SECRET` and `SIGNING_KEY` when missing.
@@ -53,27 +53,27 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
 
 Flags (`pnpm run deploy --name home`):
 
-| Flag                                                | Default                                  | Meaning                                                                                                      |
-| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--name`                                            | `matron`                                 | Worker name; the D1, R2 bucket, Artifacts namespace and repository, and the builder image are named after it |
-| `--origin`                                          | `https://<name>.<subdomain>.workers.dev` | Production origin (`APP_ORIGIN`)                                                                             |
-| `--skip-image`                                      | off                                      | Do not build; use `BUILDER_IMAGE=<digest-pinned ref>` from the shell                                         |
-| `--no-container`                                    | off                                      | Deploy without the builder container; no Docker, building off                                                |
-| `--skip-repo`                                       | off                                      | Do not create or push the Artifacts repository                                                               |
-| `--owner-email`, `--owner-name`, `--owner-password` | prompted                                 | Owner account on a first deploy                                                                              |
+| Flag                                                | Default                                  | Meaning                                                                                                                |
+| --------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--name`                                            | `matron`                                 | Worker name; the D1, R2 bucket, Artifacts namespace and repository, and the builder image and container share its name |
+| `--origin`                                          | `https://<name>.<subdomain>.workers.dev` | Production origin (`APP_ORIGIN`)                                                                                       |
+| `--skip-image`                                      | off                                      | Do not build; use `BUILDER_IMAGE=<digest-pinned ref>` from the shell                                                   |
+| `--no-container`                                    | off                                      | Deploy without the builder container; no Docker, building off                                                          |
+| `--skip-repo`                                       | off                                      | Do not create or push the Artifacts repository                                                                         |
+| `--owner-email`, `--owner-name`, `--owner-password` | prompted                                 | Owner account on a first deploy                                                                                        |
 
 ## Where things live
 
-| What                                                                              | Where                                                                                                               |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`                       | Worker secrets (never in config; printed nowhere)                                                                   |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                        | Worker secrets too, set from App settings through Cloudflare's API; a deploy leaves them as they are                |
-| `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; everything else is derived from `WORKER_NAME` (`backend/commons/src/names.ts`) |
-| Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)               |
-| Users, branches, sessions, tasks, events                                          | Production D1 `<name>`                                                                                              |
-| Files                                                                             | R2 bucket `<name>`, one prefix per branch                                                                           |
-| Builder image                                                                     | `registry.cloudflare.com/<account>/<name>-builder@sha256:<digest>`                                                  |
-| Planner model, AI Gateway                                                         | App settings (builder model, assistant model and backend); the account's `default` gateway is a constant in code    |
+| What                                                                              | Where                                                                                                            |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`                       | Worker secrets (never in config; printed nowhere)                                                                |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                        | Worker secrets too, set from App settings through Cloudflare's API; a deploy leaves them as they are             |
+| `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; every resource the deployment owns carries the name in `WORKER_NAME`        |
+| Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)            |
+| Users, branches, sessions, tasks, events                                          | Production D1 `<name>`                                                                                           |
+| Files                                                                             | R2 bucket `<name>`, one prefix per branch                                                                        |
+| Builder image                                                                     | `registry.cloudflare.com/<account>/<name>@sha256:<digest>`                                                       |
+| Planner model, AI Gateway                                                         | App settings (builder model, assistant model and backend); the account's `default` gateway is a constant in code |
 
 The API token is stored on the Worker on purpose: the router creates branch databases and
 Previews with it and the builder container deploys with it. Scope it to the list above.
@@ -88,7 +88,7 @@ Env: `TARGET` (`production` | `preview`), `WORKER_NAME`, `DB_NAME`, `DB_ID`, `AP
 the Worker.
 
 - `production`: `workers_dev` when the origin is a `workers.dev` URL, `preview_urls` on, the
-  builder container as a Durable Object-managed container named `builder` whose image
+  builder container as a Durable Object-managed container named after the Worker whose image
   `builder` is `BUILDER_IMAGE` (or the Dockerfile when unset), linked from the `exports` entry of
   `BuilderObject`, and observability.
 - `preview`: no container at all, and a `previews` block repeating vars, D1, R2, Artifacts, AI,
