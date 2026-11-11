@@ -13,7 +13,7 @@ Matron is a single deployed Worker on Cloudflare but has three distinct parts: a
 Matron is deployed from the terminal with `pnpm run deploy`. A Workers Paid plan is required. The deploy script:
 
 1. Builds the code.
-2. Generates the wrangler configuration. Configuration is never committed; it is generated at build and deploy time from the environment, so the same code deploys as production or as a fork with a different database. The Worker is told only its name and origin; the database, bucket, Artifacts namespace and repository, and the builder image are named after the Worker. The planner model and the AI Gateway are constants in code for now.
+2. Generates the wrangler configuration. Configuration is never committed; it is generated at build and deploy time from the environment, so the same code deploys as production or as a fork with a different database. The Worker is told only its name and origin; the database, bucket, Artifacts namespace and repository, and the builder image and container application all carry the Worker's name. The planner model and the AI Gateway are constants in code for now.
 3. Creates the production D1 database and R2 bucket if they do not exist, and applies all pending D1 migrations to the production database.
 4. Builds the builder container image from its Dockerfile and deploys the Worker with wrangler. The image is pushed to the Cloudflare registry as part of the deploy.
 5. Creates the code repository in the Worker's Artifacts namespace and pushes the local repository to it with full history. Artifacts becomes the only source of truth for code from this point.
