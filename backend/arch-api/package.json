@@ -13,6 +13,7 @@
     "@backend/arch-sessions": "workspace:*",
     "@backend/arch-settings": "workspace:*",
     "@backend/arch-troubleshooting": "workspace:*",
+    "@backend/arch-upstream": "workspace:*",
     "@backend/commons": "workspace:*",
     "@orpc/openapi": "1.15.4",
     "@orpc/server": "1.15.4",

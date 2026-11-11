@@ -74,7 +74,14 @@ A Preview holds the token too, so its assistant takes the same route.
   session's phase and rows. The builder never imports the sessions package.
 - The code repository (Artifacts) is reached only through `backend/arch-repository/src/service.ts`:
   main's head, the file listing, reading and searching behind the planner's tools, and the
-  token a builder clones with.
+  token a builder clones with. It can also pull a branch of a public repository into one of
+  its own and say what main lacks of it (`mirror.ts`, isomorphic-git over `node:fs`,
+  whose `/tmp` in a Worker is memory that lasts for the request).
+- Upstream updates are `backend/arch-upstream`: where upstream is (`source.ts`), the check that
+  pulls it into the repository's `upstream/main` branch and compares main with it, and the start
+  of the build session that merges it, with the plan under `prompts/`. It reaches the
+  session through `getSession` in the sessions service, which returns the session's Durable
+  Object. The screen side is `frontend/upstream`, a widget on troubleshooting's Branches tab.
 - The builder object is an Agent whose container harness (Agents SDK) owns the builder
   container: it starts it from the image, runs every turn the object submits as a durable
   operation, streams the turn's events, reattaches after an eviction, and snapshots the

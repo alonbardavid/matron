@@ -20,7 +20,8 @@
     "react-router-dom": "^7.13.1",
     "zod": "^4.1.0",
     "@frontend/branches": "workspace:*",
-    "@frontend/build": "workspace:*"
+    "@frontend/build": "workspace:*",
+    "@frontend/upstream": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

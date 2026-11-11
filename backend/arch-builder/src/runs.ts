@@ -8,7 +8,6 @@ import type {
   BuilderBranch,
   BuilderFile,
   BuilderRun,
-  BuilderUpstream,
   ContinueRun,
   MergeRun,
 } from "./protocol";
@@ -68,14 +67,12 @@ export async function buildRun(input: {
   request: string;
   plan: string;
   files: BuilderFile[];
-  upstream?: BuilderUpstream;
 }): Promise<BuildRun> {
   return {
     ...(await runCommon(input.sessionId, input.branch, input.request)),
     mode: "build",
     plan: input.plan,
     ...(input.files.length ? { files: input.files } : {}),
-    ...(input.upstream ? { upstream: input.upstream } : {}),
   };
 }
 

@@ -24,8 +24,7 @@
  * step's data or `error` with a readable message (exit code 1). Anything
  * that is not JSON is treated as a log line.
  *
- *   prepare-build      clone `repository.remote`, cut `branch.name` from `branch.baseCommit`;
- *                      for an origin update, fetch `upstream` and merge it in → {@link PrepareBuildResult}
+ *   prepare-build      clone `repository.remote`, cut `branch.name` from `branch.baseCommit`
  *   prepare-continue   reuse the restored checkout (or clone the branch), fetch main → {@link PrepareContinueResult}
  *   prepare-cleanup    make sure the repository's dependencies exist for a cleanup
  *   install            pnpm install, skipped when the lockfile is already installed
@@ -113,24 +112,12 @@ interface RunBase {
   builderImage?: string;
 }
 
-/** For an origin update: the upstream commit the branch merges in. */
-export interface BuilderUpstream {
-  /** Public git remote of the upstream repository; fetched without credentials. */
-  remote: string;
-  /** The upstream branch, for messages. */
-  branch: string;
-  /** The commit to merge, the upstream head when the update was started. */
-  commit: string;
-}
-
 export interface BuildRun extends RunBase {
   mode: "build";
   /** The plan the user agreed to. */
   plan: string;
   /** Pictures or files the user attached while the plan was made; the agent reads them. */
   files?: BuilderFile[];
-  /** Set for an origin update: prepare-build merges this commit into the new branch. */
-  upstream?: BuilderUpstream;
 }
 
 export interface ContinueRun extends RunBase {
@@ -177,7 +164,6 @@ export interface BuilderFile {
 /** How the agent's prompt for one turn is built; the templates live in the image. */
 export type AgentPrompt =
   | { kind: "build"; extra: string; files?: BuilderFile[] }
-  | { kind: "upstream"; extra: string; sync: string }
   | { kind: "continue"; message: string; sync: string; files?: BuilderFile[] }
   | { kind: "fix"; command: string; output: string };
 
@@ -207,10 +193,6 @@ export interface AgentOutcome {
   message: string;
 }
 
-export interface PrepareBuildResult {
-  /** For an origin update: how the merge went, for the agent's prompt; null otherwise. */
-  sync: string | null;
-}
 export interface PrepareContinueResult {
   sync: string;
 }

@@ -9,6 +9,9 @@ export const BRANCH_STATUSES = [
   "abandoned",
 ] as const;
 
+/** What a branch is for: a change a member asked for, or the upstream repository's commits merged in. */
+export const BRANCH_TYPES = ["session-request", "upstream-pull"] as const;
+
 export const branchSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -24,8 +27,7 @@ export const branchSchema = z.object({
   archivedAt: z.number().nullable(),
   /** Main has moved since the branch last took it in: it must update before it can merge. */
   behindMain: z.boolean(),
-  /** The upstream commit the branch merges in, for an origin update; null for a requested change. */
-  upstreamCommit: z.string().nullable(),
+  type: z.enum(BRANCH_TYPES),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

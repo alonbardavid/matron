@@ -44,7 +44,7 @@ function agentCommand(
   turn: CliTurn,
 ): CliCommand {
   const sessionId = turn.state.sessionId;
-  const files = "files" in request.prompt ? (request.prompt.files ?? []) : [];
+  const files = request.prompt.kind === "fix" ? [] : (request.prompt.files ?? []);
   return {
     argv: agentArgv(p.repo, p.prompts, request.model, sessionId),
     stdin: renderPrompt(

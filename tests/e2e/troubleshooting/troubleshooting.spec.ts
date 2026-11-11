@@ -24,7 +24,7 @@ test.describe("troubleshooting", () => {
     await expect(page.getByLabel("Show stopped")).toBeChecked();
   });
 
-  test("the owner sees every branch and can check origin for updates", async ({
+  test("the owner sees every branch and can check upstream for updates", async ({
     page,
   }) => {
     await signIn(page, OWNER);
@@ -41,8 +41,8 @@ test.describe("troubleshooting", () => {
     await expect(page.getByLabel("Show archived")).toBeChecked();
     await expect(page.getByText("No branches yet.")).toBeVisible();
     // Locally there is no code repository to compare upstream with.
-    await page.getByRole("button", { name: "Check origin updates" }).click();
-    await expect(page.getByText("Could not check origin")).toBeVisible();
+    await page.getByRole("button", { name: "Check updates" }).click();
+    await expect(page.getByText("Could not check upstream")).toBeVisible();
     await expect(page.getByText("The code repository is not available")).toBeVisible();
   });
 
@@ -55,7 +55,7 @@ test.describe("troubleshooting", () => {
     expect(answer.status()).toBe(403);
     const branches = await page.request.get("/api/arch/troubleshooting/branches");
     expect(branches.status()).toBe(403);
-    const origin = await page.request.post("/api/arch/troubleshooting/origin/check");
-    expect(origin.status()).toBe(403);
+    const upstream = await page.request.post("/api/arch/upstream/check");
+    expect(upstream.status()).toBe(403);
   });
 });

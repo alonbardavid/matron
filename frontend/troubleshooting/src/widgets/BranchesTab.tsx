@@ -19,7 +19,11 @@ import { useBuildChat } from "@frontend/build/BuildChatContext";
 import { formatAgo, formatWhen } from "../format";
 import { useFilterParam, useTableView } from "../urlState";
 import { DataTable } from "./DataTable";
-import { OriginUpdates } from "./OriginUpdates";
+import {
+  CheckUpdatesButton,
+  UpstreamUpdatesResult,
+  useUpstreamUpdates,
+} from "@frontend/upstream/widgets/UpstreamUpdates";
 import { ProblemNotice } from "./ProblemNotice";
 import { RefreshButton } from "./RefreshButton";
 import { TableLoading } from "./TableLoading";
@@ -51,14 +55,10 @@ export function BranchesTab() {
               <Text size="sm" fw={500} style={{ whiteSpace: "nowrap" }}>
                 {row.original.name}
               </Text>
-              {row.original.upstreamCommit && (
-                <Tooltip
-                  label={`Merges upstream ${row.original.upstreamCommit.slice(0, 7)}`}
-                >
-                  <Badge size="xs" variant="light" color="blue" style={{ flexShrink: 0 }}>
-                    origin update
-                  </Badge>
-                </Tooltip>
+              {row.original.type === "upstream-pull" && (
+                <Badge size="xs" variant="light" color="blue" style={{ flexShrink: 0 }}>
+                  upstream update
+                </Badge>
               )}
             </Group>
             {row.original.sessionTitle && (
@@ -146,9 +146,10 @@ export function BranchesTab() {
     (item) => item.archivedAt === null,
   ).length;
 
+  const upstream = useUpstreamUpdates({ onStarted: () => void refresh() });
+
   return (
     <Stack gap="sm">
-      <OriginUpdates onStarted={() => void refresh()} />
       <Group justify="space-between" wrap="nowrap">
         <Group gap="md" wrap="nowrap">
           <Switch
@@ -162,12 +163,16 @@ export function BranchesTab() {
             </Text>
           )}
         </Group>
-        <RefreshButton
-          label="Refresh branches"
-          fetching={query.isFetching}
-          onClick={() => void refresh()}
-        />
+        <Group gap="xs" wrap="nowrap">
+          <CheckUpdatesButton upstream={upstream} />
+          <RefreshButton
+            label="Refresh branches"
+            fetching={query.isFetching}
+            onClick={() => void refresh()}
+          />
+        </Group>
       </Group>
+      <UpstreamUpdatesResult upstream={upstream} />
       {query.isPending ? (
         <TableLoading />
       ) : query.isError ? (

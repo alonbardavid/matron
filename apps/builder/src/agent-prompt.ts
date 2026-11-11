@@ -35,27 +35,14 @@ export function renderPrompt(
   /** Where the files that came with the message were written, if any. */
   attachments: string[] = [],
 ): string {
-  const buildContext = (plan: string, files: string[]) =>
-    renderTemplate(loadPrompt(promptsDir, "build"), {
-      request: run.request,
-      plan,
-      branch: run.branch.name,
-      extra: prompt.kind === "build" ? prompt.extra : "",
-      attachments: attachmentsNote(files),
-    });
   switch (prompt.kind) {
     case "build":
-      return buildContext(
-        run.plan ?? "(no plan was written; work from the request)",
-        attachments,
-      );
-    case "upstream":
-      return renderTemplate(loadPrompt(promptsDir, "upstream"), {
+      return renderTemplate(loadPrompt(promptsDir, "build"), {
         request: run.request,
-        plan: run.plan ?? "",
+        plan: run.plan ?? "(no plan was written; work from the request)",
         branch: run.branch.name,
-        sync: prompt.sync,
         extra: prompt.extra,
+        attachments: attachmentsNote(attachments),
       });
     case "fix":
       return renderTemplate(loadPrompt(promptsDir, "fix"), {
@@ -69,11 +56,15 @@ export function renderPrompt(
         attachments: attachmentsNote(attachments),
       });
       if (hasSession) return text;
-      const context = buildContext(
-        run.plan ??
+      const context = renderTemplate(loadPrompt(promptsDir, "build"), {
+        request: run.request,
+        plan:
+          run.plan ??
           "(the plan is not available; the branch already contains the earlier work)",
-        [],
-      );
+        branch: run.branch.name,
+        extra: "",
+        attachments: "",
+      });
       return `${context}\n\n---\n\n${text}`;
     }
   }

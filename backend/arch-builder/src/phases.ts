@@ -5,7 +5,6 @@ import type {
   CommitPushResult,
   DeployResult,
   MergeMainResult,
-  PrepareBuildResult,
   PrepareContinueResult,
   StepInput,
   StepName,
@@ -51,12 +50,10 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
   switch (at.phase) {
     case "prepare": {
       switch (run.mode) {
-        case "build": {
-          const result = await ctx.step<PrepareBuildResult>("prepare-build");
-          at.sync = result.sync ?? null;
+        case "build":
+          await ctx.step("prepare-build");
           at.phase = "install";
           return "continue";
-        }
         case "continue": {
           const result = await ctx.step<PrepareContinueResult>("prepare-continue");
           at.sync = result.sync;
@@ -87,9 +84,7 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
           text: "",
           files: run.files ?? [],
         }))!;
-        at.prompt = run.upstream
-          ? { kind: "upstream", extra: message, sync: at.sync ?? "" }
-          : { kind: "build", extra: message, ...(files ? { files } : {}) };
+        at.prompt = { kind: "build", extra: message, ...(files ? { files } : {}) };
       } else {
         const first =
           run.mode === "continue"

@@ -3,6 +3,7 @@ import { deploymentNames } from "@backend/commons/names";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH } from "@backend/commons/principal";
 import { repositoryEnv } from "./env";
+import { pullBranch, type Pulled } from "./mirror";
 
 const log = logger("arch-repository/service");
 
@@ -13,8 +14,8 @@ const MAX_SEARCH_MATCHES = 60;
 const MAX_LINE_CHARS = 200;
 const MAX_SEARCHED_BLOB_BYTES = 200_000;
 const READ_CONCURRENCY = 8;
-// How far the ancestry walk goes before it gives up on an answer.
-const MAX_WALKED_COMMITS = 2_000;
+// Long enough for the fetches and the push.
+const PULL_TOKEN_SECONDS = 300;
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   "dist",
@@ -60,70 +61,20 @@ export async function withRepository<T>(
 
 /** Main's head commit in the code repository (Artifacts). */
 export async function mainHead(): Promise<string> {
-  return withRepository(async (repo) => {
-    const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
-    if (!head)
-      throw new DomainError(
-        "SERVICE_UNAVAILABLE",
-        "The code repository has no main branch",
-      );
-    return head.hash;
-  });
+  const head = await branchHead(MAIN_BRANCH);
+  if (!head)
+    throw new DomainError(
+      "SERVICE_UNAVAILABLE",
+      "The code repository has no main branch",
+    );
+  return head;
 }
 
-/**
- * Which of `commits` main contains, walking main's history through every
- * parent (merges included) from its head. `commits` is one branch's history,
- * newest first: once the newest is met, every one of them is contained.
- * `complete` is false when the walk stopped at its cap first, so a commit
- * left out may still be contained, further back than the walk went.
- */
-export async function mainHistoryHas(
-  commits: readonly string[],
-  maxCommits = MAX_WALKED_COMMITS,
-): Promise<{ head: string; has: Set<string>; complete: boolean }> {
+/** A branch's head commit; null when the repository has no such branch. */
+export async function branchHead(branch: string): Promise<string | null> {
   return withRepository(async (repo) => {
-    const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
-    if (!head)
-      throw new DomainError(
-        "SERVICE_UNAVAILABLE",
-        "The code repository has no main branch",
-      );
-    const wanted = new Set(commits);
-    const has = new Set<string>();
-    const meet = (hash: string) => {
-      if (wanted.has(hash)) has.add(hash);
-    };
-    const answer = (complete: boolean) => {
-      const newest = commits[0];
-      return {
-        head: head.hash,
-        has: newest !== undefined && has.has(newest) ? new Set(commits) : has,
-        complete,
-      };
-    };
-    const seen = new Set<string>([head.hash]);
-    meet(head.hash);
-    let frontier = [head.hash];
-    while (frontier.length) {
-      if (commits[0] !== undefined && has.has(commits[0])) return answer(true);
-      if (has.size === wanted.size) return answer(true);
-      if (seen.size >= maxCommits) return answer(false);
-      const next: string[] = [];
-      for (let i = 0; i < frontier.length; i += READ_CONCURRENCY) {
-        const read = await Promise.all(
-          frontier.slice(i, i + READ_CONCURRENCY).map((hash) => repo.readCommit(hash)),
-        );
-        for (const parent of read.flatMap((commit) => commit?.parents ?? [])) {
-          if (seen.has(parent)) continue;
-          seen.add(parent);
-          meet(parent);
-          next.push(parent);
-        }
-      }
-      frontier = next;
-    }
-    return answer(true);
+    const [head] = await repo.log({ ref: branch, limit: 1 });
+    return head?.hash ?? null;
   });
 }
 
@@ -240,4 +191,22 @@ async function textOf(repo: ArtifactsRepo, hash: string): Promise<string | null>
   if (!blob || blob.size > MAX_SEARCHED_BLOB_BYTES) return null;
   const text = await blob.text();
   return text.includes("\0") ? null : text;
+}
+
+/**
+ * Copies a branch of a public git repository into `branch` here, which ends at
+ * the source's head whatever it held before, and says whether main holds it.
+ */
+export async function pullInto(
+  branch: string,
+  from: { url: string; branch: string },
+): Promise<Pulled> {
+  const { remote, token } = await writeToken(PULL_TOKEN_SECONDS);
+  const pulled = await pullBranch({
+    from,
+    to: { url: remote, branch, token },
+    compareWith: MAIN_BRANCH,
+  });
+  log.info("branch pulled", { branch, ...pulled });
+  return pulled;
 }

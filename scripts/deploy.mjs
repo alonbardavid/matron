@@ -651,6 +651,24 @@ if (flags["skip-repo"]) {
   run("git", ["push", "--all", repo.remote], { capture: false, env: gitEnv });
   console.log(`  $ git push --tags ${repo.remote}`);
   run("git", ["push", "--tags", repo.remote], { capture: false, env: gitEnv });
+  // The upstream/main branch starts where main does; checking for updates moves it from then on.
+  const upstream = run(
+    "git",
+    ["ls-remote", "--heads", repo.remote, "refs/heads/upstream/main"],
+    {
+      capture: true,
+      env: gitEnv,
+    },
+  );
+  if (upstream.stdout.trim()) {
+    console.log("  upstream/main branch exists");
+  } else {
+    console.log(`  $ git push ${repo.remote} main:refs/heads/upstream/main`);
+    run("git", ["push", repo.remote, "main:refs/heads/upstream/main"], {
+      capture: false,
+      env: gitEnv,
+    });
+  }
 }
 
 // ---------------------------------------------------------------- 11. owner

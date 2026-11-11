@@ -33,8 +33,6 @@ export type BuilderRun = {
   request: string;
   plan?: string;
   message?: string;
-  /** Set on an origin update build: the upstream commit prepare-build merges in. */
-  upstream?: { remote: string; branch: string; commit: string };
   files?: BuilderFile[];
   builderImage?: string;
 };
@@ -63,7 +61,6 @@ export interface BuilderFile {
 /** How the agent's prompt for one turn is built; the templates live in /app/prompts. */
 export type AgentPrompt =
   | { kind: "build"; extra: string; files?: BuilderFile[] }
-  | { kind: "upstream"; extra: string; sync: string }
   | { kind: "continue"; message: string; sync: string; files?: BuilderFile[] }
   | { kind: "fix"; command: string; output: string };
 
@@ -90,7 +87,6 @@ export type AgentOutcome = {
   message: string;
 };
 
-export type PrepareBuildResult = { sync: string | null };
 export type PrepareContinueResult = { sync: string };
 export type VerifyResult = { failure: { label: string; output: string } | null };
 export type CommitPushResult = { committed: boolean };

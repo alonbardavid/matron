@@ -5,9 +5,10 @@ import { branches } from "./routes/branches";
 import { sessions } from "./routes/sessions";
 import { settings } from "./routes/settings";
 import { troubleshooting } from "./routes/troubleshooting";
+import { upstream } from "./routes/upstream";
 
 const handler = new OpenAPIHandler(
-  { branches, sessions, settings, troubleshooting },
+  { branches, sessions, settings, troubleshooting, upstream },
   { interceptors: [onError(logUnexpectedError)] },
 );
 

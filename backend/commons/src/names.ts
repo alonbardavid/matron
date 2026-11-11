@@ -22,19 +22,3 @@ export function deploymentNames(workerName: string): {
 
 /** The account's default AI Gateway; it exists from the first authenticated request. */
 export const AI_GATEWAY = "default";
-
-/**
- * The repository Matron is released from. A deployment's own repository
- * (Artifacts) began as a push of it; "origin updates" are the commits it has
- * gained since, which a build session can merge in like any other change.
- */
-export const UPSTREAM = {
-  owner: "alonbardavid",
-  repository: "matron",
-  branch: "main",
-} as const;
-
-/** The upstream's public git remote. */
-export function upstreamRemote(): string {
-  return `https://github.com/${UPSTREAM.owner}/${UPSTREAM.repository}.git`;
-}

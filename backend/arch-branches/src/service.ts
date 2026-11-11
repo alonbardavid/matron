@@ -1,12 +1,16 @@
 import { env } from "cloudflare:workers";
-import { and, desc, eq, isNotNull, isNull, like } from "drizzle-orm";
+import { and, desc, eq, isNull, like } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
 import { deploymentNames } from "@backend/commons/names";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import { user } from "@backend/db-models/arch-auth";
-import { branches, type BranchStatus } from "@backend/db-models/arch-branches";
+import {
+  branches,
+  type BranchStatus,
+  type BranchType,
+} from "@backend/db-models/arch-branches";
 import { buildSessions } from "@backend/db-models/arch-sessions";
 import { getDb } from "@backend/db-models/db";
 import type { Branch } from "@shared/contract/arch/branches";
@@ -26,7 +30,7 @@ export interface BranchRow {
   userId: string;
   baseCommit: string;
   headCommit: string | null;
-  upstreamCommit: string | null;
+  type: BranchType;
   status: BranchStatus;
   archivedAt: Date | null;
 }
@@ -98,8 +102,8 @@ export async function createBranch(
     buildSessionId: string;
     name: string;
     baseCommit: string;
-    /** For an origin update: the upstream commit the branch merges in. */
-    upstreamCommit?: string;
+    /** A change a member asked for, unless said otherwise. */
+    type?: BranchType;
   },
 ): Promise<BranchRow> {
   if (!branchPermissions.can(principal.role, "create")) {
@@ -129,19 +133,19 @@ export async function createBranch(
       buildSessionId: input.buildSessionId,
       userId: principal.userId,
       baseCommit: input.baseCommit,
-      upstreamCommit: input.upstreamCommit ?? null,
+      type: input.type ?? "session-request",
     })
     .returning();
   log.info("branch created", { branchId: id, buildSessionId: input.buildSessionId });
   return row!;
 }
 
-/** The live branch that merges upstream commits in, if one is open. */
-export async function liveUpstreamBranch(): Promise<BranchRow | null> {
+/** The newest live branch of the given type, if one is open. */
+export async function liveBranchOfType(type: BranchType): Promise<BranchRow | null> {
   const [row] = await getDb()
     .select()
     .from(branches)
-    .where(and(isNotNull(branches.upstreamCommit), isNull(branches.archivedAt)))
+    .where(and(eq(branches.type, type), isNull(branches.archivedAt)))
     .orderBy(desc(branches.createdAt))
     .limit(1);
   return row ?? null;
@@ -255,7 +259,7 @@ function toBranch(
     buildSessionId: row.buildSessionId,
     sessionViewable: derived.sessionViewable,
     behindMain: derived.behindMain,
-    upstreamCommit: row.upstreamCommit,
+    type: row.type,
     userId: row.userId,
     userName,
     status: row.status,

@@ -34,7 +34,7 @@ export interface Checkpoint {
   /** The agent's description of the change, kept across fix rounds. */
   outcome: AgentOutcome | null;
   fixRound: number;
-  /** What prepare-continue said about main, or prepare-build about the upstream merge, for the agent's prompt. */
+  /** What prepare-continue said about main, for the agent's prompt. */
   sync: string | null;
   /** Main's head after a merge, for the merged report. */
   mergedHead: string | null;

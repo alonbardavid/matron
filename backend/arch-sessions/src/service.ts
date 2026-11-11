@@ -10,8 +10,8 @@ import { getDb } from "@backend/db-models/db";
 import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-sessions";
 import { canArchiveSession, canClearSession } from "./archive";
 import type { BuildSession } from "@shared/contract/arch/sessions";
-import type { BuilderUpstream } from "@backend/arch-builder/protocol";
 import { sessionsEnv } from "./env";
+import type { BuildSessionObject } from "./session-object";
 
 const log = logger("arch-sessions/service");
 
@@ -124,29 +124,19 @@ export async function createSession(principal: Principal): Promise<BuildSession>
 }
 
 /**
- * A session for an origin update: a new session whose build starts at once
- * with the request and plan given, on a branch that merges `upstream.commit`.
- * The caller decided the update is due; the session is the owner's.
+ * The session's Durable Object, for a caller that may use the session: its
+ * member, or the owner. What it can do is the object's own methods.
  */
-export async function startUpstreamSession(
+export async function getSession(
   principal: Principal,
-  input: { title: string; request: string; plan: string; upstream: BuilderUpstream },
-): Promise<{ sessionId: string; branchId: string }> {
-  const session = await createSession(principal);
-  try {
-    const { branchId } = await sessionsEnv()
-      .BUILD_SESSIONS.getByName(session.id)
-      .startUpstreamBuild(principal, input);
-    log.info("origin update session started", {
-      sessionId: session.id,
-      branchId,
-      upstreamCommit: input.upstream.commit,
-    });
-    return { sessionId: session.id, branchId };
-  } catch (err) {
-    await setSessionStatus(session.id, "failed");
-    throw err;
+  sessionId: string,
+): Promise<DurableObjectStub<BuildSessionObject>> {
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
   }
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
 }
 
 /**

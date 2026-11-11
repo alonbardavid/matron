@@ -1,10 +1,8 @@
 import {
-  checkOrigin,
   clearContainers,
   listAllBranches,
   listContainers,
   listDatabases,
-  mergeOrigin,
   removeDatabase,
   stopContainer,
 } from "@backend/arch-troubleshooting/service";
@@ -25,14 +23,6 @@ export const troubleshooting = arch.troubleshooting.router({
   branches: {
     list: arch.troubleshooting.branches.list.handler(({ context }) =>
       listAllBranches(context.principal),
-    ),
-  },
-  origin: {
-    check: arch.troubleshooting.origin.check.handler(({ context }) =>
-      checkOrigin(context.principal),
-    ),
-    merge: arch.troubleshooting.origin.merge.handler(({ context, input }) =>
-      mergeOrigin(context.principal, input.commit),
     ),
   },
   containers: {
