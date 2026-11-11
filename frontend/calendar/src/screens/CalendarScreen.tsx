@@ -15,17 +15,21 @@ import { useMediaQuery } from "@mantine/hooks";
 import { MobileMonthView, Schedule, type ScheduleEventData } from "@mantine/schedule";
 import dayjs from "dayjs";
 import type { Occurrence } from "@shared/contract/app/calendar";
-import { useMe } from "@frontend/auth/useMe";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
 import {
+  allDayBlock,
   allDaySpan,
   fromDateTimeString,
   loadWindow,
   localTimeZone,
   toDayString,
 } from "../times";
-import { useEvent, useEventActions, useOccurrences } from "../useCalendar";
-import { EventModal, type EventSubmit } from "../widgets/EventModal";
+import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import {
+  EventModal,
+  type EventSubmit,
+  type OpenedOccurrence,
+} from "../widgets/EventModal";
 import classes from "./CalendarScreen.module.css";
 
 type View = "day" | "week" | "month" | "year";
@@ -37,6 +41,17 @@ const VIEW_OPTIONS = [
 ];
 /** The day view's hour, in the week view's proportion; a shorter one shows more of the day. */
 const HOUR_MINUTES = 60;
+
+const QUARTER_MS = 15 * 60_000;
+
+/** The whole quarters of an hour a span touches, and at least one: 7:00 to 7:12 is 7:00 to 7:15. */
+function quarterSpan(startAt: number, endAt: number): { start: Date; end: Date } {
+  // Quarters are counted from local midnight, whatever the zone's offset.
+  const offset = new Date(startAt).getTimezoneOffset() * 60_000;
+  const start = Math.floor((startAt - offset) / QUARTER_MS) * QUARTER_MS + offset;
+  const end = Math.ceil((endAt - offset) / QUARTER_MS) * QUARTER_MS + offset;
+  return { start: new Date(start), end: new Date(Math.max(end, start + QUARTER_MS)) };
+}
 
 /** What the phone's toolbar calls the shown date: the day, the week's span or the month. */
 function dateLabel(date: string, view: View): string {
@@ -52,13 +67,12 @@ function dateLabel(date: string, view: View): string {
 
 interface Opening {
   eventId: string | null;
-  occurrenceDay: string | null;
+  occurrence: OpenedOccurrence | null;
   initial: { allDay: boolean; startAt: number; endAt: number } | null;
 }
 
 /** Day, week and month views of the household's calendar. */
 export function CalendarScreen() {
-  const { me } = useMe();
   const narrow = useMediaQuery("(max-width: 48em)");
   const [date, setDate] = useState(() => toDayString(Date.now()));
   // A phone starts on the day, a wider screen on the week.
@@ -69,25 +83,51 @@ export function CalendarScreen() {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
-  const { create, update, stop, remove } = useEventActions();
+  const { create, update, stop, remove, place, editOccurrence, cancelOccurrence } =
+    useEventActions();
+  const calendars = useCalendars();
 
+  // The day and the week draw a block over whole quarters of an hour.
+  const timeGrid = shownView === "day" || shownView === "week";
   const events: ScheduleEventData[] = (occurrences.data ?? []).map(
     (item: Occurrence) => ({
       id: item.id,
       title: item.title,
-      start: new Date(item.startAt),
-      end: new Date(item.endAt),
-      color: item.creatorId === me?.id ? "rose" : "sage",
-      payload: { eventId: item.eventId, day: toDayString(item.startAt) },
+      ...(item.allDay
+        ? allDayBlock(item.startAt, item.endAt, item.timeZone)
+        : timeGrid
+          ? quarterSpan(item.startAt, item.endAt)
+          : { start: new Date(item.startAt), end: new Date(item.endAt) }),
+      // The colour of the calendar it shows in for you, as you set it.
+      color: item.color,
+      // Solid, so an event reads the same over the grid and over another event.
+      variant: "filled",
+      payload: {
+        eventId: item.eventId,
+        occurrence:
+          item.originalStartAt === null
+            ? null
+            : {
+                originalStartAt: item.originalStartAt,
+                startAt: item.startAt,
+                endAt: item.endAt,
+                title: item.title,
+              },
+      },
     }),
   );
 
   const openNew = (initial: Opening["initial"]) =>
-    setOpening({ eventId: null, occurrenceDay: null, initial });
+    setOpening({ eventId: null, occurrence: null, initial });
   const openEvent = (item: ScheduleEventData) => {
-    const payload = item.payload as { eventId: string; day: string } | undefined;
+    const payload = item.payload as
+      { eventId: string; occurrence: OpenedOccurrence | null } | undefined;
     if (payload)
-      setOpening({ eventId: payload.eventId, occurrenceDay: payload.day, initial: null });
+      setOpening({
+        eventId: payload.eventId,
+        occurrence: payload.occurrence,
+        initial: null,
+      });
   };
   const openNextHour = () =>
     openNew({
@@ -97,6 +137,15 @@ export function CalendarScreen() {
     });
 
   const save = async (values: EventSubmit) => {
+    if (opening?.eventId && event.data?.source === "google") {
+      // An imported event is Google's; only who it is shared with is Matron's.
+      await update.mutateAsync({
+        id: opening.eventId,
+        sharedWith: values.sharedWith,
+        attendees: values.attendees,
+      });
+      return;
+    }
     const input = { ...values, timeZone: localTimeZone() };
     if (opening?.eventId) await update.mutateAsync({ id: opening.eventId, ...input });
     else await create.mutateAsync(input);
@@ -201,6 +250,9 @@ export function CalendarScreen() {
               openNew({ allDay: true, ...allDaySpan(day, day) });
           }}
           onEventClick={openEvent}
+          renderEventBody={(item) => (
+            <span className={classes.eventText}>{item.title}</span>
+          )}
           // A phone's narrow label column has room for one word.
           labels={narrow ? { allDay: "All" } : undefined}
           // Each view takes its own class names; the Schedule passes none down.
@@ -231,12 +283,41 @@ export function CalendarScreen() {
         event={opening?.eventId ? (event.data ?? null) : null}
         loading={opening?.eventId ? event.isLoading : false}
         initial={opening?.initial ?? null}
-        occurrenceDay={opening?.occurrenceDay ?? null}
+        calendars={calendars.data ?? []}
+        occurrence={opening?.occurrence ?? null}
+        onEditOccurrence={
+          opening?.eventId
+            ? async (originalStartAt, changes) => {
+                await editOccurrence.mutateAsync({
+                  id: opening.eventId!,
+                  originalStartAt,
+                  ...changes,
+                });
+              }
+            : undefined
+        }
+        onCancelOccurrence={
+          opening?.eventId
+            ? async (originalStartAt) => {
+                await cancelOccurrence.mutateAsync({
+                  id: opening.eventId!,
+                  originalStartAt,
+                });
+              }
+            : undefined
+        }
         onSave={save}
         onRemove={
           opening?.eventId
             ? async () => {
                 await remove.mutateAsync({ id: opening.eventId! });
+              }
+            : undefined
+        }
+        onPlace={
+          opening?.eventId
+            ? async (calendarId) => {
+                await place.mutateAsync({ id: opening.eventId!, calendarId });
               }
             : undefined
         }

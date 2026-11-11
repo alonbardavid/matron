@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   composePreviewUrl,
   d1Create,
+  d1Delete,
   d1ExecuteFile,
   d1Export,
   d1Find,
@@ -16,6 +16,7 @@ import {
   workersSubdomain,
   type WranglerContext,
 } from "./cloudflare.js";
+import { orderRowsByReferences } from "./dump.js";
 import * as git from "./git.js";
 import { combined, describeFailure, exec, tail } from "./exec.js";
 import type { Paths } from "./state.js";
@@ -125,16 +126,36 @@ export async function ensureBranchDatabase(ctx: DeployContext): Promise<string> 
     ctx.log(`D1 ${name} exists (${existing.uuid})`);
     return existing.uuid;
   }
-  const dump = join(ctx.paths.work, "dump.sql");
-  ctx.log(`exporting ${ctx.run.cloudflare.productionDatabaseName}`);
-  await d1Export(w, ctx.run.cloudflare.productionDatabaseName, dump);
-  ctx.log(`creating D1 ${name}`);
-  await d1Create(w, name);
+  // The tables first, then the rows: a full export lists each table with its
+  // rows in the order the tables were made, and a row that refers to a table
+  // made later can be written neither before that table nor before its rows.
+  const production = ctx.run.cloudflare.productionDatabaseName;
+  const schema = join(ctx.paths.work, "dump-schema.sql");
+  const data = join(ctx.paths.work, "dump-data.sql");
   try {
-    ctx.log(`importing production data into ${name}`);
-    await d1ExecuteFile(w, name, dump);
+    ctx.log(`exporting ${production}`);
+    await d1Export(w, production, schema, "schema");
+    await d1Export(w, production, data, "data");
+    // And each table's rows after the rows they refer to.
+    writeFileSync(
+      data,
+      orderRowsByReferences(readFileSync(schema, "utf8"), readFileSync(data, "utf8")),
+    );
+    ctx.log(`creating D1 ${name}`);
+    await d1Create(w, name);
+    try {
+      ctx.log(`importing production data into ${name}`);
+      await d1ExecuteFile(w, name, schema);
+      await d1ExecuteFile(w, name, data);
+    } catch (err) {
+      // A copy that is not whole is no copy: the next build starts it again.
+      ctx.log(`removing the incomplete D1 ${name}`);
+      await d1Delete(w, name);
+      throw err;
+    }
   } finally {
-    rmSync(dump, { force: true });
+    rmSync(schema, { force: true });
+    rmSync(data, { force: true });
   }
   const created = (await d1Info(w, name)) ?? (await d1Find(w, name));
   if (!created)
@@ -156,23 +177,9 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
   ctx.log("applying migrations to the branch database");
   await d1MigrationsApply(w, config);
 
-  const secretsFile = join(
-    ctx.paths.work,
-    `preview-secrets-${randomBytes(4).toString("hex")}.json`,
-  );
   const outputFile = join(ctx.paths.work, "wrangler-output.jsonl");
-  // What a Preview must have. It never signs anyone in, so BETTER_AUTH_SECRET
-  // is random. The account token lets the assistant on the branch reach its
-  // model through the gateway, with the household's stored provider key.
-  writeFileSync(
-    secretsFile,
-    JSON.stringify({
-      SIGNING_KEY: run.signingKey,
-      BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
-      CLOUDFLARE_API_TOKEN: run.cloudflare.apiToken,
-    }),
-    { mode: 0o600 },
-  );
+  // Production's secrets come to a Preview from the Worker's Preview base
+  // config, which Cloudflare gives every Preview; the builder sets none.
   let previewUrl: string | null;
   try {
     ctx.log(`deploying preview ${run.branch.previewName}`);
@@ -186,8 +193,6 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
         run.branch.previewName,
         "--worker-name",
         run.cloudflare.workerName,
-        "--secrets-file",
-        secretsFile,
         "--json",
       ],
       { timeoutMs: 20 * 60 * 1000, env: { WRANGLER_OUTPUT_FILE_PATH: outputFile } },
@@ -206,7 +211,6 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
         run.cloudflare.workerName,
       );
   } finally {
-    rmSync(secretsFile, { force: true });
     rmSync(outputFile, { force: true });
   }
   if (!previewUrl) {

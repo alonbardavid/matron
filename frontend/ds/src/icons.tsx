@@ -231,3 +231,11 @@ export function IconFile(props: IconProps) {
     </Svg>
   );
 }
+
+export function IconNotes(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </Svg>
+  );
+}

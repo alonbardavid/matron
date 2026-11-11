@@ -492,6 +492,8 @@ step("Worker secrets");
 const secretsFileDir = mkdtempSync(join(tmpdir(), "matron-deploy-"));
 const secretsFile = join(secretsFileDir, "secrets.json");
 let firstDeploy = false;
+// What this run sets on the Worker, by name; the same goes to its Previews.
+let settingNow;
 {
   const listed = wrangler(
     [
@@ -526,6 +528,7 @@ let firstDeploy = false;
       secrets[generated] = randomBytes(32).toString("hex");
   }
   writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
+  settingNow = Object.keys(secrets);
   console.log(`  setting: ${Object.keys(secrets).join(", ") || "nothing new"}`);
   if (hasApiToken) {
     console.log(
@@ -544,6 +547,44 @@ let firstDeploy = false;
 step("Deploying the Worker");
 try {
   wrangler(["deploy", "--config", generatedConfig, "--secrets-file", secretsFile]);
+  // A Preview inherits no secret from production. The Worker's Preview base
+  // config gives each one the same values; the app keeps the household's own
+  // secrets there when they are saved in its settings.
+  if (settingNow.length > 0) {
+    console.log(`  the same for Previews: ${settingNow.join(", ")}`);
+    wrangler(
+      [
+        "preview",
+        "base-config",
+        "secret",
+        "bulk",
+        secretsFile,
+        "--worker-name",
+        workerName,
+      ],
+      { capture: true },
+    );
+  }
+  const shared = wrangler(
+    ["preview", "base-config", "secret", "list", "--worker-name", workerName, "--json"],
+    { capture: true, allowFailure: true },
+  );
+  if (shared.status === 0) {
+    const names = parseJsonOutput(shared.stdout).map((s) => s.name);
+    const missing = ["SIGNING_KEY", "BETTER_AUTH_SECRET", "CLOUDFLARE_API_TOKEN"].filter(
+      (name) => !names.includes(name),
+    );
+    if (missing.length > 0) {
+      console.log(
+        `  WARNING: the Preview base config lacks ${missing.join(", ")}. A secret set on the Worker by an\n` +
+          "  earlier deploy cannot be read back, so set each in both places with the same value:\n" +
+          "  `wrangler secret put <NAME>` and `wrangler preview base-config secret put <NAME>`.\n" +
+          "  Without SIGNING_KEY or BETTER_AUTH_SECRET a branch does not work; without CLOUDFLARE_API_TOKEN\n" +
+          "  the assistant on a branch reaches no Anthropic model. The token given to Previews may be a\n" +
+          "  narrower one than the Worker's.",
+      );
+    }
+  }
 } finally {
   rmSync(secretsFileDir, { recursive: true, force: true });
 }

@@ -112,19 +112,35 @@ export async function d1Create(ctx: WranglerContext, name: string): Promise<void
   await wranglerMust(ctx, `wrangler d1 create ${name}`, ["d1", "create", name]);
 }
 
+/** Exports one half of a database: its tables and indexes, or the rows in them. */
 export async function d1Export(
   ctx: WranglerContext,
   name: string,
   output: string,
+  part: "schema" | "data",
 ): Promise<void> {
   await wranglerMust(
     ctx,
-    `wrangler d1 export ${name}`,
-    ["d1", "export", name, "--remote", "--output", output, "--skip-confirmation"],
+    `wrangler d1 export ${name} (${part})`,
+    [
+      "d1",
+      "export",
+      name,
+      "--remote",
+      "--output",
+      output,
+      "--skip-confirmation",
+      part === "schema" ? "--no-data" : "--no-schema",
+    ],
     {
       timeoutMs: 30 * 60 * 1000,
     },
   );
+}
+
+/** Deletes a database; best effort, for one that was only half made. */
+export async function d1Delete(ctx: WranglerContext, name: string): Promise<void> {
+  await wrangler(ctx, ["d1", "delete", name, "--skip-confirmation"]);
 }
 
 export async function d1ExecuteFile(

@@ -36,5 +36,50 @@ export function useEventActions() {
       onError: (err) => notifyError(err, "Could not remove the event"),
     }),
   );
-  return { create, update, stop, remove };
+  const place = useMutation(
+    orpc.calendar.place.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not move the event"),
+    }),
+  );
+  const editOccurrence = useMutation(
+    orpc.calendar.editOccurrence.mutationOptions({ onSuccess: refresh }),
+  );
+  const cancelOccurrence = useMutation(
+    orpc.calendar.cancelOccurrence.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not remove the event"),
+    }),
+  );
+  return { create, update, stop, remove, place, editOccurrence, cancelOccurrence };
+}
+
+/** The caller's own calendars. */
+export function useCalendars() {
+  return useQuery(orpc.calendar.calendars.list.queryOptions({ staleTime: 10_000 }));
+}
+
+export function useCalendarActions() {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.calendar.key() });
+  const create = useMutation(
+    orpc.calendar.calendars.create.mutationOptions({ onSuccess: refresh }),
+  );
+  const update = useMutation(
+    orpc.calendar.calendars.update.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not change the calendar"),
+    }),
+  );
+  const remove = useMutation(
+    orpc.calendar.calendars.remove.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not remove the calendar"),
+    }),
+  );
+  return { create, update, remove };
+}
+
+export function useGoogleStatus() {
+  return useQuery(orpc.calendar.google.status.queryOptions({ staleTime: 30_000 }));
 }
