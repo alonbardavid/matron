@@ -3,7 +3,6 @@ import { and, desc, eq, isNull, like } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import { deploymentNames } from "@backend/commons/names";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import { user } from "@backend/db-models/arch-auth";
 import {
@@ -121,7 +120,8 @@ export async function createBranch(
       slug,
       taken.map((row) => row.name),
     ),
-    deploymentNames(WORKER_NAME).database,
+    // The production database carries the Worker's name.
+    WORKER_NAME,
   );
   const [row] = await getDb()
     .insert(branches)

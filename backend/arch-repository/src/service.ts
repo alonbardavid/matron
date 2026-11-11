@@ -1,5 +1,4 @@
 import { DomainError } from "@backend/commons/errors";
-import { deploymentNames } from "@backend/commons/names";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH } from "@backend/commons/principal";
 import { repositoryEnv } from "./env";
@@ -30,7 +29,8 @@ async function openRepository(): Promise<ArtifactsRepo> {
   if (!ARTIFACTS) {
     throw new DomainError("SERVICE_UNAVAILABLE", "The code repository is not available");
   }
-  const { repository } = deploymentNames(WORKER_NAME);
+  // The repository, like its namespace, carries the Worker's name.
+  const repository = WORKER_NAME;
   try {
     return await ARTIFACTS.get(repository);
   } catch (err) {
