@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { branchSchema } from "./branches";
 
 /** Why a section could not be read from Cloudflare. */
 export const apiProblemSchema = z.object({
@@ -44,6 +45,13 @@ export const containerSchema = z.object({
 });
 export type TroubleshootingContainer = z.infer<typeof containerSchema>;
 
+/** A branch as the owner sees it here: every branch, with who made it and its session. */
+export const troubleshootingBranchSchema = branchSchema.extend({
+  /** The build session's title: the request it began with. */
+  sessionTitle: z.string().nullable(),
+});
+export type TroubleshootingBranch = z.infer<typeof troubleshootingBranchSchema>;
+
 /** A listing, or the problem that stopped it. */
 const listOf = <T extends z.ZodType>(item: T) =>
   z.object({ items: z.array(item), problem: apiProblemSchema.nullable() });
@@ -61,6 +69,12 @@ export const troubleshootingContract = {
       .route({ method: "DELETE", path: "/api/arch/troubleshooting/databases/{id}" })
       .input(z.object({ id: z.string() }))
       .output(doneSchema),
+  },
+  /** Every branch, archived ones included, with its creator. */
+  branches: {
+    list: oc
+      .route({ method: "GET", path: "/api/arch/troubleshooting/branches" })
+      .output(listOf(troubleshootingBranchSchema)),
   },
   containers: {
     list: oc

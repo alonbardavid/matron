@@ -26,6 +26,7 @@
       "@backend/arch-sessions/*": ["./backend/arch-sessions/src/*"],
       "@backend/arch-settings/*": ["./backend/arch-settings/src/*"],
       "@backend/arch-troubleshooting/*": ["./backend/arch-troubleshooting/src/*"],
+      "@backend/arch-upstream/*": ["./backend/arch-upstream/src/*"],
       "@backend/ask/*": ["./backend/ask/src/*"],
       "@backend/calendar/*": ["./backend/calendar/src/*"],
       "@backend/commons/*": ["./backend/commons/src/*"],
@@ -45,6 +46,7 @@
       "@frontend/settings/*": ["./frontend/settings/src/*"],
       "@frontend/tasks/*": ["./frontend/tasks/src/*"],
       "@frontend/troubleshooting/*": ["./frontend/troubleshooting/src/*"],
+      "@frontend/upstream/*": ["./frontend/upstream/src/*"],
       "@shared/contract/*": ["./shared/contract/src/*"]
     }
   }

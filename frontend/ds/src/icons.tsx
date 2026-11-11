@@ -216,6 +216,15 @@ export function IconRefresh(props: IconProps) {
   );
 }
 
+/** An arrow coming down onto a line: taking in what is upstream. */
+export function IconPull(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
+    </Svg>
+  );
+}
+
 export function IconPaperclip(props: IconProps) {
   return (
     <Svg {...props}>

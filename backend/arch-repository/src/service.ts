@@ -2,6 +2,7 @@ import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH } from "@backend/commons/principal";
 import { repositoryEnv } from "./env";
+import { pullBranch, type Pulled } from "./mirror";
 
 const log = logger("arch-repository/service");
 
@@ -12,6 +13,8 @@ const MAX_SEARCH_MATCHES = 60;
 const MAX_LINE_CHARS = 200;
 const MAX_SEARCHED_BLOB_BYTES = 200_000;
 const READ_CONCURRENCY = 8;
+// Long enough for the fetches and the push.
+const PULL_TOKEN_SECONDS = 300;
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   "dist",
@@ -58,14 +61,20 @@ export async function withRepository<T>(
 
 /** Main's head commit in the code repository (Artifacts). */
 export async function mainHead(): Promise<string> {
+  const head = await branchHead(MAIN_BRANCH);
+  if (!head)
+    throw new DomainError(
+      "SERVICE_UNAVAILABLE",
+      "The code repository has no main branch",
+    );
+  return head;
+}
+
+/** A branch's head commit; null when the repository has no such branch. */
+export async function branchHead(branch: string): Promise<string | null> {
   return withRepository(async (repo) => {
-    const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
-    if (!head)
-      throw new DomainError(
-        "SERVICE_UNAVAILABLE",
-        "The code repository has no main branch",
-      );
-    return head.hash;
+    const [head] = await repo.log({ ref: branch, limit: 1 });
+    return head?.hash ?? null;
   });
 }
 
@@ -182,4 +191,22 @@ async function textOf(repo: ArtifactsRepo, hash: string): Promise<string | null>
   if (!blob || blob.size > MAX_SEARCHED_BLOB_BYTES) return null;
   const text = await blob.text();
   return text.includes("\0") ? null : text;
+}
+
+/**
+ * Copies a branch of a public git repository into `branch` here, which ends at
+ * the source's head whatever it held before, and says whether main holds it.
+ */
+export async function pullInto(
+  branch: string,
+  from: { url: string; branch: string },
+): Promise<Pulled> {
+  const { remote, token } = await writeToken(PULL_TOKEN_SECONDS);
+  const pulled = await pullBranch({
+    from,
+    to: { url: remote, branch, token },
+    compareWith: MAIN_BRANCH,
+  });
+  log.info("branch pulled", { branch, ...pulled });
+  return pulled;
 }
