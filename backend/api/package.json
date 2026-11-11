@@ -10,6 +10,7 @@
     "@backend/ask": "workspace:*",
     "@backend/calendar": "workspace:*",
     "@backend/commons": "workspace:*",
+    "@backend/files": "workspace:*",
     "@backend/household": "workspace:*",
     "@backend/tasks": "workspace:*",
     "@orpc/openapi": "1.15.4",

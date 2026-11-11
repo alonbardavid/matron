@@ -1,19 +1,23 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { listFiles, readFile, searchFiles } from "@backend/arch-repository/service";
+import {
+  listFiles,
+  readFile,
+  searchFiles,
+  withRepository,
+} from "@backend/arch-repository/service";
 import { DomainError } from "@backend/commons/errors";
 import { MAIN_BRANCH } from "@backend/commons/principal";
 
 /**
  * How the planner looks at the code: the repository as it is at `ref` (main,
- * or a branch for the reviewer), read through one Artifacts handle shared by
- * every call of the turn. Every tool answers with text the model reads.
+ * or a branch for the reviewer), read through the Artifacts binding. Every
+ * tool answers with text the model reads.
  */
-export function repositoryTools(repo: ArtifactsRepo, ref: string = MAIN_BRANCH) {
+export function repositoryTools(ref: string = MAIN_BRANCH): ToolSet {
   const on = ref === MAIN_BRANCH ? "on main" : "on the branch under review";
-  return [
-    betaZodTool({
-      name: "list_files",
+  return {
+    list_files: tool({
       description: `Lists the files in the repository (${on}) under a directory, recursively. Start at the root to see the layout.`,
       inputSchema: z.object({
         directory: z
@@ -23,25 +27,29 @@ export function repositoryTools(repo: ArtifactsRepo, ref: string = MAIN_BRANCH) 
             "Repository-relative directory, such as 'frontend/tasks'; omit for the root",
           ),
       }),
-      run: ({ directory }) =>
+      execute: ({ directory }) =>
         answer(async () => {
-          const files = await listFiles(repo, directory ?? "", ref);
+          const files = await withRepository((repo) =>
+            listFiles(repo, directory ?? "", ref),
+          );
           return files.length ? files.join("\n") : `No directory '${directory ?? ""}'`;
         }),
     }),
-    betaZodTool({
-      name: "read_file",
+    read_file: tool({
       description: `Reads one file from the repository (${on}) and returns its text.`,
       inputSchema: z.object({
         path: z
           .string()
           .describe("Repository-relative path, such as 'SELF-RELEASING-GUIDE.md'"),
       }),
-      run: ({ path }) =>
-        answer(async () => (await readFile(repo, path, ref)) ?? `No file '${path}'`),
+      execute: ({ path }) =>
+        answer(
+          async () =>
+            (await withRepository((repo) => readFile(repo, path, ref))) ??
+            `No file '${path}'`,
+        ),
     }),
-    betaZodTool({
-      name: "search_files",
+    search_files: tool({
       description: `Finds lines containing a text (case-insensitive) across the repository's files ${on}, as path:line: text. Use it to locate where something is implemented.`,
       inputSchema: z.object({
         query: z
@@ -49,28 +57,15 @@ export function repositoryTools(repo: ArtifactsRepo, ref: string = MAIN_BRANCH) 
           .describe("The text to look for, such as a function or table name"),
         directory: z.string().optional().describe("Limit the search to this directory"),
       }),
-      run: ({ query, directory }) =>
+      execute: ({ query, directory }) =>
         answer(async () => {
-          const matches = await searchFiles(repo, query, directory ?? "", ref);
+          const matches = await withRepository((repo) =>
+            searchFiles(repo, query, directory ?? "", ref),
+          );
           return matches.length ? matches.join("\n") : `Nothing contains '${query}'`;
         }),
     }),
-  ];
-}
-
-/** What a tool call looks like in the chat's progress line. */
-export function describeToolCall(name: string, input: unknown): string {
-  const args = (input ?? {}) as Record<string, string | undefined>;
-  switch (name) {
-    case "list_files":
-      return `planner: listing ${args.directory || "the repository"}`;
-    case "read_file":
-      return `planner: reading ${args.path ?? "a file"}`;
-    case "search_files":
-      return `planner: searching for "${args.query ?? ""}"`;
-    default:
-      return `planner: ${name}`;
-  }
+  };
 }
 
 // A repository problem is an answer the model can act on, not a failed turn.

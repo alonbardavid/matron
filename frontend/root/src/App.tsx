@@ -6,10 +6,10 @@ import { LoginScreen } from "@frontend/auth/screens/LoginScreen";
 import { UsersScreen } from "@frontend/auth/screens/UsersScreen";
 import { useMe } from "@frontend/auth/useMe";
 import { withBranch } from "@frontend/api/branch";
-import { BranchesScreen } from "@frontend/branches/screens/BranchesScreen";
+import { BuildChatProvider } from "@frontend/build/BuildChatContext";
 import { MergeButton } from "@frontend/branches/widgets/BranchRow";
-import { BuildChatProvider, useBuildChat } from "@frontend/build/BuildChatContext";
 import { useOutOfDateAction } from "@frontend/build/outOfDate";
+import { BuildsScreen } from "@frontend/build/screens/BuildsScreen";
 import { CalendarScreen } from "@frontend/calendar/screens/CalendarScreen";
 import { ConversationsScreen } from "@frontend/conversations/screens/ConversationsScreen";
 import { AppSettingsScreen } from "@frontend/settings/screens/AppSettingsScreen";
@@ -31,10 +31,9 @@ function Guard({ allow, children }: { allow: boolean; children: ReactNode }) {
   return allow ? <>{children}</> : <Navigate to={withBranch("/")} replace />;
 }
 
-function BranchesRoute() {
+function BuildsRoute() {
   const onOutOfDate = useOutOfDateAction();
-  const buildChat = useBuildChat();
-  return <BranchesScreen onOutOfDate={onOutOfDate} onViewSession={buildChat.open} />;
+  return <BuildsScreen onOutOfDate={onOutOfDate} />;
 }
 
 function ReviewRoute() {
@@ -64,12 +63,17 @@ export function App() {
             <Route path="tasks" element={<TasksScreen />} />
             <Route path="conversations" element={<ConversationsScreen />} />
             <Route
-              path="branches"
+              path="builds"
               element={
                 <Guard allow={can("view")}>
-                  <BranchesRoute />
+                  <BuildsRoute />
                 </Guard>
               }
+            />
+            {/* The page was called Branches; old links land on Builds. */}
+            <Route
+              path="branches"
+              element={<Navigate to={withBranch("/builds")} replace />}
             />
             <Route
               path="branches/:id/review"

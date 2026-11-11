@@ -6,7 +6,7 @@
 // Env: TARGET (production|preview), WORKER_NAME, DB_NAME, DB_ID, APP_ORIGIN,
 // ACCOUNT_ID; optional BUILDER_IMAGE; NO_CONTAINER=1 leaves the builder
 // container out of a production config. The bucket and the Artifacts
-// namespace are named after the Worker (scripts/lib/names.mjs).
+// namespace carry the Worker's name.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

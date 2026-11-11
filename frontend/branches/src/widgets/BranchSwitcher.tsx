@@ -66,8 +66,8 @@ export function BranchSwitcher() {
           </Menu.Item>
         ))}
         <Menu.Divider />
-        <Menu.Item component={Link} to={withBranch("/branches")}>
-          Manage branches
+        <Menu.Item component={Link} to={withBranch("/builds")}>
+          Manage builds
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>

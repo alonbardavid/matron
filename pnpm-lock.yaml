@@ -97,6 +97,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../../backend/db-models
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../../backend/files
       '@backend/household':
         specifier: workspace:*
         version: link:../../backend/household
@@ -296,6 +299,9 @@ importers:
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../files
       '@backend/household':
         specifier: workspace:*
         version: link:../household
@@ -439,21 +445,18 @@ importers:
 
   backend/arch-planner:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^1.3.0
-        version: 1.3.0(zod@4.6.7)
       '@backend/arch-repository':
         specifier: workspace:*
         version: link:../arch-repository
-      '@backend/arch-settings':
-        specifier: workspace:*
-        version: link:../arch-settings
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
       zod:
         specifier: ^4.1.0
         version: 4.6.7
@@ -474,9 +477,6 @@ importers:
 
   backend/arch-review:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^1.3.0
-        version: 1.3.0(zod@4.6.7)
       '@backend/arch-branches':
         specifier: workspace:*
         version: link:../arch-branches
@@ -486,12 +486,18 @@ importers:
       '@backend/arch-repository':
         specifier: workspace:*
         version: link:../arch-repository
+      '@backend/arch-settings':
+        specifier: workspace:*
+        version: link:../arch-settings
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
       diff:
         specifier: 9.0.0
         version: 9.0.0
@@ -536,18 +542,27 @@ importers:
       '@backend/arch-repository':
         specifier: workspace:*
         version: link:../arch-repository
+      '@backend/arch-settings':
+        specifier: workspace:*
+        version: link:../arch-settings
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@cloudflare/think':
+        specifier: 0.23.0
+        version: 0.23.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@cloudflare/computer@0.8.0(@cloudflare/workers-types@5.20261029.1)(ai@7.0.162(zod@4.6.7))(just-bash@3.6.0)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(agents@0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(react@19.3.1)(zod@4.6.7)
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
       agents:
         specifier: 0.32.0
         version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
@@ -684,6 +699,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+      rrule:
+        specifier: 2.8.1
+        version: 2.8.1
       zod:
         specifier: ^4.1.0
         version: 4.6.7
@@ -694,9 +712,18 @@ importers:
 
   backend/commons:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: 4.0.96
+        version: 4.0.96(zod@4.6.7)
       '@orpc/server':
         specifier: 1.15.4
         version: 1.15.4(@opentelemetry/api@1.10.0)(ws@8.22.0)
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
       nanoid:
         specifier: ^5.1.6
         version: 5.1.16
@@ -721,6 +748,25 @@ importers:
         specifier: ^5.20261008.1
         version: 5.20261029.1
 
+  backend/files:
+    dependencies:
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@backend/db-models':
+        specifier: workspace:*
+        version: link:../db-models
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
   backend/household:
     dependencies:
       '@backend/commons':
@@ -729,6 +775,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../files
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -889,6 +938,9 @@ importers:
       '@backend/arch-branches':
         specifier: workspace:*
         version: link:../../backend/arch-branches
+      '@backend/arch-review':
+        specifier: workspace:*
+        version: link:../../backend/arch-review
       '@backend/arch-troubleshooting':
         specifier: workspace:*
         version: link:../../backend/arch-troubleshooting
@@ -913,6 +965,9 @@ importers:
       '@mantine/notifications':
         specifier: 9.7.4
         version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
@@ -990,6 +1045,12 @@ importers:
 
   frontend/build:
     dependencies:
+      '@ai-sdk/react':
+        specifier: ^4.0.0
+        version: 4.0.166(react@19.3.1)(zod@4.6.7)
+      '@cloudflare/think':
+        specifier: 0.23.0
+        version: 0.23.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@cloudflare/computer@0.8.0(@cloudflare/workers-types@5.20261029.1)(ai@7.0.162(zod@4.6.7))(just-bash@3.6.0)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(agents@0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(react@19.3.1)(zod@4.6.7)
       '@frontend/api':
         specifier: workspace:*
         version: link:../api
@@ -1020,6 +1081,12 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      agents:
+        specifier: 0.32.0
+        version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -1090,6 +1157,9 @@ importers:
       react-router-dom:
         specifier: ^7.13.1
         version: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      rrule:
+        specifier: 2.8.1
+        version: 2.8.1
       zod:
         specifier: ^4.1.0
         version: 4.6.7
@@ -1115,9 +1185,6 @@ importers:
       '@frontend/auth':
         specifier: workspace:*
         version: link:../auth
-      '@frontend/build':
-        specifier: workspace:*
-        version: link:../build
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
@@ -1182,6 +1249,12 @@ importers:
       '@mantine/schedule':
         specifier: 9.7.4
         version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/dates@9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(dayjs@1.11.23)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
       dayjs:
         specifier: 1.11.23
         version: 1.11.23
@@ -1341,6 +1414,9 @@ importers:
       '@frontend/auth':
         specifier: workspace:*
         version: link:../auth
+      '@frontend/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
@@ -1561,15 +1637,6 @@ packages:
     engines: {node: '>=22'}
     peerDependencies:
       react: ^18 || ~19.0.1 || ~19.1.2 || ^19.2.1
-
-  '@anthropic-ai/sdk@1.3.0':
-    resolution: {integrity: sha512-k7z9BlLLPxfZH+ov7dS6EnaN/wiZeV8YNT1LZfrpAHIy7oY7pHr4UzirF9f2OlHtFEnRBOX+AZQ91Y5fK+TPTw==}
-    hasBin: true
-    peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
-    peerDependenciesMeta:
-      zod:
-        optional: true
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2798,9 +2865,6 @@ packages:
   '@speed-highlight/core@1.2.24':
     resolution: {integrity: sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw==}
 
-  '@stablelib/base64@1.0.1':
-    resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
-
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -3809,9 +3873,6 @@ packages:
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
-  fast-sha256@1.3.0:
-    resolution: {integrity: sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==}
-
   fast-uri@3.1.9:
     resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}
 
@@ -4042,10 +4103,6 @@ packages:
     resolution: {integrity: sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==}
     engines: {node: '>=6'}
     hasBin: true
-
-  json-schema-to-ts@3.1.1:
-    resolution: {integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==}
-    engines: {node: '>=16'}
 
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
@@ -4794,9 +4851,6 @@ packages:
   sql.js@1.15.2:
     resolution: {integrity: sha512-ZmMYFsZPZWDKIJUh3A5rdnpRV3hB/r7AijwAzSzLnfv/9CSx4obUmDtA8brAjWJWjGtUVh43nIEJ+6nl6HuOUg==}
 
-  standardwebhooks@1.1.1:
-    resolution: {integrity: sha512-bCbX9ZEyFkWPsRz7Bl3NuQUJohmwGSev/yhr7vhaGPlc4AfIrspIRa6cPTBuI1ItmrTDJ4d/S2hCsfe4+vQGnQ==}
-
   statuses@2.0.2:
     resolution: {integrity: sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==}
     engines: {node: '>= 0.8'}
@@ -4905,9 +4959,6 @@ packages:
 
   trough@2.2.0:
     resolution: {integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==}
-
-  ts-algebra@2.0.0:
-    resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
 
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
@@ -5307,14 +5358,6 @@ snapshots:
       throttleit: 2.1.0
     transitivePeerDependencies:
       - zod
-
-  '@anthropic-ai/sdk@1.3.0(zod@4.6.7)':
-    dependencies:
-      '@opentelemetry/api': 1.10.0
-      json-schema-to-ts: 3.1.1
-      standardwebhooks: 1.1.1
-    optionalDependencies:
-      zod: 4.6.7
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -6390,8 +6433,6 @@ snapshots:
 
   '@speed-highlight/core@1.2.24': {}
 
-  '@stablelib/base64@1.0.1': {}
-
   '@standard-schema/spec@1.1.0': {}
 
   '@tanstack/query-core@5.105.0': {}
@@ -7265,8 +7306,6 @@ snapshots:
 
   fast-levenshtein@2.0.6: {}
 
-  fast-sha256@1.3.0: {}
-
   fast-uri@3.1.9:
     optional: true
 
@@ -7505,11 +7544,6 @@ snapshots:
   js-tokens@4.0.0: {}
 
   jsesc@3.1.0: {}
-
-  json-schema-to-ts@3.1.1:
-    dependencies:
-      '@babel/runtime': 7.29.10
-      ts-algebra: 2.0.0
 
   json-schema-traverse@0.4.1: {}
 
@@ -8605,11 +8639,6 @@ snapshots:
 
   sql.js@1.15.2: {}
 
-  standardwebhooks@1.1.1:
-    dependencies:
-      '@stablelib/base64': 1.0.1
-      fast-sha256: 1.3.0
-
   statuses@2.0.2:
     optional: true
 
@@ -8723,8 +8752,6 @@ snapshots:
   trim-lines@3.0.1: {}
 
   trough@2.2.0: {}
-
-  ts-algebra@2.0.0: {}
 
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:

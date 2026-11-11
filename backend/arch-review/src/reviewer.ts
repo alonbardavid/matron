@@ -1,15 +1,22 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { generateText, isStepCount, tool, type ModelMessage } from "ai";
 import { createTwoFilesPatch } from "diff";
 import { z } from "zod";
-import { modelReply, type ModelMessage } from "@backend/arch-planner/model";
 import { answer, repositoryTools } from "@backend/arch-planner/tools";
-import { readFile } from "@backend/arch-repository/service";
+import { readFile, withRepository } from "@backend/arch-repository/service";
+import { getBuilderModel } from "@backend/arch-settings/service";
+import { gatewayModel } from "@backend/commons/gateway-model";
+import { logger } from "@backend/commons/logger";
 import type { ReviewMessage } from "@shared/contract/arch/review";
 import { reviewEnv } from "./env";
 import type { BranchState } from "./service";
 
+const log = logger("arch-review/reviewer");
+
 /** A commit's request or reasoning is cut past this in the prompt. */
 const MAX_NOTE_CHARS = 4_000;
+const MAX_OUTPUT_TOKENS = 16_000;
+/** Model calls one answer may take, tool rounds included, before it must answer. */
+const MAX_STEPS = 16;
 
 const REVIEWER_ROLE = `You are the reviewer's assistant in Matron, a self-releasing household organizer. Its owner is reading the code of a branch before merging it into main, and asks you about it. The branch was written by Matron's builder, a coding agent, from a household member's request; every commit it made records the request it worked on and the reasoning behind its decisions, and the newest one carries its summary of the branch and its brackets (the groups of changed lines it suggests reading together).
 
@@ -17,50 +24,62 @@ You are talking to the owner, an engineer. Be direct and concrete: name files, f
 
 You can read the code with tools: list_files, read_file and search_files see the branch as it is now, read_main_file sees the file on main as the branch started from, and file_diff shows one file's change. The builder's notes below say why it did things; the code says what it did. When they disagree, trust the code and point out the difference.`;
 
-/** The reviewer's next answer: the branch's state and notes in the system prompt, the conversation after it. */
+/** The reviewer's next answer: the branch's state and notes in the instructions, the conversation after it. */
 export async function askReviewer(
   state: BranchState,
   conversation: ReviewMessage[],
 ): Promise<string> {
-  const messages: ModelMessage[] = [
-    { role: "system", content: REVIEWER_ROLE },
-    { role: "system", content: describeBranch(state) },
-    ...conversation.map((message) => ({ role: message.role, content: message.text })),
-  ];
-  return modelReply(
-    messages,
+  const env = reviewEnv();
+  if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
+    throw new Error(
+      "No model is configured: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN",
+    );
+  }
+  const slug = `anthropic/${await getBuilderModel()}`;
+  const model = gatewayModel(
+    slug,
+    { accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN },
     {
       agent: "reviewer",
-      host: hostOf(reviewEnv().APP_ORIGIN),
+      host: hostOf(env.APP_ORIGIN),
       branch: state.branch.id,
       sessionId: state.branch.buildSessionId,
     },
-    undefined,
-    (repo) => [
-      ...repositoryTools(repo, state.headCommit),
-      betaZodTool({
-        name: "read_main_file",
+  );
+  if (!model) throw new Error(`The reviewer runs Anthropic models, not "${slug}"`);
+  const messages: ModelMessage[] = conversation.map((message) => ({
+    role: message.role,
+    content: message.text,
+  }));
+  const result = await generateText({
+    model,
+    instructions: `${REVIEWER_ROLE}\n\n${describeBranch(state)}`,
+    messages,
+    tools: {
+      ...repositoryTools(state.headCommit),
+      read_main_file: tool({
         description:
           "Reads one file as it is on main at the commit the branch is compared with, before the branch changed it.",
         inputSchema: z.object({ path: z.string().describe("Repository-relative path") }),
-        run: ({ path }) =>
+        execute: ({ path }) =>
           answer(
             async () =>
-              (await readFile(repo, path, state.baseCommit)) ??
+              (await withRepository((repo) => readFile(repo, path, state.baseCommit))) ??
               `No file '${path}' on main`,
           ),
       }),
-      betaZodTool({
-        name: "file_diff",
+      file_diff: tool({
         description:
           "The unified diff of one changed file between main and the branch, with line numbers.",
         inputSchema: z.object({ path: z.string().describe("Repository-relative path") }),
-        run: ({ path }) =>
+        execute: ({ path }) =>
           answer(async () => {
-            const [before, after] = await Promise.all([
-              readFile(repo, path, state.baseCommit),
-              readFile(repo, path, state.headCommit),
-            ]);
+            const [before, after] = await withRepository((repo) =>
+              Promise.all([
+                readFile(repo, path, state.baseCommit),
+                readFile(repo, path, state.headCommit),
+              ]),
+            );
             if (before === null && after === null) return `No file '${path}'`;
             if (before === after) return `'${path}' did not change on the branch`;
             return createTwoFilesPatch(
@@ -71,8 +90,23 @@ export async function askReviewer(
             );
           }),
       }),
-    ],
-  );
+    },
+    stopWhen: isStepCount(MAX_STEPS),
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+  });
+  if (result.finishReason === "content-filter") {
+    log.warn("reviewer refusal", { branchId: state.branch.id });
+    throw new Error("The model declined this request");
+  }
+  if (result.finishReason === "tool-calls") {
+    throw new Error("The reviewer read the repository for too long without answering");
+  }
+  log.info("reviewer completion", {
+    branchId: state.branch.id,
+    finishReason: result.finishReason,
+    chars: result.text.length,
+  });
+  return result.text;
 }
 
 /** The branch as the reviewer starts from it: its changed files and the builder's notes. */

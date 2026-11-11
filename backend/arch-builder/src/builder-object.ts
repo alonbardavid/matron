@@ -1,255 +1,171 @@
-import { Agent, type FiberContext, type FiberRecoveryContext } from "agents";
 import {
-  ContainerHarness,
-  containerAgent,
-  type ContainerMessage,
-  type ContainerOperationResult,
-  type ContainerSessionEvent,
-} from "agents/harness/container";
+  Agent,
+  type AgentToolRunInspection,
+  type AgentToolStoredChunk,
+  type FiberContext,
+  type FiberRecoveryContext,
+} from "agents";
+import type { ContainerHarness } from "agents/harness/container";
 import { markReady } from "@backend/arch-branches/service";
 import { logger } from "@backend/commons/logger";
-import { getBuilderModel } from "@backend/arch-settings/service";
-import { AI_GATEWAY } from "@backend/commons/names";
-import { reviewTrailerSchema, type ReviewTrailer } from "@shared/contract/arch/review";
 import type {
-  AbandonJob,
-  AgentOutcome,
-  AgentPrompt,
-  BuildJob,
-  BuilderJob,
-  BuilderMode,
+  BuilderFile,
+  BuilderRun,
   BuilderStatusDetail,
-  CommitPushResult,
-  DeployResult,
-  MergeJob,
-  MergeMainResult,
-  PrepareContinueResult,
+  RunMode,
   StepInput,
   StepName,
-  TurnRequest,
-  VerifyResult,
+  TerminalStatus,
 } from "./protocol";
-import { asStepLine } from "./events";
-import { continueJob } from "./jobs";
+import { builderHarness } from "./harness";
+import { PHASE_TEXT, replyPrompt, runPhase, type PhaseContext } from "./phases";
+import { RunRecords } from "./run-records";
+import {
+  EMPTY_STATE,
+  checkpointFor,
+  joinPending,
+  type BuilderState,
+  type Checkpoint,
+  type ContinueOutcome,
+  type Pending,
+  type PendingMessage,
+} from "./state";
+import { Turns } from "./turns";
 
 const log = logger("arch-builder/builder-object");
 
-/** The image name in the generated config's `containers[].images` (scripts/lib/wrangler-config.mjs). */
-const BUILDER_IMAGE_NAME = "builder";
-// Two vCPUs: install, the builds and the tests are CPU-bound.
-const BUILDER_INSTANCE = "standard-3";
-const MAX_FIX_ROUNDS = 3;
-const STEP_TIMEOUT_MS = 30 * 60_000;
-const AGENT_TURN_TIMEOUT_MS = 40 * 60_000;
+const STATE_KEY = "state";
 /**
- * The spec's five-minute rule, as the harness's idle timeout: a job parked
- * on a question runs nothing, and the container is snapshotted and stopped
- * once it has idled this long. The next turn restores it.
- */
-const WAITING_GRACE_MS = 5 * 60_000;
-/**
- * The longest a job runs without a word from the user. Past it the run is
+ * The longest a run goes without a word from the user. Past it the run is
  * halted and parked, the container snapshotted and stopped, and the chat told;
  * the next message picks the work up again.
  */
 const USER_SILENCE_LIMIT_MS = 30 * 60_000;
 const TIMED_OUT_TEXT =
   "The builder stopped: thirty minutes passed without a message from you. Reply here to pick the work up where it left off, or abandon the branch from the branch menu.";
-/** The host the coding agent calls for its model; the harness adds the gateway and credentials outside the container. */
-const MODEL_HOST = "anthropic.harness.internal";
-const PLACEHOLDER_KEY = "cf-aig-placeholder";
-const STATE_KEY = "state";
-const WORK_DIR = "/work";
+const NO_CONTAINER_TEXT = "The builder container is not available in this deployment";
 
-type Phase =
-  | "prepare"
-  | "install"
-  | "agent"
-  | "verify"
-  | "commit-push"
-  | "deploy-preview"
-  | "deploy-production"
-  | "cleanup";
-
-/** One job's progress; checkpointed into the fiber, parked while waiting for the user. */
-interface JobRun {
-  job: BuilderJob;
-  phase: Phase;
-  /**
-   * Tells this run's operations from an earlier job's on the same session: the
-   * harness answers a repeated operation id with the earlier result.
-   */
-  runId: string;
-  /** Numbers the turns; with the run id it is each turn's operation id. */
-  turn: number;
-  /** What the next agent turn is asked. */
-  prompt: AgentPrompt | null;
-  /** The agent's description of the change, kept across fix rounds. */
-  outcome: AgentOutcome | null;
-  fixRound: number;
-  /** What prepare-continue said about main, for the agent's prompt. */
-  sync: string | null;
-  /** Main's head after a merge, for the merged report. */
-  mergedHead: string | null;
-}
-
-interface BuilderState {
-  sessionId: string | null;
-  /** A fiber is executing a run. */
-  active: boolean;
-  /** A run parked on a question, until the user replies. */
-  waiting: JobRun | null;
-  /** User messages that arrived while a turn ran; the next agent turn gets them. */
-  pending: string[];
-  /** When the first job began. */
-  createdAt: number | null;
-  /** When the user last spoke; the silence limit counts from here. */
-  lastUserMessageAt: number | null;
-  /** The silence limit hit while a run was active: the run parks instead of failing. */
-  timedOut: boolean;
-  /** The scheduled silence check, replaced on every user message. */
-  watchdogId: string | null;
-}
-
-const EMPTY_STATE: BuilderState = {
-  sessionId: null,
-  active: false,
-  waiting: null,
-  pending: [],
-  createdAt: null,
-  lastUserMessageAt: null,
-  timedOut: false,
-  watchdogId: null,
+/** What a finished run says of itself. */
+const SUMMARIES: Record<Exclude<TerminalStatus, "failed">, string> = {
+  deployed: "Deployed",
+  merged: "Merged into main",
+  abandoned: "Branch abandoned",
 };
 
-/** Where a run goes next: on with the next phase, parked, or finished. */
-type Next = "continue" | "park" | "end";
-
 /**
- * Drives the builder container for one session. An Agent whose container
- * harness (Agents SDK) owns the container: it starts it from the builder
- * image, runs every turn the object submits as a durable operation, relays
- * the turn's events, reattaches after an eviction, and snapshots the
- * workspace when the container idles. A job is a fiber: a sequence of turns,
- * steps and agent turns, checkpointed after each, so an evicted object
- * resumes the job from its last checkpoint. A question from the agent parks
- * the job until the user replies. Named by the session id, like the session
- * object.
+ * The builder of one session: the Durable Object that owns the builder
+ * container, named by the session id like the session object. It runs the
+ * session's builds, merges and abandons, one at a time.
+ *
+ * A run is a fiber: a sequence of container turns, checkpointed before each
+ * phase, so an evicted object resumes it from the last checkpoint. A question
+ * from the coding agent parks the run until the user replies. Each run is also
+ * one of the session's agent-tool runs: the session's run handle asks this
+ * object for the run's record and lines, which stream to the chat as the
+ * run's chunks. What the builder has to say to the user, and its status, go
+ * to the session object directly.
  */
 export class BuilderObject extends Agent<Cloudflare.Env> {
   private readonly harness: ContainerHarness | null;
+  private readonly turns: Turns | null;
+  private readonly records: RunRecords;
   // Events are handled one at a time, in arrival order.
   private chain: Promise<void> = Promise.resolve();
-  // Relayed events keep their order on the way to the session.
-  private relaying: Promise<void> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
     super(ctx, env);
-    const container = ctx.container;
-    this.harness = container ? this.createHarness(container) : null;
+    this.records = new RunRecords(ctx.storage.sql);
+    this.harness = ctx.container ? builderHarness(ctx, ctx.container, env) : null;
     if (this.harness) this.lifecycle.use(this.harness);
+    this.turns = this.harness
+      ? new Turns(this.harness, (runId, line) =>
+          this.records.line(runId, line.text, line.kind),
+        )
+      : null;
   }
 
-  private createHarness(container: Container): ContainerHarness {
-    const env = this.env;
-    const token = env.CLOUDFLARE_API_TOKEN ?? "";
-    const gateway = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID ?? ""}/${AI_GATEWAY}/anthropic`;
-    // What a gateway log entry says about the request.
-    const metadata = {
-      agent: "builder",
-      host: hostOf(env.APP_ORIGIN),
-      sessionId: this.ctx.id.name ?? "",
-    };
-    return new ContainerHarness({
-      container,
-      egress: this.ctx.exports.ContainerEgress,
-      instance: BUILDER_INSTANCE,
-      idleTimeoutMs: WAITING_GRACE_MS,
-      agent: containerAgent({
-        image: container.images[BUILDER_IMAGE_NAME] as string,
-        adapter: "matron",
-        env: {
-          ANTHROPIC_BASE_URL: `http://${MODEL_HOST}`,
-          ANTHROPIC_API_KEY: PLACEHOLDER_KEY,
-          MATRON_WORK_DIR: WORK_DIR,
-          // The install step starts the dev servers; test runs reuse them.
-          MATRON_WARM_SERVERS: "1",
-        },
-        egress: [
-          {
-            host: MODEL_HOST,
-            upstream: gateway,
-            headers: {
-              "cf-aig-authorization": `Bearer ${token}`,
-              "x-api-key": token,
-              "cf-aig-metadata": JSON.stringify(metadata),
-            },
-            strip: ["x-api-key", "authorization"],
-          },
-        ],
-      }),
-    });
-  }
+  // ── RPC from the run handle ───────────────────────────────────────────────
 
-  // ── RPC ───────────────────────────────────────────────────────────────────
-
-  async startBuild(job: BuildJob): Promise<void> {
-    await this.serial(() => this.begin(job));
-  }
-
-  async startMerge(job: MergeJob): Promise<void> {
-    await this.serial(() => this.begin(job));
-  }
-
-  async startAbandon(job: AbandonJob): Promise<void> {
-    await this.serial(() => this.begin(job));
-  }
-
-  /** Cleared with its session: the container, the harness's record, the state and every alarm are dropped. */
-  async clear(): Promise<void> {
-    await this.serial(async () => {
-      if (this.harness) {
-        await this.harness.abort().catch(() => false);
-        await this.harness.stop().catch(() => undefined);
+  /** The run begins now; its lines are the run's chunks. */
+  async startRun(runId: string, run: BuilderRun): Promise<AgentToolRunInspection> {
+    return this.serial(async () => {
+      const existing = this.records.inspect(runId);
+      if (existing) return existing;
+      const opened = this.records.open(runId);
+      try {
+        await this.begin(run, runId);
+      } catch (err) {
+        this.records.end(runId, "error", messageOf(err));
+        throw err;
       }
-      log.info("builder cleared", { sessionId: this.ctx.id.name ?? null });
-      await this.destroy();
+      return this.records.inspect(runId) ?? opened;
     });
   }
 
-  /** A user message for the builder: the reply it waits for, kept for the next turn, or a wake-up of a finished job. */
-  async continueWith(text: string): Promise<void> {
+  /** The run's record; null for a run this builder never saw. */
+  async inspectRun(runId: string): Promise<AgentToolRunInspection | null> {
+    return this.records.inspect(runId);
+  }
+
+  /** The run's stored lines after `afterSequence`. */
+  async runChunks(runId: string, afterSequence: number): Promise<AgentToolStoredChunk[]> {
+    return this.records.chunks(runId, afterSequence);
+  }
+
+  /** The run's lines, stored ones first and then live, until the run ends. */
+  async tailRun(
+    runId: string,
+    afterSequence: number,
+  ): Promise<ReadableStream<Uint8Array>> {
+    return this.records.tail(runId, afterSequence);
+  }
+
+  /** The session gave the run up: whatever it was doing is halted, and the run is over. */
+  async cancelRun(runId: string, reason: string): Promise<void> {
     await this.serial(async () => {
+      if (this.records.isOver(runId)) return;
+      const state = await this.load();
+      if (state.currentRunId === runId) {
+        log.info("run cancelled", { runId, reason, sessionId: this.name });
+        state.waiting = null;
+        state.currentRunId = null;
+        state.pending = [];
+        await this.forgetSilenceCheck(state);
+        await this.save(state);
+        await this.stopHarness(true);
+      }
+      this.records.end(runId, "aborted", reason || "cancelled");
+    });
+  }
+
+  // ── RPC from the session and the Troubleshooting page ─────────────────────
+
+  /**
+   * A user message for the builder: the reply a parked run waits for, or kept
+   * for the next turn of an active one. With nothing running or waiting the
+   * session has to start a run, and is told so.
+   */
+  async continueWith(text: string, files: BuilderFile[]): Promise<ContinueOutcome> {
+    return this.serial(async () => {
       const state = await this.load();
       if (state.active) {
         await this.heard(state);
-        state.pending.push(text);
+        state.pending.push({ text, files });
         await this.save(state);
-        return;
+        return "queued";
       }
       if (state.waiting) {
         await this.heard(state);
-        const run = state.waiting;
+        const at = state.waiting;
         state.waiting = null;
-        run.phase = "agent";
-        run.prompt = {
-          kind: "continue",
-          message: this.takePending(state, text),
-          // A reply mid-job: main is fetched once per continuation, at its start.
-          sync: "Main was not fetched again for this reply.",
-        };
-        await this.session(state).builderStatus("building");
-        await this.startRun(state, run);
-        return;
+        at.phase = "agent";
+        at.prompt = replyPrompt(joinPending([{ text, files }, ...state.pending]));
+        state.pending = [];
+        await this.session().builderStatus("building");
+        await this.launch(state, at);
+        return "resumed";
       }
-      const sessionId = state.sessionId ?? this.ctx.id.name;
-      if (!sessionId) throw new Error("This builder has no session");
-      const job = await continueJob({
-        sessionId,
-        request: await this.lastRequest(sessionId),
-        message: text,
-      });
-      await this.begin(job);
+      return "idle";
     });
   }
 
@@ -257,7 +173,7 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     active: boolean;
     waiting: boolean;
     running: boolean;
-    mode: BuilderMode | null;
+    mode: RunMode | null;
   }> {
     const state = await this.load();
     const container = this.harness ? await this.harness.container() : null;
@@ -265,13 +181,23 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
       active: state.active,
       waiting: state.waiting !== null,
       running: container?.running ?? false,
-      mode: state.waiting?.job.mode ?? null,
+      mode: state.waiting?.run.mode ?? null,
     };
   }
 
-  /** Stops the container by hand: a running job parks, as when the silence limit hits. */
+  /** Stops the container by hand: an active run parks, as when the silence limit hits. */
   async stopContainer(): Promise<void> {
     await this.serial(async () => this.halt(await this.load()));
+  }
+
+  /** Cleared with its session: the container, the harness's record, the state and every alarm are dropped. */
+  async clear(): Promise<void> {
+    await this.serial(async () => {
+      await this.stopHarness(true);
+      this.records.closeAll();
+      log.info("builder cleared", { sessionId: this.name });
+      await this.destroy();
+    });
   }
 
   /** The silence check: nothing heard since it was set, so the run is halted. */
@@ -285,82 +211,63 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     });
   }
 
-  // ── Fibers ────────────────────────────────────────────────────────────────
-
-  /** An evicted object picks the job up from its last checkpoint. */
+  /** An evicted object picks the run up from its last checkpoint. */
   async onFiberRecovered(ctx: FiberRecoveryContext): Promise<void> {
-    if (!ctx.name.startsWith("job:") || !ctx.snapshot) return;
-    const run = ctx.snapshot as JobRun;
-    log.info("job fiber recovered", { sessionId: run.job.sessionId, phase: run.phase });
-    void this.runFiber(ctx.name, (fiber) => this.execute(run, fiber));
+    if (!ctx.name.startsWith("run:") || !ctx.snapshot) return;
+    const at = ctx.snapshot as Checkpoint;
+    log.info("run recovered", { sessionId: this.name, phase: at.phase });
+    void this.runFiber(ctx.name, (fiber) => this.execute(at, fiber));
   }
 
-  /** Runs `task` after every earlier event has finished. */
-  private serial(task: () => Promise<void>): Promise<void> {
-    const next = this.chain.then(task, task);
-    this.chain = next.catch((err) => log.error("builder event failed", { err }));
-    return next;
-  }
+  // ── The run ───────────────────────────────────────────────────────────────
 
-  // ── Jobs ──────────────────────────────────────────────────────────────────
-
-  private async begin(job: BuilderJob): Promise<void> {
+  private async begin(run: BuilderRun, runId: string): Promise<void> {
     const state = await this.load();
-    if (state.active)
-      throw new Error("The builder is already running a job for this session");
-    state.sessionId = job.sessionId;
-    state.waiting = null;
-    state.createdAt ??= Date.now();
+    if (state.active) throw new Error("The builder is already running for this session");
+    if (state.waiting) {
+      // A merge or an abandon while a build waits for an answer: that build is over.
+      this.records.end(state.waiting.runId, "aborted", `superseded by a ${run.mode}`);
+      state.waiting = null;
+    }
+    state.currentRunId = runId;
     await this.heard(state);
-    if (!this.harness) {
+    const at = checkpointFor(run, runId);
+    if (!this.turns) {
       log.warn("no container in this deployment", {
-        sessionId: job.sessionId,
-        mode: job.mode,
+        sessionId: this.name,
+        mode: run.mode,
       });
       await this.save(state);
-      await this.failWithoutContainer(job);
+      await this.finish(at, "failed", { error: NO_CONTAINER_TEXT });
       return;
     }
-    if (job.mode === "build" || job.mode === "continue") {
-      await this.session(state).builderStatus("building");
+    if (run.mode === "build" || run.mode === "continue") {
+      await this.session().builderStatus("building");
     }
-    await this.startRun(state, {
-      job,
-      runId: crypto.randomUUID().slice(0, 8),
-      phase: "prepare",
-      turn: 0,
-      prompt: null,
-      outcome: null,
-      fixRound: 0,
-      sync: null,
-      mergedHead: null,
-    });
+    await this.launch(state, at);
   }
 
-  private async startRun(state: BuilderState, run: JobRun): Promise<void> {
+  /** Starts the run's fiber, from the checkpoint; the state says a run is active. */
+  private async launch(state: BuilderState, at: Checkpoint): Promise<void> {
     state.active = true;
     await this.save(state);
-    log.info("job started", {
-      sessionId: run.job.sessionId,
-      mode: run.job.mode,
-      phase: run.phase,
-    });
-    void this.runFiber(`job:${run.job.sessionId}`, (fiber) =>
-      this.execute(run, fiber),
-    ).catch((err) =>
-      log.error("job fiber failed", { err, sessionId: run.job.sessionId }),
+    log.info("run started", { sessionId: this.name, mode: at.run.mode, phase: at.phase });
+    void this.runFiber(`run:${this.name}`, (fiber) => this.execute(at, fiber)).catch(
+      (err) => log.error("run fiber failed", { err, sessionId: this.name }),
     );
   }
 
   /** The fiber: one phase at a time, checkpointed before each, until the run parks or ends. */
-  private async execute(run: JobRun, fiber: FiberContext): Promise<void> {
+  private async execute(at: Checkpoint, fiber: FiberContext): Promise<void> {
+    const ctx = this.phaseContext(at);
     try {
       for (;;) {
-        fiber.stash(run);
-        const next = await this.phase(run);
+        fiber.stash(at);
+        ctx.progress(at.phase);
+        const next = await runPhase(at, ctx);
         if (next === "park") {
           const state = await this.load();
-          state.waiting = run;
+          state.waiting = at;
           state.active = false;
           await this.save(state);
           return;
@@ -370,13 +277,13 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     } catch (err) {
       const state = await this.load();
       if (state.timedOut) {
-        await this.timedOut(run, state);
+        await this.timedOut(at, state);
         return;
       }
-      log.error("job failed", { err, sessionId: run.job.sessionId, phase: run.phase });
+      log.error("run failed", { err, sessionId: this.name, phase: at.phase });
       const text = messageOf(err);
-      await this.session(state).relay({ role: "builder", text });
-      await this.finish(run, "failed", { error: firstLine(text) });
+      await this.session().relay(text);
+      await this.finish(at, "failed", { error: firstLine(text) });
     } finally {
       const state = await this.load();
       state.active = false;
@@ -384,205 +291,60 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     }
   }
 
-  /** One phase of the run; what it returns says what happens next. */
-  private async phase(run: JobRun): Promise<Next> {
-    const { job } = run;
-    const session = this.session(await this.load());
-    switch (run.phase) {
-      case "prepare": {
-        switch (job.mode) {
-          case "build":
-            await this.step(run, "prepare-build");
-            run.phase = "install";
-            return "continue";
-          case "continue": {
-            const result = await this.step<PrepareContinueResult>(
-              run,
-              "prepare-continue",
-            );
-            run.sync = result.sync;
-            run.phase = "install";
-            return "continue";
-          }
-          case "merge": {
-            const result = await this.step<MergeMainResult>(run, "merge-main");
-            run.mergedHead = result.headCommit;
-            run.phase = "install";
-            return "continue";
-          }
-          case "abandon":
-            await this.step(run, "prepare-cleanup");
-            run.phase = "cleanup";
-            return "continue";
-        }
-        break;
-      }
-      case "install": {
-        await this.step(run, "install");
-        if (job.mode === "merge") {
-          run.phase = "deploy-production";
-          return "continue";
-        }
-        const state = await this.load();
-        run.prompt =
-          job.mode === "build"
-            ? { kind: "build", extra: this.takePending(state) }
-            : {
-                kind: "continue",
-                message: this.takePending(
-                  state,
-                  job.mode === "continue" ? job.message : "",
-                ),
-                sync: run.sync ?? "",
-              };
-        await this.save(state);
-        run.phase = "agent";
-        return "continue";
-      }
-      case "agent": {
-        const outcome = await this.agentTurn(run);
-        if (outcome.status === "blocked") {
-          await session.relay({
-            role: "builder",
-            text: outcome.message || "The builder could not complete this change.",
-          });
-          await this.finish(run, "failed", { error: "blocked" });
-          return "end";
-        }
-        if (outcome.status === "question") {
-          await session.relay({
-            role: "builder",
-            text: outcome.message || "The builder has a question.",
-          });
-          const state = await this.load();
-          if (state.pending.length) {
-            // The answer arrived while the agent was still asking.
-            run.prompt = {
-              kind: "continue",
-              message: this.takePending(state),
-              sync: "Main was not fetched again for this reply.",
-            };
-            await this.save(state);
-            return "continue";
-          }
-          await session.builderStatus("waiting");
-          return "park";
-        }
-        run.outcome = run.outcome
-          ? {
-              ...outcome,
-              summary: run.outcome.summary || outcome.summary,
-              reasoning: run.outcome.reasoning || outcome.reasoning,
-              // A fix turn regroups the branch with its new line numbers.
-              review: outcome.review ?? run.outcome.review,
-            }
-          : outcome;
-        run.phase = "verify";
-        return "continue";
-      }
-      case "verify": {
-        const { failure } = await this.step<VerifyResult>(run, "verify");
-        if (!failure) {
-          run.phase = "commit-push";
-          return "continue";
-        }
-        if (run.fixRound >= MAX_FIX_ROUNDS) {
-          await session.relay({
-            role: "builder",
-            text: `Verification still fails after ${MAX_FIX_ROUNDS} fix attempts (${failure.label}).\n\n\`\`\`\n${failure.output}\n\`\`\``,
-          });
-          await this.finish(run, "failed", { error: `${failure.label} failed` });
-          return "end";
-        }
-        run.fixRound += 1;
-        await session.progress(
-          `${failure.label} failed; asking the agent to fix it (round ${run.fixRound}/${MAX_FIX_ROUNDS})`,
-        );
-        run.prompt = { kind: "fix", command: failure.label, output: failure.output };
-        run.phase = "agent";
-        return "continue";
-      }
-      case "commit-push": {
-        const outcome = run.outcome!;
-        const { committed } = await this.step<CommitPushResult>(run, "commit-push", {
-          summary: outcome.summary,
-          reasoning: outcome.reasoning,
-          request: job.mode === "continue" ? job.message : job.request,
-          review: outcome.review,
-        });
-        log.info("branch pushed", { sessionId: job.sessionId, committed });
-        await session.builderStatus("deploying");
-        run.phase = "deploy-preview";
-        return "continue";
-      }
-      case "deploy-preview": {
-        const result = await this.step<DeployResult>(run, "deploy-preview");
-        // The Preview URL is not for people: the session posts the branch link once
-        // the deploy is recorded. Only the agent's own words go here.
-        await session.relay({
-          role: "builder",
-          text: run.outcome?.message.trim() || "The change is ready.",
-        });
-        await this.finish(run, "deployed", result);
-        return "end";
-      }
-      case "deploy-production":
-        await this.step(run, "deploy-production");
-        run.phase = "cleanup";
-        return "continue";
-      case "cleanup":
-        await this.step(run, "cleanup");
-        if (job.mode === "merge") {
-          await session.relay({
-            role: "builder",
-            text: "Merged into main and deployed.",
-          });
-          await this.finish(run, "merged", { headCommit: run.mergedHead ?? undefined });
-        } else {
-          await session.relay({ role: "builder", text: "Branch abandoned." });
-          await this.finish(run, "abandoned");
-        }
-        return "end";
-    }
-    throw new Error(`unknown phase ${String(run.phase)}`);
+  /** What a phase of this run may do: take turns, talk to the session, write its lines, finish. */
+  private phaseContext(at: Checkpoint): PhaseContext {
+    const turns = this.turns!;
+    return {
+      step: <T = unknown>(name: StepName, input?: StepInput) =>
+        turns.step<T>(at, name, input),
+      agentTurn: () => turns.agent(at),
+      takePending: (first) => this.takePending(first),
+      say: (text) => this.session().relay(text),
+      status: (status) => this.session().builderStatus(status),
+      line: (line) => this.records.line(at.runId, line.text, line.kind),
+      progress: (phase, message = PHASE_TEXT[phase] ?? phase) =>
+        this.records.progress(at.runId, phase, message),
+      finish: (status, detail) => this.finish(at, status, detail),
+    };
   }
 
-  /** Pending user messages joined with `first`, and cleared. */
-  private takePending(state: BuilderState, first = ""): string {
-    const text = [first, ...state.pending].filter((part) => part.trim()).join("\n\n");
+  /** The user messages that arrived meanwhile, after `first`, taken and cleared. */
+  private async takePending(first?: PendingMessage): Promise<Pending | null> {
+    const state = await this.load();
+    const all = [...(first ? [first] : []), ...state.pending];
+    if (all.length === 0) return null;
     state.pending = [];
-    return text;
+    await this.save(state);
+    return joinPending(all);
   }
 
-  /** Terminal status: tell the session; the harness stops the container once it idles. */
+  /** The run is over: the session is told, the record closed, the container stopped unless a fix may follow. */
   private async finish(
-    run: JobRun,
-    status: "deployed" | "failed" | "merged" | "abandoned",
+    at: Checkpoint,
+    status: TerminalStatus,
     detail?: BuilderStatusDetail,
   ): Promise<void> {
-    const { job } = run;
-    log.info("job finished", { sessionId: job.sessionId, mode: job.mode, status });
-    if (status === "failed" && (job.mode === "merge" || job.mode === "abandon")) {
-      await markReady(job.branch.id).catch((err) =>
-        log.warn("mark ready failed", { err, sessionId: job.sessionId }),
+    const { run } = at;
+    log.info("run finished", { sessionId: this.name, mode: run.mode, status });
+    if (status === "failed" && (run.mode === "merge" || run.mode === "abandon")) {
+      await markReady(run.branch.id).catch((err) =>
+        log.warn("mark ready failed", { err, sessionId: this.name }),
       );
     }
     const state = await this.load();
     state.waiting = null;
+    state.currentRunId = null;
     state.pending = [];
     await this.forgetSilenceCheck(state);
     await this.save(state);
-    await this.session(state).builderStatus(status, detail);
-    // Nothing more comes for a deployed, merged or abandoned job: the container
-    // goes now, its workspace snapshotted. A failed job is left to the idle
+    await this.session().builderStatus(status, detail);
+    if (status === "failed")
+      this.records.end(at.runId, "error", detail?.error ?? "failed");
+    else this.records.end(at.runId, "completed", SUMMARIES[status]);
+    // Nothing more comes for a deployed, merged or abandoned run: the container
+    // goes now, its workspace snapshotted. A failed run is left to the idle
     // stop, like a question: a fix may follow within minutes.
-    if (status !== "failed" && this.harness) {
-      await this.harness
-        .stop()
-        .catch((err) =>
-          log.warn("container stop failed", { err, sessionId: job.sessionId }),
-        );
-    }
+    if (status !== "failed") await this.stopHarness(false);
   }
 
   // ── The silence limit ─────────────────────────────────────────────────────
@@ -613,145 +375,57 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     if (state.active) {
       state.timedOut = true;
       await this.save(state);
-      await this.harness.abort().catch(() => false);
     }
-    await this.harness
-      .stop()
-      .catch((err) =>
-        log.warn("container stop failed", { err, sessionId: state.sessionId }),
-      );
-    log.info("builder halted", { sessionId: state.sessionId, active: state.active });
+    await this.stopHarness(state.active);
+    log.info("builder halted", { sessionId: this.name, active: state.active });
   }
 
   /**
    * The silence limit hit mid-run. A build parks, to resume on the next
    * message; a merge or an abandon cannot resume, so it fails.
    */
-  private async timedOut(run: JobRun, state: BuilderState): Promise<void> {
-    const { job } = run;
+  private async timedOut(at: Checkpoint, state: BuilderState): Promise<void> {
+    const { run } = at;
     state.timedOut = false;
-    log.info("job timed out", {
-      sessionId: job.sessionId,
-      mode: job.mode,
-      phase: run.phase,
-    });
-    if (job.mode === "merge" || job.mode === "abandon") {
+    log.info("run timed out", { sessionId: this.name, mode: run.mode, phase: at.phase });
+    if (run.mode === "merge" || run.mode === "abandon") {
       await this.save(state);
-      await this.session(state).relay({
-        role: "builder",
-        text: `The ${job.mode} stopped: thirty minutes passed without a message. Start it again from the branch menu.`,
-      });
-      await this.finish(run, "failed", { error: "timed out" });
+      await this.session().relay(
+        `The ${run.mode} stopped: thirty minutes passed without a message. Start it again from the branch menu.`,
+      );
+      await this.finish(at, "failed", { error: "timed out" });
       return;
     }
-    state.waiting = run;
+    state.waiting = at;
     await this.save(state);
-    const session = this.session(state);
-    await session.relay({ role: "builder", text: TIMED_OUT_TEXT });
-    await session.builderStatus("timed_out");
+    await this.session().relay(TIMED_OUT_TEXT);
+    await this.session().builderStatus("timed_out");
+    this.records.progress(at.runId, "stopped", "stopped until your next message");
   }
 
-  // ── Turns ─────────────────────────────────────────────────────────────────
+  // ── Plumbing ──────────────────────────────────────────────────────────────
 
-  /** One step, as a harness turn; its result, or the error it reported, thrown. */
-  private async step<T = unknown>(
-    run: JobRun,
-    name: StepName,
-    input?: StepInput,
-  ): Promise<T> {
-    const request: TurnRequest = { kind: "step", step: name, job: run.job, input };
-    const result = await this.turn(run, request, STEP_TIMEOUT_MS);
-    if (result.status !== "done")
-      throw new Error(result.reason ?? `the ${name} step failed`);
-    return JSON.parse(result.text || "{}") as T;
+  /** Stops the container, after aborting the turn under way when asked; the workspace is snapshotted. */
+  private async stopHarness(abort: boolean): Promise<void> {
+    if (!this.harness) return;
+    if (abort) await this.harness.abort().catch(() => false);
+    await this.harness
+      .stop()
+      .catch((err) => log.warn("container stop failed", { err, sessionId: this.name }));
   }
 
-  /** One agent turn on `run.prompt`; the structured outcome it ended with. */
-  private async agentTurn(run: JobRun): Promise<AgentOutcome> {
-    const request: TurnRequest = {
-      kind: "agent",
-      prompt: run.prompt!,
-      job: run.job,
-      model: await getBuilderModel(),
-    };
-    const result = await this.turn(run, request, AGENT_TURN_TIMEOUT_MS);
-    if (result.status !== "done") {
-      throw new Error(`The coding agent failed: ${result.reason ?? "no result"}`);
-    }
-    const outcome = toOutcome(parseJson(result.text ?? ""));
-    if (!outcome) throw new Error("The coding agent ended without reporting an outcome.");
-    return outcome;
-  }
-
-  /**
-   * Submits a turn and waits for it, relaying its events to the chat. The
-   * operation id is the run's id and turn number, so a recovered fiber that
-   * submits the same turn again gets the operation already under way, while
-   * a later job on the session never meets an earlier job's results.
-   */
-  private async turn(
-    run: JobRun,
-    request: TurnRequest,
-    timeoutMs: number,
-  ): Promise<ContainerOperationResult> {
-    const harness = this.harness!;
-    run.turn += 1;
-    // A run checkpointed before runs had ids keeps the ids it started with.
-    const operationId = run.runId
-      ? `${run.job.sessionId}:${run.runId}:${run.turn}`
-      : `${run.job.sessionId}:${run.turn}`;
-    const session = harness.session();
-    const stream = await session.events();
-    const relay = new EventRelay(
-      this.session(await this.load()),
-      stream.snapshot.messages,
+  /** Runs `task` after every earlier event has finished. */
+  private serial<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(task, task);
+    this.chain = next.then(
+      () => undefined,
+      (err) => log.error("builder event failed", { err }),
     );
-    stream.start((events) => {
-      this.relaying = this.relaying
-        .then(() => relay.handle(events))
-        .catch((err) => log.warn("event relay failed", { err }));
-    });
-    try {
-      await session.submit(JSON.stringify(request), { operationId });
-      const timeout = AbortSignal.timeout(timeoutMs);
-      let result: ContainerOperationResult;
-      try {
-        result = await session.wait(operationId, timeout);
-      } catch (err) {
-        if (!timeout.aborted) throw err;
-        await session.abort(operationId).catch(() => false);
-        throw new Error(
-          `The ${request.kind === "step" ? `${request.step} step` : "coding agent"} did not finish within ${Math.round(timeoutMs / 60000)} minutes.`,
-          { cause: err },
-        );
-      }
-      await this.relaying;
-      return result;
-    } finally {
-      await stream.stop().catch(() => undefined);
-    }
+    return next;
   }
 
-  // ── State ─────────────────────────────────────────────────────────────────
-
-  private async failWithoutContainer(job: BuilderJob): Promise<void> {
-    if (job.mode === "merge" || job.mode === "abandon") await markReady(job.branch.id);
-    await this.env.BUILD_SESSIONS.getByName(job.sessionId).builderStatus("failed", {
-      error: "The builder container is not available in this deployment",
-    });
-  }
-
-  private session(state: BuilderState) {
-    const sessionId = state.sessionId ?? this.ctx.id.name;
-    if (!sessionId) throw new Error("This builder has no session");
-    return this.env.BUILD_SESSIONS.getByName(sessionId);
-  }
-
-  private async lastRequest(sessionId: string): Promise<string> {
-    return (
-      (await this.ctx.storage.get<string>("request")) ??
-      `Continue the work on session ${sessionId}`
-    );
+  private session() {
+    return this.env.BUILD_SESSIONS.getByName(this.name);
   }
 
   private async load(): Promise<BuilderState> {
@@ -760,161 +434,12 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
   }
 
   private async save(state: BuilderState): Promise<void> {
-    if (state.waiting?.job.mode === "build") {
-      await this.ctx.storage.put("request", state.waiting.job.request);
-    }
     await this.ctx.storage.put(STATE_KEY, state);
-  }
-}
-
-/**
- * Turns a turn's events into chat lines: a step's progress and log lines,
- * and what the coding agent thinks, says and does, as each part of its
- * messages first appears.
- */
-class EventRelay {
-  /** Parts already described, per message id. */
-  private readonly described = new Map<string, number>();
-  private readonly failedTools = new Set<string>();
-
-  constructor(
-    private readonly link: { progress(text: string, kind?: "log"): Promise<void> },
-    snapshot: readonly ContainerMessage[],
-  ) {
-    for (const message of snapshot) this.described.set(message.id, message.parts.length);
-  }
-
-  async handle(events: readonly ContainerSessionEvent[]): Promise<void> {
-    const logs: string[] = [];
-    const lines: string[] = [];
-    for (const event of events) {
-      if (event.type === "raw") {
-        const line = asStepLine(event.value);
-        if (!line) continue;
-        if (line.type === "progress") lines.push(line.text);
-        else if (line.type === "log") logs.push(line.text);
-      } else if (event.type === "log") {
-        logs.push(event.message);
-      } else if (event.type === "message") {
-        lines.push(...this.describe(event.message));
-      }
-    }
-    if (logs.length) await this.link.progress(tail(logs, 40).join("\n"), "log");
-    for (const text of lines) await this.link.progress(text);
-  }
-
-  private describe(message: ContainerMessage): string[] {
-    if (message.role !== "assistant") return [];
-    const seen = this.described.get(message.id) ?? 0;
-    const out: string[] = [];
-    message.parts.forEach((part, index) => {
-      if (
-        part.type === "tool" &&
-        part.state === "error" &&
-        !this.failedTools.has(part.toolCallId)
-      ) {
-        this.failedTools.add(part.toolCallId);
-        out.push(`tool failed: ${clip(toolOutputText(part.output))}`);
-      }
-      if (index < seen) return;
-      if (part.type === "text" && part.text.trim()) out.push(`agent: ${clip(part.text)}`);
-      else if (part.type === "reasoning" && part.text.trim())
-        out.push(`thinking: ${clip(part.text)}`);
-      else if (part.type === "tool") out.push(describeTool(part.toolName, part.input));
-    });
-    this.described.set(message.id, Math.max(seen, message.parts.length));
-    return out;
-  }
-}
-
-const CLIP_CHARS = 240;
-
-/** One line, whitespace collapsed, cut to a readable length. */
-function clip(text: string, max = CLIP_CHARS): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-}
-
-function describeTool(name: string, input: unknown): string {
-  const args = isRecord(input) ? input : {};
-  const str = (key: string) =>
-    typeof args[key] === "string" ? (args[key] as string) : "";
-  switch (name) {
-    case "Read":
-      return `reading ${str("file_path")}`;
-    case "Edit":
-    case "MultiEdit":
-    case "Write":
-      return `editing ${str("file_path")}`;
-    case "Bash":
-      return `running: ${clip(str("command"), 160)}`;
-    case "Grep":
-    case "Glob":
-      return `searching for ${clip(str("pattern"), 80)}`;
-    case "Agent":
-    case "Task":
-      return `delegating: ${clip(str("description") || str("prompt"), 120)}`;
-    default:
-      return `using ${name}`;
-  }
-}
-
-function toolOutputText(output: unknown): string {
-  if (typeof output === "string") return output;
-  if (Array.isArray(output))
-    return output
-      .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
-      .join(" ");
-  return output === undefined ? "" : JSON.stringify(output);
-}
-
-function toOutcome(value: unknown): AgentOutcome | null {
-  if (!isRecord(value)) return null;
-  const status = value.status;
-  if (status !== "done" && status !== "question" && status !== "blocked") return null;
-  return {
-    status,
-    summary: typeof value.summary === "string" ? value.summary : "",
-    reasoning: typeof value.reasoning === "string" ? value.reasoning : "",
-    message: typeof value.message === "string" ? value.message : "",
-    review: toReview(value.review),
-  };
-}
-
-/** The agent's review, or undefined when it gave none worth keeping; a malformed one is dropped, never fatal. */
-function toReview(value: unknown): ReviewTrailer | undefined {
-  const parsed = reviewTrailerSchema.safeParse(value);
-  if (!parsed.success) return undefined;
-  const review = parsed.data;
-  return review.summary.trim() || review.brackets.length ? review : undefined;
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function hostOf(origin: string): string {
-  try {
-    return new URL(origin).host;
-  } catch {
-    return origin;
   }
 }
 
 function firstLine(text: string): string {
   return text.split("\n")[0]?.trim() || "failed";
-}
-
-function tail<T>(items: T[], count: number): T[] {
-  return items.slice(Math.max(0, items.length - count));
 }
 
 function messageOf(err: unknown): string {

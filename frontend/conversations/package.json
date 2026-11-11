@@ -20,7 +20,6 @@
     "@tanstack/react-query": "^5.96.2",
     "react-router-dom": "^7.13.1",
     "zod": "^4.1.0",
-    "@frontend/build": "workspace:*",
     "@frontend/ask": "workspace:*"
   },
   "devDependencies": {

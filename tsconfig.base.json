@@ -31,6 +31,7 @@
       "@backend/calendar/*": ["./backend/calendar/src/*"],
       "@backend/commons/*": ["./backend/commons/src/*"],
       "@backend/db-models/*": ["./backend/db-models/src/*"],
+      "@backend/files/*": ["./backend/files/src/*"],
       "@backend/household/*": ["./backend/household/src/*"],
       "@backend/tasks/*": ["./backend/tasks/src/*"],
       "@frontend/api/*": ["./frontend/api/src/*"],

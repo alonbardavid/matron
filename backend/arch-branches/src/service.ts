@@ -3,7 +3,6 @@ import { and, desc, eq, isNull, like } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import { deploymentNames } from "@backend/commons/names";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import { user } from "@backend/db-models/arch-auth";
 import { branches, type BranchStatus } from "@backend/db-models/arch-branches";
@@ -110,7 +109,8 @@ export async function createBranch(
       slug,
       taken.map((row) => row.name),
     ),
-    deploymentNames(WORKER_NAME).database,
+    // The production database carries the Worker's name.
+    WORKER_NAME,
   );
   const [row] = await getDb()
     .insert(branches)
@@ -182,11 +182,14 @@ export async function beginMerge(
   return { ...branch, status: "merging" };
 }
 
+/** Owners abandon any branch; whoever may build abandons the branches they started. */
 export async function beginAbandon(principal: Principal, id: string): Promise<BranchRow> {
-  if (!branchPermissions.can(principal.role, "merge")) {
-    throw new DomainError("FORBIDDEN", "You cannot abandon branches");
-  }
+  const owns = branchPermissions.can(principal.role, "merge");
+  if (!owns) branchPermissions.require(principal, "create");
   const branch = await getBranch(id);
+  if (!owns && branch.userId !== principal.userId) {
+    throw new DomainError("FORBIDDEN", "This is not your branch");
+  }
   if (branch.status === "merging") {
     throw new DomainError("CONFLICT", "The branch is being merged");
   }
