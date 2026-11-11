@@ -182,11 +182,14 @@ export async function beginMerge(
   return { ...branch, status: "merging" };
 }
 
+/** Owners abandon any branch; whoever may build abandons the branches they started. */
 export async function beginAbandon(principal: Principal, id: string): Promise<BranchRow> {
-  if (!branchPermissions.can(principal.role, "merge")) {
-    throw new DomainError("FORBIDDEN", "You cannot abandon branches");
-  }
+  const owns = branchPermissions.can(principal.role, "merge");
+  if (!owns) branchPermissions.require(principal, "create");
   const branch = await getBranch(id);
+  if (!owns && branch.userId !== principal.userId) {
+    throw new DomainError("FORBIDDEN", "This is not your branch");
+  }
   if (branch.status === "merging") {
     throw new DomainError("CONFLICT", "The branch is being merged");
   }
