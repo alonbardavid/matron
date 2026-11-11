@@ -7,6 +7,7 @@ import {
   Container,
   Group,
   Loader,
+  SegmentedControl,
   Stack,
   Tabs,
   Text,
@@ -22,6 +23,7 @@ import { errorMessage } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { IconMessages } from "@frontend/ds/icons";
+import { useDiffLayout, type DiffLayout } from "../layout";
 import { reviewModel } from "../model";
 import { useViewed } from "../viewed";
 import { AskPanel } from "../widgets/AskPanel";
@@ -76,6 +78,7 @@ function Review({
   const [params, setParams] = useSearchParams();
   const model = useMemo(() => reviewModel(review), [review]);
   const viewed = useViewed(review.branch.id);
+  const [layout, setLayout] = useDiffLayout();
   const [askOpen, setAskOpen] = useState(false);
   const [messages, setMessages] = useState<ReviewMessage[]>([]);
   const tabParam = params.get("tab");
@@ -134,18 +137,32 @@ function Review({
           onChange={(value) => show({ tab: value === "overview" ? null : value })}
           keepMounted={false}
         >
-          <Tabs.List mb="md">
-            <Tabs.Tab value="overview">Overview</Tabs.Tab>
-            <Tabs.Tab
-              value="brackets"
-              rightSection={<Count value={model.brackets.length} />}
-            >
-              Brackets
-            </Tabs.Tab>
-            <Tabs.Tab value="files" rightSection={<Count value={model.paths.length} />}>
-              Files
-            </Tabs.Tab>
-          </Tabs.List>
+          <Group mb="md" gap="sm" align="flex-end" wrap="wrap">
+            <Tabs.List style={{ flex: "1 1 auto" }}>
+              <Tabs.Tab value="overview">Overview</Tabs.Tab>
+              <Tabs.Tab
+                value="brackets"
+                rightSection={<Count value={model.brackets.length} />}
+              >
+                Brackets
+              </Tabs.Tab>
+              <Tabs.Tab value="files" rightSection={<Count value={model.paths.length} />}>
+                Files
+              </Tabs.Tab>
+            </Tabs.List>
+            {tab !== "overview" && (
+              <SegmentedControl
+                size="xs"
+                aria-label="Diff layout"
+                value={layout}
+                onChange={(value) => setLayout(value as DiffLayout)}
+                data={[
+                  { value: "unified", label: "Unified" },
+                  { value: "split", label: "Split" },
+                ]}
+              />
+            )}
+          </Group>
           <Tabs.Panel value="overview">
             <OverviewTab review={review} model={model} viewed={viewed} />
           </Tabs.Panel>
@@ -153,6 +170,7 @@ function Review({
             <BracketsTab
               model={model}
               viewed={viewed}
+              layout={layout}
               selected={Number(params.get("bracket") ?? 1) - 1}
               onSelect={(index) => show({ bracket: String(index + 1) })}
               onOpenFile={(path) => show({ tab: "files", file: path })}
@@ -162,6 +180,7 @@ function Review({
             <FilesTab
               model={model}
               viewed={viewed}
+              layout={layout}
               selected={params.get("file")}
               onSelect={(path) => show({ file: path })}
             />

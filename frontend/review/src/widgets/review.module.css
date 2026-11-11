@@ -146,6 +146,15 @@
   background-color: var(--mantine-color-red-light);
 }
 
+/* Split layout: the side with no line is shaded, and a line divides before from after. */
+.blank {
+  background-color: var(--matron-surface-muted);
+}
+
+.leftCode {
+  border-right: 1px solid var(--matron-border-strong);
+}
+
 .gap td {
   padding: 3px 8px;
   background-color: var(--matron-surface-muted);

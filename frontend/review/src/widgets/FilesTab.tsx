@@ -7,11 +7,13 @@ import type { Viewed } from "../viewed";
 import { DiffView } from "./DiffView";
 import { MarkButton, markState } from "./Marks";
 import { plural, ViewedIcon } from "./Progress";
+import type { DiffLayout } from "../layout";
 import classes from "./review.module.css";
 
 interface FilesTabProps {
   model: ReviewModel;
   viewed: Viewed;
+  layout: DiffLayout;
   selected: string | null;
   onSelect: (path: string) => void;
 }
@@ -19,7 +21,7 @@ interface FilesTabProps {
 const STATUS_LABELS = { added: "added", modified: "", deleted: "deleted" } as const;
 
 /** Review by file: the changed files as a tree on the left, one file's diff at a time. */
-export function FilesTab({ model, viewed, selected, onSelect }: FilesTabProps) {
+export function FilesTab({ model, viewed, layout, selected, onSelect }: FilesTabProps) {
   const wide = useMediaQuery("(min-width: 62em)");
   const [filter, setFilter] = useState("");
   const path = selected && model.files.has(selected) ? selected : model.paths[0];
@@ -129,7 +131,7 @@ export function FilesTab({ model, viewed, selected, onSelect }: FilesTabProps) {
             </Group>
           </Group>
           <Box style={{ overflowX: "auto" }}>
-            <DiffView key={path} model={file} viewed={viewed} />
+            <DiffView key={path} model={file} viewed={viewed} layout={layout} />
           </Box>
         </Paper>
         {next && (

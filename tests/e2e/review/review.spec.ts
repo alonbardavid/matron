@@ -14,7 +14,7 @@ async function serveReview(page: Page) {
     const body = route.request().postDataJSON() as { messages: { text: string }[] };
     await route.fulfill({
       json: {
-        text: `Answering question ${body.messages.length}: it is in \`clearBought\`.`,
+        text: `Answering question ${body.messages.length}: it is in \`clearBought\`.\n\n\`\`\`ts\nexport async function clearBought() {}\n\`\`\``,
       },
     });
   });
@@ -90,6 +90,45 @@ test.describe("branch review", () => {
     await expect(
       page.getByText("Where are bought items cleared?", { exact: true }),
     ).toBeVisible();
+    // A fenced block in the answer is coloured by its language.
+    await expect(page.locator("pre .hljs-keyword", { hasText: "async" })).toBeVisible();
+  });
+
+  test("the owner reads a diff unified or split, in colour", async ({ page }) => {
+    await signIn(page, OWNER);
+    await serveReview(page);
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${REVIEW_PATH}?tab=files&file=backend%2Ftasks%2Fsrc%2Fservice.ts`);
+    const diff = page.getByRole("article");
+    await expect(diff).toContainText("clearBought");
+    await expect(
+      diff.locator(".hljs-keyword", { hasText: "export" }).first(),
+    ).toBeVisible();
+    await expect(
+      diff.locator(".hljs-string", { hasText: '"view"' }).first(),
+    ).toBeVisible();
+
+    // Unified: the replaced signature and its replacement are separate rows.
+    const replaced = diff
+      .getByRole("row")
+      .filter({ hasText: "listTasks(principal: Principal) {" })
+      .filter({ hasText: "list?: string" });
+    await expect(replaced).toHaveCount(0);
+
+    const layoutSwitch = page.getByRole("radiogroup", { name: "Diff layout" });
+    // Split: the line before sits beside the line that replaced it, still one change.
+    await layoutSwitch.getByText("Split", { exact: true }).click();
+    await expect(replaced).toHaveCount(1);
+    await replaced.getByRole("checkbox", { name: /^Mark line 6 viewed/ }).click();
+    await expect(
+      replaced.getByRole("checkbox", { name: /^Unmark line 6 viewed/ }),
+    ).toBeChecked();
+
+    // The layout is remembered in this browser.
+    await page.reload();
+    await expect(replaced).toHaveCount(1);
+    await layoutSwitch.getByText("Unified", { exact: true }).click();
+    await expect(replaced).toHaveCount(0);
   });
 
   test("a branch the repository does not know answers not found", async ({ page }) => {

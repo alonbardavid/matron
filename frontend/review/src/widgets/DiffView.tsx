@@ -1,6 +1,9 @@
 import { Text } from "@mantine/core";
-import { Fragment, useMemo, useRef, useState } from "react";
-import { markKey, type FileModel } from "../diff";
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
+import { CodeTokens } from "@frontend/ds/code/Code";
+import { highlightLines, languageOfPath, type Token } from "@frontend/ds/code/highlight";
+import { markKey, splitRows, type DiffLine, type FileModel } from "../diff";
+import type { DiffLayout } from "../layout";
 import type { Viewed } from "../viewed";
 import { MarkBox, markState } from "./Marks";
 import classes from "./review.module.css";
@@ -10,6 +13,7 @@ interface DiffViewProps {
   /** Show only these lines (in the branch's version), as a bracket range does. */
   focus?: { start: number; end: number };
   viewed: Viewed;
+  layout?: DiffLayout;
 }
 
 /** Unchanged lines shown around each change in a whole-file diff. */
@@ -23,18 +27,25 @@ const OMITTED: Record<string, string> = {
 
 type Segment = { shown: true; lines: number[] } | { shown: false; lines: number[] };
 
+/** One table row: a line in the unified layout, or a pair of sides in the split one. */
+type Row = { left: number | null; right: number | null };
+
 /**
- * A unified diff, marked as IronGarden marks it: a rail beside every changed
- * line toggles its change (shift-click takes in every change since the last
- * one clicked), and a box heads each run of adjacent changes to mark the run.
- * Runs of lines outside the view fold into a row that unfolds them.
+ * A diff, marked as IronGarden marks it: a rail beside every changed line
+ * toggles its change (shift-click takes in every change since the last one
+ * clicked), and a box heads each run of adjacent changes to mark the run.
+ * Runs of lines outside the view fold into a row that unfolds them. Unified
+ * shows one column of lines; split shows the file before on the left and
+ * after on the right, a removed line beside the line that replaced it.
  */
-export function DiffView({ model, focus, viewed }: DiffViewProps) {
+export function DiffView({ model, focus, viewed, layout = "unified" }: DiffViewProps) {
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
   const segments = useMemo(() => segmentsOf(model, focus), [model, focus]);
+  const tokens = useMemo(() => lineTokens(model), [model]);
   const lastClicked = useRef<number | null>(null);
   const path = model.file.path;
   const keyOf = (changeIndex: number) => markKey(path, model.changes[changeIndex]!);
+  const split = layout === "split";
 
   const clickRail = (changeIndex: number, extend: boolean) => {
     const from = extend ? (lastClicked.current ?? changeIndex) : changeIndex;
@@ -61,17 +72,33 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
     );
   }
 
+  const code = (index: number) => {
+    const line = tokens[index]!;
+    return line.length ? <CodeTokens tokens={line} /> : " ";
+  };
+
   return (
-    <table className={classes.diff}>
+    <table className={`${classes.diff} ${split ? classes.split : ""}`}>
       {/* A fixed layout takes its widths from here, not from a folded first row. */}
-      <colgroup>
-        <col className={classes.blockCol} />
-        <col className={classes.railCol} />
-        <col className={classes.numberCol} />
-        <col className={classes.numberCol} />
-        <col className={classes.signCol} />
-        <col />
-      </colgroup>
+      {split ? (
+        <colgroup>
+          <col className={classes.blockCol} />
+          <col className={classes.railCol} />
+          <col className={classes.numberCol} />
+          <col />
+          <col className={classes.numberCol} />
+          <col />
+        </colgroup>
+      ) : (
+        <colgroup>
+          <col className={classes.blockCol} />
+          <col className={classes.railCol} />
+          <col className={classes.numberCol} />
+          <col className={classes.numberCol} />
+          <col className={classes.signCol} />
+          <col />
+        </colgroup>
+      )}
       <tbody>
         {segments.map((segment) => {
           const first = segment.lines[0]!;
@@ -91,24 +118,24 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
               </tr>
             );
           }
-          const blocks = blocksOf(segment.lines, model.changeOf);
+          const rows: Row[] = split
+            ? splitRows(model.lines, segment.lines)
+            : segment.lines.map((index) => ({ left: index, right: index }));
+          // A row's change: the one its lines make (a split row's two sides are one change).
+          const rowChanges = rows.map((row) => model.changeOf[(row.right ?? row.left)!]!);
+          const blocks = blocksOf(rowChanges);
           return (
             <Fragment key={`lines-${first}`}>
-              {segment.lines.map((index, row) => {
-                const line = model.lines[index]!;
-                const changeIndex = model.changeOf[index]!;
+              {rows.map((row, r) => {
+                const changeIndex = rowChanges[r]!;
                 const isViewed =
                   changeIndex >= 0 && viewed.viewed.has(keyOf(changeIndex));
-                const block = blocks[row];
-                const lineNumber = line.kind === "removed" ? line.old : line.new;
-                const rowClass = [
-                  line.kind === "added" && classes.added,
-                  line.kind === "removed" && classes.removed,
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-                return (
-                  <tr key={index} className={rowClass}>
+                const block = blocks[r];
+                const shownLine = model.lines[(row.right ?? row.left)!]!;
+                const lineNumber =
+                  shownLine.kind === "removed" ? shownLine.old : shownLine.new;
+                const head = (
+                  <>
                     <td
                       className={`${classes.blockCell} ${block && !block.head ? classes.blockLine : ""}`}
                     >
@@ -136,16 +163,50 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
                     ) : (
                       <td />
                     )}
+                  </>
+                );
+                if (split) {
+                  return (
+                    <tr key={`${row.left}-${row.right}`}>
+                      {head}
+                      <Side
+                        line={row.left === null ? null : model.lines[row.left]!}
+                        side="left"
+                      >
+                        {row.left === null ? null : code(row.left)}
+                      </Side>
+                      <Side
+                        line={row.right === null ? null : model.lines[row.right]!}
+                        side="right"
+                      >
+                        {row.right === null ? null : code(row.right)}
+                      </Side>
+                    </tr>
+                  );
+                }
+                const rowClass =
+                  shownLine.kind === "added"
+                    ? classes.added
+                    : shownLine.kind === "removed"
+                      ? classes.removed
+                      : "";
+                return (
+                  <tr key={row.right!} className={rowClass}>
+                    {head}
                     <td className={classes.number}>
-                      {line.kind !== "added" ? line.old : ""}
+                      {shownLine.kind !== "added" ? shownLine.old : ""}
                     </td>
                     <td className={classes.number}>
-                      {line.kind !== "removed" ? line.new : ""}
+                      {shownLine.kind !== "removed" ? shownLine.new : ""}
                     </td>
                     <td className={classes.sign}>
-                      {line.kind === "added" ? "+" : line.kind === "removed" ? "−" : ""}
+                      {shownLine.kind === "added"
+                        ? "+"
+                        : shownLine.kind === "removed"
+                          ? "−"
+                          : ""}
                     </td>
-                    <td className={classes.code}>{line.text || " "}</td>
+                    <td className={classes.code}>{code(row.right!)}</td>
                   </tr>
                 );
               })}
@@ -155,6 +216,66 @@ export function DiffView({ model, focus, viewed }: DiffViewProps) {
       </tbody>
     </table>
   );
+}
+
+/**
+ * One side of a split row: its line number and code, tinted when the line
+ * was removed (left) or added (right), shaded when that side has no line.
+ */
+function Side({
+  line,
+  side,
+  children,
+}: {
+  line: DiffLine | null;
+  side: "left" | "right";
+  children: ReactNode;
+}) {
+  const tint =
+    line === null
+      ? classes.blank
+      : line.kind === "removed"
+        ? classes.removed
+        : line.kind === "added"
+          ? classes.added
+          : "";
+  const number = line === null ? "" : side === "left" ? oldNumber(line) : newNumber(line);
+  return (
+    <>
+      <td className={`${classes.number} ${tint}`}>{number}</td>
+      <td
+        className={`${classes.code} ${tint} ${side === "left" ? classes.leftCode : ""}`}
+      >
+        {children}
+      </td>
+    </>
+  );
+}
+
+function oldNumber(line: DiffLine): number | "" {
+  return line.kind === "added" ? "" : line.old;
+}
+
+function newNumber(line: DiffLine): number | "" {
+  return line.kind === "removed" ? "" : line.new;
+}
+
+/**
+ * Each line's coloured tokens: a removed line from the file before, every
+ * other line from the file after, each highlighted whole so a comment or
+ * string that spans lines keeps its colour. A line whose tokens do not
+ * spell its text (a file the diff split differently) is shown plain.
+ */
+function lineTokens(model: FileModel): Token[][] {
+  const language = languageOfPath(model.file.path);
+  const before = highlightLines(model.file.before ?? "", language);
+  const after = highlightLines(model.file.after ?? "", language);
+  return model.lines.map((line) => {
+    const tokens = line.kind === "removed" ? before[line.old - 1] : after[line.new - 1];
+    const spelled = tokens?.map((token) => token.text).join("");
+    if (spelled === line.text) return tokens!;
+    return line.text ? [{ text: line.text }] : [];
+  });
 }
 
 /** The box heading a run of adjacent changes: ticked when all are viewed, part-filled when some are. */
@@ -170,19 +291,19 @@ function BlockBox({ keys, viewed }: { keys: string[]; viewed: Viewed }) {
 }
 
 /**
- * For each shown row, the run of adjacent changed rows it is in, when that
- * run holds more than one change; `head` is its first row.
+ * For each row, the run of adjacent changed rows it is in, when that run
+ * holds more than one change; `head` is its first row. `rowChanges` is each
+ * row's change, or -1 for an unchanged row.
  */
-function blocksOf(
-  rows: number[],
-  changeOf: number[],
-): ({ head: boolean; changes: number[] } | null)[] {
-  const result: ({ head: boolean; changes: number[] } | null)[] = rows.map(() => null);
+function blocksOf(rowChanges: number[]): ({ head: boolean; changes: number[] } | null)[] {
+  const result: ({ head: boolean; changes: number[] } | null)[] = rowChanges.map(
+    () => null,
+  );
   let from = 0;
-  while (from < rows.length) {
+  while (from < rowChanges.length) {
     let to = from;
-    while (to < rows.length && changeOf[rows[to]!]! >= 0) to++;
-    const changes = [...new Set(rows.slice(from, to).map((index) => changeOf[index]!))];
+    while (to < rowChanges.length && rowChanges[to]! >= 0) to++;
+    const changes = [...new Set(rowChanges.slice(from, to))];
     if (changes.length > 1) {
       for (let i = from; i < to; i++) result[i] = { head: i === from, changes };
     }

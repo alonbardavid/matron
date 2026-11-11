@@ -12,6 +12,7 @@ import {
 import { useMediaQuery } from "@mantine/hooks";
 import { Markdown } from "@frontend/ds/Markdown";
 import { changesIn, markKey } from "../diff";
+import type { DiffLayout } from "../layout";
 import type { ReviewModel, ShownBracket } from "../model";
 import type { Viewed } from "../viewed";
 import { DiffView } from "./DiffView";
@@ -22,6 +23,7 @@ import classes from "./review.module.css";
 interface BracketsTabProps {
   model: ReviewModel;
   viewed: Viewed;
+  layout: DiffLayout;
   selected: number;
   onSelect: (index: number) => void;
   onOpenFile: (path: string) => void;
@@ -47,6 +49,7 @@ function fileCount(bracket: ShownBracket): number {
 export function BracketsTab({
   model,
   viewed,
+  layout,
   selected,
   onSelect,
   onOpenFile,
@@ -160,7 +163,12 @@ export function BracketsTab({
                 )}
                 {file ? (
                   <Box style={{ overflowX: "auto" }}>
-                    <DiffView model={file} focus={range} viewed={viewed} />
+                    <DiffView
+                      model={file}
+                      focus={range}
+                      viewed={viewed}
+                      layout={layout}
+                    />
                   </Box>
                 ) : (
                   <Text size="sm" c="dimmed" p="sm">

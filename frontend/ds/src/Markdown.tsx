@@ -1,6 +1,7 @@
 import { Anchor, Box, Typography } from "@mantine/core";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { HighlightedCode } from "./code/Code";
 import "./markdown.css";
 
 const components: Components = {
@@ -14,6 +15,18 @@ const components: Components = {
       {alt || src}
     </Anchor>
   ),
+  // A fence that names its language is coloured; inline code and other fences stay plain.
+  code: ({ className, children }) => {
+    const language = /\blanguage-([\w+#.-]+)/.exec(className ?? "")?.[1];
+    if (!language || typeof children !== "string") {
+      return <code className={className}>{children}</code>;
+    }
+    return (
+      <code className={className}>
+        <HighlightedCode text={children.replace(/\n$/, "")} language={language} />
+      </code>
+    );
+  },
 };
 
 const inlineComponents: Components = {

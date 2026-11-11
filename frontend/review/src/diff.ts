@@ -142,6 +142,47 @@ function lineOwners(lines: DiffLine[]): number[] {
   return owners;
 }
 
+/** A row of a split diff: the line shown on the left (the file before) and on the right (after), or null for a blank side. */
+export interface SplitRow {
+  left: number | null;
+  right: number | null;
+}
+
+/**
+ * Lines (indexes into `lines`) as split rows: an unchanged line on both
+ * sides, and each removed line beside the added line in the same place of
+ * its run, as `fileModel` pairs them into one change.
+ */
+export function splitRows(
+  lines: readonly DiffLine[],
+  indexes: readonly number[],
+): SplitRow[] {
+  const rows: SplitRow[] = [];
+  let removed: number[] = [];
+  let added: number[] = [];
+  const flush = () => {
+    for (let i = 0; i < Math.max(removed.length, added.length); i++) {
+      rows.push({ left: removed[i] ?? null, right: added[i] ?? null });
+    }
+    removed = [];
+    added = [];
+  };
+  for (const index of indexes) {
+    const line = lines[index]!;
+    if (line.kind === "same") {
+      flush();
+      rows.push({ left: index, right: index });
+    } else if (line.kind === "removed") {
+      if (added.length) flush();
+      removed.push(index);
+    } else {
+      added.push(index);
+    }
+  }
+  flush();
+  return rows;
+}
+
 /** The viewed-mark key of one change of a file. */
 export function markKey(path: string, change: Change): string {
   return `${path}\n${change.key}`;
