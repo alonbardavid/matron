@@ -59,7 +59,7 @@ export function MergeButton({
 
 /**
  * What can be done with the branch: chat with its builder, try it, abandon it,
- * review it, and for owners merge it or update it with main. An archived branch
+ * review it once it is ready, and for owners merge it or update it with main. An archived branch
  * keeps only its chat.
  */
 function BranchActions({ branch, current, onOutOfDate, onChat }: BranchRowProps) {
@@ -115,7 +115,7 @@ function BranchActions({ branch, current, onOutOfDate, onChat }: BranchRowProps)
           Abandon
         </ConfirmButton>
       )}
-      {!archived && canReview && (
+      {!archived && canReview && branch.status === "ready" && (
         <Button
           size="xs"
           variant="default"

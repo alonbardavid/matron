@@ -131,6 +131,30 @@ test.describe("branch review", () => {
     await expect(replaced).toHaveCount(0);
   });
 
+  test("each bracket keeps its own layout", async ({ page }) => {
+    await signIn(page, OWNER);
+    await serveReview(page);
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${REVIEW_PATH}?tab=brackets`);
+    const layoutSwitch = page.getByRole("radiogroup", { name: "Diff layout" });
+    const split = layoutSwitch.getByRole("radio", { name: "Split" });
+    const brackets = page.getByRole("navigation", { name: "Brackets" });
+
+    await expect(
+      page.getByRole("heading", { name: "Clearing bought items" }),
+    ).toBeVisible();
+    await expect(split).not.toBeChecked();
+    await layoutSwitch.getByText("Split", { exact: true }).click();
+    await expect(split).toBeChecked();
+
+    // A bracket not set yet opens with the last choice; setting it leaves the first alone.
+    await brackets.getByRole("button", { name: /The list column/ }).click();
+    await expect(split).toBeChecked();
+    await layoutSwitch.getByText("Unified", { exact: true }).click();
+    await brackets.getByRole("button", { name: /Clearing bought items/ }).click();
+    await expect(split).toBeChecked();
+  });
+
   test("a branch the repository does not know answers not found", async ({ page }) => {
     await signIn(page, OWNER);
     const answer = await page.request.get(`/api/arch/branches/${BRANCH_ID}/review`);

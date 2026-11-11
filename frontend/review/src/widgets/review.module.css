@@ -139,11 +139,30 @@
 }
 
 .added {
-  background-color: var(--mantine-color-green-light);
+  background-color: var(--matron-diff-added-bg);
 }
 
 .removed {
-  background-color: var(--mantine-color-red-light);
+  background-color: var(--matron-diff-removed-bg);
+}
+
+/* The line numbers of a changed line sit on a deeper tint, and its sign takes the change's colour. */
+.added .number,
+.number.added {
+  background-color: var(--matron-diff-added-number);
+}
+
+.removed .number,
+.number.removed {
+  background-color: var(--matron-diff-removed-number);
+}
+
+.added .sign {
+  color: var(--matron-code-added);
+}
+
+.removed .sign {
+  color: var(--matron-code-removed);
 }
 
 /* Split layout: the side with no line is shaded, and a line divides before from after. */

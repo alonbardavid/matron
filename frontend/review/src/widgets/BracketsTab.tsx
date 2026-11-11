@@ -12,10 +12,11 @@ import {
 import { useMediaQuery } from "@mantine/hooks";
 import { Markdown } from "@frontend/ds/Markdown";
 import { changesIn, markKey } from "../diff";
-import type { DiffLayout } from "../layout";
+import type { DiffLayout, DiffLayouts } from "../layout";
 import type { ReviewModel, ShownBracket } from "../model";
 import type { Viewed } from "../viewed";
 import { DiffView } from "./DiffView";
+import { LayoutSwitch } from "./LayoutSwitch";
 import { MarkButton, markState } from "./Marks";
 import { leftLabel, plural, ViewedBar } from "./Progress";
 import classes from "./review.module.css";
@@ -23,7 +24,7 @@ import classes from "./review.module.css";
 interface BracketsTabProps {
   model: ReviewModel;
   viewed: Viewed;
-  layout: DiffLayout;
+  layouts: DiffLayouts;
   selected: number;
   onSelect: (index: number) => void;
   onOpenFile: (path: string) => void;
@@ -49,7 +50,7 @@ function fileCount(bracket: ShownBracket): number {
 export function BracketsTab({
   model,
   viewed,
-  layout,
+  layouts,
   selected,
   onSelect,
   onOpenFile,
@@ -65,6 +66,8 @@ export function BracketsTab({
     );
   }
   const next = model.brackets[index + 1];
+  const layoutKey = `bracket:${index}:${bracket.title}`;
+  const layout = layouts.layoutOf(layoutKey);
 
   return (
     <Group align="flex-start" gap="lg" wrap={wide ? "nowrap" : "wrap"}>
@@ -109,7 +112,12 @@ export function BracketsTab({
       </Paper>
 
       <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
-        <BracketHeader bracket={bracket} viewed={viewed} />
+        <BracketHeader
+          bracket={bracket}
+          viewed={viewed}
+          layout={layout}
+          onLayout={(next) => layouts.setLayout(layoutKey, next)}
+        />
         {bracket.ranges.map((range, i) => {
           const file = model.files.get(range.path);
           const keys = file
@@ -194,7 +202,18 @@ export function BracketsTab({
   );
 }
 
-function BracketHeader({ bracket, viewed }: { bracket: ShownBracket; viewed: Viewed }) {
+/** The bracket's kind, title and description, its progress, and the layout of all its ranges' diffs. */
+function BracketHeader({
+  bracket,
+  viewed,
+  layout,
+  onLayout,
+}: {
+  bracket: ShownBracket;
+  viewed: Viewed;
+  layout: DiffLayout;
+  onLayout: (layout: DiffLayout) => void;
+}) {
   const done = viewed.count(bracket.keys);
   const total = bracket.keys.length;
   return (
@@ -204,10 +223,13 @@ function BracketHeader({ bracket, viewed }: { bracket: ShownBracket; viewed: Vie
           <Badge variant="default" radius="sm" tt="none">
             {KIND_LABELS[bracket.kind]}
           </Badge>
-          <Text size="xs" c="dimmed">
-            {plural(bracket.ranges.length, "range")} ·{" "}
-            {plural(fileCount(bracket), "file")}
-          </Text>
+          <Group gap="sm">
+            <Text size="xs" c="dimmed">
+              {plural(bracket.ranges.length, "range")} ·{" "}
+              {plural(fileCount(bracket), "file")}
+            </Text>
+            <LayoutSwitch layout={layout} onChange={onLayout} />
+          </Group>
         </Group>
         <Title order={3}>{bracket.title}</Title>
         {bracket.description && <Markdown text={bracket.description} />}

@@ -15,6 +15,11 @@
   --matron-code-comment: var(--matron-text-muted);
   --matron-code-added: var(--mantine-color-green-9);
   --matron-code-removed: var(--mantine-color-red-9);
+  /* A diff's changed lines: a pale tint, a little deeper behind the line numbers. */
+  --matron-diff-added-bg: #ecf5e6;
+  --matron-diff-added-number: #dcebd3;
+  --matron-diff-removed-bg: #fceaee;
+  --matron-diff-removed-number: #f8d6dd;
 }
 
 [data-mantine-color-scheme="dark"] {
@@ -29,6 +34,10 @@
   --matron-code-comment: var(--mantine-color-dimmed);
   --matron-code-added: var(--mantine-color-green-3);
   --matron-code-removed: var(--mantine-color-red-3);
+  --matron-diff-added-bg: #1c2817;
+  --matron-diff-added-number: #22311c;
+  --matron-diff-removed-bg: #2e181c;
+  --matron-diff-removed-number: #3c1f25;
 }
 
 .hljs-keyword,
