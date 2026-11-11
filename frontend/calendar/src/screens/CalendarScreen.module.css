@@ -9,8 +9,11 @@
   --week-view-slots-label-width: 3.5rem;
   --week-view-min-slot-width: 0;
   --week-view-week-day-height: 4.25rem;
-  --week-view-slot-height: 3.25rem;
-  --week-view-all-day-slots-height: 1.75rem;
+  --text-line: 0.625rem;
+  --text-pad: 0.0625rem;
+  --text-row: calc(var(--text-line) + 2 * var(--text-pad) + 0.125rem);
+  --week-view-slot-height: calc(4 * var(--text-row));
+  --week-view-all-day-slots-height: calc(2 * var(--text-row));
 }
 
 .weekViewRoot {
@@ -90,20 +93,52 @@
 .dayView.dayView {
   --day-view-border-color: var(--matron-border-strong);
   --indicator-color: var(--mantine-primary-color-filled);
-  --day-view-slot-height: 2.75rem;
+  --text-line: 0.625rem;
+  --text-pad: 0.0625rem;
+  --text-row: calc(var(--text-line) + 2 * var(--text-pad) + 0.125rem);
+  --day-view-slot-height: calc(4 * var(--text-row));
 }
 
-.dayViewSlotLabel {
-  font-size: 0.6875rem;
-  color: var(--mantine-color-dimmed);
+/*
+ * A quarter of an hour is as tall as one line of a title with a little room
+ * above and below it: an hour is four of those rows, and a block is drawn over
+ * whole quarters. A title shows as many whole lines as its block holds, never
+ * part of one. A block of one row keeps the title on that line, cut at the
+ * block's edge.
+ */
+.weekView :has(> .eventText),
+.dayView :has(> .eventText) {
+  display: block;
+  padding-block: var(--text-pad);
+  font-size: 0.625rem;
+  line-height: var(--text-line);
+}
+
+.weekView .eventText,
+.dayView .eventText {
+  display: block;
+  /* Lines are as tall as their letters; a tail below the last one shows in the room under it. */
+  overflow: clip;
+  overflow-clip-margin: var(--text-pad);
+  overflow-wrap: anywhere;
+  max-height: max(
+    var(--text-line),
+    round(down, calc(100cqh - 2 * var(--text-pad)), var(--text-line))
+  );
+}
+
+@container (max-height: 1.25rem) {
+  .weekView .eventText,
+  .dayView .eventText {
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 48em) {
   .weekView.weekView {
     --week-view-slots-label-width: 2.5rem;
-    --week-view-slot-height: 2.75rem;
+    --text-pad: 0.03125rem;
     --week-view-week-day-height: 3.25rem;
-    --week-view-all-day-slots-height: 1.5rem;
   }
 
   .weekViewDayWeekday {
@@ -122,14 +157,14 @@
     padding-inline-end: 0.25rem;
   }
 
-  /* An event's chip is the button inside the element that carries its id. */
-  .weekView [data-event-id] > button {
+  .weekView :has(> .eventText),
+  .dayView :has(> .eventText) {
     font-size: 0.625rem;
-    padding: 0.125rem 0.1875rem;
+    padding-inline: 0.1875rem;
   }
 
   .dayView.dayView {
     --day-view-slot-labels-width: 2.75rem;
-    --day-view-slot-height: 2.5rem;
+    --text-pad: 0.03125rem;
   }
 }

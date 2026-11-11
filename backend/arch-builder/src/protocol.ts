@@ -35,24 +35,26 @@
  *   deploy-production  build, migrate the production D1, deploy production
  *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
  *
- * The object sequences them: build and continue jobs run prepare, install,
- * agent turns until the agent is done (a question parks the job as `waiting`
+ * The object sequences them: a build or a continue runs prepare, install,
+ * agent turns until the agent is done (a question parks the run as `waiting`
  * until the user replies), verify with up to three fix turns, commit-push,
  * deploy-preview; a merge runs merge-main, install, deploy-production,
  * cleanup; an abandon runs prepare-cleanup, cleanup.
  *
  * Status rules
  * ------------
- * The object reports to the session:
+ * The object reports to the session (RPC on the session's object), and the
+ * session's agent-tool run of the builder follows: the builder's lines stream as
+ * the run's chunks, and the run ends with the work.
  *   building → (waiting ↔ building)* → deploying → deployed | failed
  *   merging → merged | failed
  *   abandoning → abandoned | failed
- * A job parked as `waiting` runs nothing; the harness snapshots and stops
+ * A run parked as `waiting` runs nothing; the harness snapshots and stops
  * the container after its idle timeout (five minutes) and restores it for
  * the next turn.
  */
 
-export type BuilderMode = "build" | "continue" | "merge" | "abandon";
+export type RunMode = "build" | "continue" | "merge" | "abandon";
 
 export type BuilderStatus =
   | "idle"
@@ -67,7 +69,7 @@ export type BuilderStatus =
   | "failed"
   | "timed_out";
 
-/** The branch a job works on; names come from the branch row. */
+/** The branch a run works on; names come from the branch row. */
 export interface BuilderBranch {
   id: string;
   /** Git branch name, the slug the planner named, e.g. "shopping-list". */
@@ -99,40 +101,42 @@ export interface BuilderCloudflare {
   aiGateway: string;
 }
 
-interface BuilderJobBase {
+interface RunBase {
   sessionId: string;
   branch: BuilderBranch;
   repository: BuilderRepository;
   cloudflare: BuilderCloudflare;
-  /** The production SIGNING_KEY; set as a secret on every Preview. */
-  signingKey: string;
   /** The user's original request, for the commit message. */
   request: string;
   /** The image reference used for production's container, repeated on deploys. */
   builderImage?: string;
 }
 
-export interface BuildJob extends BuilderJobBase {
+export interface BuildRun extends RunBase {
   mode: "build";
   /** The plan the user agreed to. */
   plan: string;
+  /** Pictures or files the user attached while the plan was made; the agent reads them. */
+  files?: BuilderFile[];
 }
 
-export interface ContinueJob extends BuilderJobBase {
+export interface ContinueRun extends RunBase {
   mode: "continue";
   /** What the user said after the container had stopped. */
   message: string;
+  /** What came with it: pictures or files the agent is to read. */
+  files?: BuilderFile[];
 }
 
-export interface MergeJob extends BuilderJobBase {
+export interface MergeRun extends RunBase {
   mode: "merge";
 }
 
-export interface AbandonJob extends BuilderJobBase {
+export interface AbandonRun extends RunBase {
   mode: "abandon";
 }
 
-export type BuilderJob = BuildJob | ContinueJob | MergeJob | AbandonJob;
+export type BuilderRun = BuildRun | ContinueRun | MergeRun | AbandonRun;
 
 export type StepName =
   | "prepare-build"
@@ -146,13 +150,24 @@ export type StepName =
   | "deploy-production"
   | "cleanup";
 
+/**
+ * A file the user attached to a message for the agent: the daemon writes it
+ * to the container's attachments folder, outside the checkout, and names it in the prompt.
+ */
+export interface BuilderFile {
+  name: string;
+  mediaType: string;
+  /** The bytes, base64. */
+  data: string;
+}
+
 /** How the agent's prompt for one turn is built; the templates live in the image. */
 export type AgentPrompt =
-  | { kind: "build"; extra: string }
-  | { kind: "continue"; message: string; sync: string }
+  | { kind: "build"; extra: string; files?: BuilderFile[] }
+  | { kind: "continue"; message: string; sync: string; files?: BuilderFile[] }
   | { kind: "fix"; command: string; output: string };
 
-/** What a step reads besides the job, when it needs more. */
+/** What a step reads besides the run, when it needs more. */
 export interface StepInput {
   summary: string;
   reasoning: string;
@@ -161,8 +176,8 @@ export interface StepInput {
 
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
 export type TurnRequest =
-  | { kind: "step"; step: StepName; job: BuilderJob; input?: StepInput }
-  | { kind: "agent"; prompt: AgentPrompt; job: BuilderJob; model: string };
+  | { kind: "step"; step: StepName; run: BuilderRun; input?: StepInput }
+  | { kind: "agent"; prompt: AgentPrompt; run: BuilderRun; model: string };
 
 export type StepLine =
   | { type: "progress"; text: string }
@@ -207,7 +222,7 @@ export interface BuilderStatusDetail {
   error?: string;
 }
 
-/** Statuses after which there is nothing more to do for a job. */
+/** Statuses after which there is nothing more to do for a run. */
 export type TerminalStatus = "deployed" | "failed" | "merged" | "abandoned";
 export const TERMINAL_STATUSES: ReadonlySet<BuilderStatus> = new Set<TerminalStatus>([
   "deployed",

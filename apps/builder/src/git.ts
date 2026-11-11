@@ -2,12 +2,12 @@ import { existsSync, rmSync } from "node:fs";
 import {
   combined,
   describeFailure,
-  run,
+  exec,
   tail,
-  type RunOptions,
-  type RunResult,
-} from "./run.js";
-import { JobError } from "./types.js";
+  type ExecOptions,
+  type ExecResult,
+} from "./exec.js";
+import { BuilderError } from "./types.js";
 
 /**
  * How the repository token reaches the remote. The Artifacts protocol says it
@@ -51,9 +51,9 @@ export type GitContext = {
 async function git(
   ctx: GitContext,
   args: string[],
-  options: RunOptions = {},
-): Promise<RunResult> {
-  return run("git", args, {
+  options: ExecOptions = {},
+): Promise<ExecResult> {
+  return exec("git", args, {
     cwd: options.cwd ?? ctx.repo,
     env: { ...gitEnv(ctx.token, ctx.scheme ?? "basic"), ...options.env },
     timeoutMs: options.timeoutMs ?? 10 * 60 * 1000,
@@ -65,11 +65,14 @@ async function git(
 async function must(
   ctx: GitContext,
   args: string[],
-  options?: RunOptions,
-): Promise<RunResult> {
+  options?: ExecOptions,
+): Promise<ExecResult> {
   const result = await git(ctx, args, options);
   if (result.code !== 0) {
-    throw new JobError(describeFailure(`git ${args[0]}`, result), tail(combined(result)));
+    throw new BuilderError(
+      describeFailure(`git ${args[0]}`, result),
+      tail(combined(result)),
+    );
   }
   return result;
 }
@@ -86,7 +89,7 @@ export async function clone(
 ): Promise<void> {
   if (existsSync(ctx.repo)) rmSync(ctx.repo, { recursive: true, force: true });
   const schemes: GitAuthScheme[] = ctx.scheme ? [ctx.scheme] : ["basic", "bearer"];
-  let last: RunResult | undefined;
+  let last: ExecResult | undefined;
   for (const scheme of schemes) {
     const result = await git({ ...ctx, scheme }, ["clone", "--quiet", remote, ctx.repo], {
       cwd: parentDir,
@@ -100,13 +103,13 @@ export async function clone(
     if (!isAuthFailure(result)) break;
     if (existsSync(ctx.repo)) rmSync(ctx.repo, { recursive: true, force: true });
   }
-  throw new JobError(
-    describeFailure("git clone", last as RunResult),
-    tail(combined(last as RunResult)),
+  throw new BuilderError(
+    describeFailure("git clone", last as ExecResult),
+    tail(combined(last as ExecResult)),
   );
 }
 
-function isAuthFailure(result: RunResult): boolean {
+function isAuthFailure(result: ExecResult): boolean {
   return /authentication failed|401|403|could not read Username|invalid credentials|unauthorized/i.test(
     combined(result),
   );
@@ -196,7 +199,7 @@ export async function mergeFastForward(ctx: GitContext, ref: string): Promise<bo
   ) {
     return false;
   }
-  throw new JobError(describeFailure("git merge", result), tail(combined(result)));
+  throw new BuilderError(describeFailure("git merge", result), tail(combined(result)));
 }
 
 /**

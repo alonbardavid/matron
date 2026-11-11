@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-export type RunOptions = {
+export type ExecOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
@@ -14,7 +14,7 @@ export type RunOptions = {
   flushMs?: number;
 };
 
-export type RunResult = {
+export type ExecResult = {
   code: number | null;
   stdout: string;
   stderr: string;
@@ -28,11 +28,11 @@ const KEEP_BYTES = 2 * 1024 * 1024;
  * Runs a command without a shell, capturing stdout and stderr (bounded) and
  * streaming tails of the combined output to `onOutput` in batches.
  */
-export function run(
+export function exec(
   cmd: string,
   args: string[],
-  options: RunOptions = {},
-): Promise<RunResult> {
+  options: ExecOptions = {},
+): Promise<ExecResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -110,11 +110,11 @@ export function tail(text: string, lines = 60): string {
 }
 
 /** stdout and stderr together, for error messages and agent feedback. */
-export function combined(result: RunResult): string {
+export function combined(result: ExecResult): string {
   return [result.stdout, result.stderr].filter((part) => part.trim()).join("\n");
 }
 
-export function describeFailure(label: string, result: RunResult): string {
+export function describeFailure(label: string, result: ExecResult): string {
   const reason = result.timedOut ? "timed out" : `exited with code ${result.code}`;
   return `${label} ${reason}`;
 }

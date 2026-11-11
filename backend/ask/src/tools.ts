@@ -1,7 +1,9 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import {
+  cancelOccurrence,
   createEvent,
+  editOccurrence,
   getEvent,
   listOccurrences,
   removeEvent,
@@ -14,6 +16,7 @@ import { createTask, listTasks, removeTask, updateTask } from "@backend/tasks/se
 import {
   calendarEventCreateSchema,
   calendarEventUpdateSchema,
+  occurrenceUpdateSchema,
 } from "@shared/contract/app/calendar";
 import {
   dayString,
@@ -74,7 +77,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
     }),
     list_events: tool({
       description:
-        "What is on the user's calendar between two instants (milliseconds since the epoch), repeating events expanded into occurrences.",
+        "What is on the user's calendar between two instants (milliseconds since the epoch), repeating events expanded into occurrences. Each names its calendar and source; source \"google\" is imported from the user's Google Calendar and is read-only here.",
       inputSchema: z.object({ from: z.number(), to: z.number() }),
       execute: ({ from, to }) => listOccurrences(principal, from, to),
     }),
@@ -86,7 +89,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
     }),
     create_event: tool({
       description:
-        "Add a calendar event. Times are milliseconds since the epoch in the user's zone; an all-day event spans whole days. Recurrence: weekly on weekdays (0 Sunday to 6 Saturday) or monthly on days of the month, until a day or for a count.",
+        "Add a calendar event. Times are milliseconds since the epoch in the user's zone; an all-day event spans whole days. To repeat it, rrule is an iCalendar RRULE value (RFC 5545) without the RRULE: prefix: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with INTERVAL, BYDAY (MO,WE; in a monthly rule 2TU is the second Tuesday, -1FR the last Friday), BYMONTHDAY (-1 is the last day), and UNTIL=YYYYMMDD (the last day) or COUNT. The start is the first occurrence.",
       inputSchema: calendarEventCreateSchema.omit({ timeZone: true }).extend({
         timeZone: z.string().optional(),
       }),
@@ -94,9 +97,27 @@ export function householdTools(ctx: ToolContext): ToolSet {
         createEvent(principal, { ...input, timeZone: input.timeZone ?? ctx.timeZone }),
     }),
     update_event: tool({
-      description: "Change an event or its whole series.",
+      description:
+        "Change an event or its whole series. An imported (Google) event only changes who it is shared with; anything else is changed in Google Calendar.",
       inputSchema: calendarEventUpdateSchema.extend({ id: z.string() }),
       execute: ({ id, ...changes }) => updateEvent(principal, id, changes),
+    }),
+    edit_occurrence: tool({
+      description:
+        "Change one occurrence of a repeating event (its title, description or times); the others stay. originalStartAt is the occurrence's originalStartAt from list_events.",
+      inputSchema: occurrenceUpdateSchema.extend({
+        id: z.string(),
+        originalStartAt: z.number(),
+      }),
+      execute: ({ id, originalStartAt, ...changes }) =>
+        editOccurrence(principal, id, originalStartAt, changes),
+    }),
+    cancel_occurrence: tool({
+      description:
+        "Remove one occurrence of a repeating event; the others stay. originalStartAt is the occurrence's originalStartAt from list_events.",
+      inputSchema: z.object({ id: z.string(), originalStartAt: z.number() }),
+      execute: ({ id, originalStartAt }) =>
+        cancelOccurrence(principal, id, originalStartAt),
     }),
     stop_recurrence: tool({
       description: "Stop a repeating event from a day on; earlier occurrences stay.",

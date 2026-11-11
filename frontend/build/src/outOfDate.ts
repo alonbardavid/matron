@@ -14,7 +14,10 @@ export function useOutOfDateAction(): OnOutOfDate {
   const buildChat = useBuildChat();
   return useCallback(
     (branch) =>
-      buildChat.openWithMessage(branch.buildSessionId, outOfDateMessage(branch.name)),
+      buildChat.openWithMessage(branch.buildSessionId, {
+        text: outOfDateMessage(branch.name),
+        files: [],
+      }),
     [buildChat],
   );
 }

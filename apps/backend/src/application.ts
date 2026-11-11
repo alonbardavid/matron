@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
+import { servePublicAppApi } from "@backend/api/public/handler";
 import { openAskSocket } from "@backend/ask/socket";
 import { answerError } from "@backend/commons/errors";
 import {
@@ -7,6 +8,7 @@ import {
   type ApplicationVariables,
 } from "@backend/arch-routing/require-handoff";
 import { logger } from "@backend/commons/logger";
+import { PUBLIC_APP_PATH } from "@shared/contract/app/public/path";
 
 const log = logger("backend/application");
 
@@ -20,6 +22,15 @@ export const application = new Hono<{ Variables: ApplicationVariables }>();
 application.onError(answerError);
 
 application.use("*", requireHandoff);
+
+// The public procedures answer anyone the router let through, signed in or not.
+application.use(`${PUBLIC_APP_PATH}/*`, async (c, next) => {
+  const response = await servePublicAppApi(c.req.raw, {
+    principal: c.get("principal"),
+    branch: c.get("branch"),
+  });
+  return response ?? next();
+});
 
 application.use("/api/app/*", async (c, next) => {
   // A signed-out visitor reaches the SPA but not the API, which requires a principal.

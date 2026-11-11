@@ -170,7 +170,7 @@ export async function listContainers(
   }
 }
 
-/** Stops a running instance through its builder: the workspace is snapshotted, a running job parks. */
+/** Stops a running instance through its builder: the workspace is snapshotted, a run in progress parks. */
 export async function stopContainer(principal: Principal, name: string): Promise<void> {
   troubleshootingPermissions.require(principal, "manage");
   await troubleshootingEnv().BUILDERS.getByName(name).stopContainer();
@@ -284,11 +284,10 @@ async function mustCall<T>(call: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof CloudflareError) {
       throw new DomainError(
-        err.problem.kind === "error" ? "UNAVAILABLE" : "FORBIDDEN",
+        err.problem.kind === "error" ? "SERVICE_UNAVAILABLE" : "FORBIDDEN",
         err.message,
       );
     }
     throw err;
   }
 }
-

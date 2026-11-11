@@ -37,16 +37,3 @@ export const conversationsContract = {
 export function askSocketPath(sessionId: string): string {
   return `/api/app/ask/${encodeURIComponent(sessionId)}/ws`;
 }
-
-/** What a message to the assistant may carry: pictures, PDFs and plain text, read by the model. */
-export const ASK_ATTACHMENT_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/plain",
-] as const;
-/** Per file, after the browser has shrunk a picture. */
-export const ASK_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
-export const ASK_ATTACHMENTS_PER_MESSAGE = 3;

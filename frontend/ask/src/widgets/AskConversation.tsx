@@ -1,14 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  Button,
-  Center,
-  Group,
-  Loader,
-  ScrollArea,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { Alert, Button, Center, Loader, ScrollArea, Stack, Text } from "@mantine/core";
 import { useAgentChat } from "@cloudflare/think/react";
 import { useAgent } from "agents/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,20 +10,28 @@ import { EmptyState } from "@frontend/ds/EmptyState";
 import type { AskInput } from "../AskChatContext";
 import { AskComposer } from "./AskComposer";
 import { AskMessage } from "./AskMessage";
+import { Thinking } from "@frontend/ds/chat/Thinking";
+import { currentActivity } from "@frontend/ds/chat/activity";
+
+/** What the assistant is up to while a tool call of its runs, as the indicator's status. */
+const ASSISTANT_ACTIVITY: Record<string, string> = {
+  list_tasks: "looking at the tasks",
+  create_task: "adding a task",
+  update_task: "updating a task",
+  remove_task: "removing a task",
+  list_events: "looking at the calendar",
+  get_event: "looking at an event",
+  create_event: "adding an event",
+  update_event: "updating an event",
+  edit_occurrence: "changing one occurrence",
+  cancel_occurrence: "removing one occurrence",
+  stop_recurrence: "stopping a repetition",
+  remove_event: "removing an event",
+  list_household_members: "checking who is in the household",
+  query_database: "looking something up",
+};
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-
-/** The assistant has the message and is working on it. */
-export function Thinking() {
-  return (
-    <Group gap="xs">
-      <Loader size={12} />
-      <Text size="xs" c="dimmed">
-        thinking
-      </Text>
-    </Group>
-  );
-}
 
 interface AskConversationProps {
   sessionId: string;
@@ -68,7 +67,9 @@ export function AskConversation({
     body: { timeZone: TIME_ZONE },
     // The conversation is kept by the object; a turn carries only what was just asked,
     // so an attachment crosses the wire once.
-    prepareSendMessagesRequest: ({ messages: all }) => ({ body: { messages: all.slice(-1) } }),
+    prepareSendMessagesRequest: ({ messages: all }) => ({
+      body: { messages: all.slice(-1) },
+    }),
   });
   const viewport = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -79,6 +80,7 @@ export function AskConversation({
     if (isStreaming || error || (last && last.role === "assistant")) setAwaiting(false);
   }, [isStreaming, error, messages]);
   const thinking = awaiting || isStreaming;
+  const activity = thinking ? currentActivity(messages, ASSISTANT_ACTIVITY) : undefined;
   const ask = (text: string, files: AskInput["files"]) => {
     clearError();
     setAwaiting(true);
@@ -88,7 +90,9 @@ export function AskConversation({
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const lastQuestion: AskInput | null = lastUser
     ? {
-        text: lastUser.parts.map((part) => (part.type === "text" ? part.text : "")).join(""),
+        text: lastUser.parts
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join(""),
         files: lastUser.parts.filter((part) => part.type === "file"),
       }
     : null;
@@ -154,7 +158,7 @@ export function AskConversation({
             {messages.map((message) => (
               <AskMessage key={message.id} message={message} />
             ))}
-            {failure ?? (thinking && <Thinking />)}
+            {failure ?? (thinking && <Thinking status={activity} />)}
           </Stack>
         )}
       </ScrollArea>

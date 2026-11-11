@@ -41,7 +41,7 @@ export async function squarePicture(
   size: number,
 ): Promise<Uint8Array> {
   const images = (env as unknown as PicturesEnv).IMAGES;
-  if (!images) throw new DomainError("UNAVAILABLE", "Images are not bound");
+  if (!images) throw new DomainError("SERVICE_UNAVAILABLE", "Images are not bound");
   try {
     const output = await images
       .input(new Blob([bytes]).stream())

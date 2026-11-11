@@ -3,8 +3,14 @@ import { logger } from "./logger";
 
 const log = logger("commons/errors");
 
+/** oRPC's own names for these answers, so a code passes to an ORPCError as it is. */
 export type DomainErrorCode =
-  "NOT_FOUND" | "FORBIDDEN" | "UNAUTHORIZED" | "CONFLICT" | "BAD_REQUEST" | "UNAVAILABLE";
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "UNAUTHORIZED"
+  | "CONFLICT"
+  | "BAD_REQUEST"
+  | "SERVICE_UNAVAILABLE";
 
 /**
  * An answer a service meant to give. An oRPC procedure maps it to the matching
@@ -36,7 +42,7 @@ const DOMAIN_ERROR_STATUS: Record<DomainErrorCode, number> = {
   UNAUTHORIZED: 401,
   CONFLICT: 409,
   BAD_REQUEST: 400,
-  UNAVAILABLE: 503,
+  SERVICE_UNAVAILABLE: 503,
 };
 
 /**
