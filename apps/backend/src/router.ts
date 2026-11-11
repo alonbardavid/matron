@@ -5,12 +5,14 @@ import { resolvePrincipal } from "@backend/arch-auth/session";
 import { resolveBranch } from "@backend/arch-branches/service";
 import { readBranchParam } from "@backend/arch-routing/branch-param";
 import { handoff } from "@backend/arch-routing/handoff";
+import { answerError } from "@backend/commons/errors";
 import { missingBranchResponse } from "@backend/arch-routing/missing-branch";
 import { openSessionSocket } from "@backend/arch-sessions/service";
 import type { ApiContext } from "@backend/commons/api";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH } from "@backend/commons/principal";
+import { PUBLIC_APP_PATH } from "@shared/contract/app/public/path";
 import { application } from "./application";
 
 const log = logger("backend/router");
@@ -22,10 +24,7 @@ const log = logger("backend/router");
  */
 export const router = new Hono<{ Bindings: Cloudflare.Env; Variables: ApiContext }>();
 
-router.onError((err, c) => {
-  log.error("unhandled error", { err });
-  return c.json({ message: err.message }, 500);
-});
+router.onError(answerError);
 
 router.on(["GET", "POST"], `${AUTH_BASE_PATH}/*`, (c) => getAuth().handler(c.req.raw));
 
@@ -55,8 +54,10 @@ router.all("*", async (c) => {
   const request = c.req.raw;
   if (!principal) {
     // A signed-out visitor still gets the SPA, which shows the sign-in screen,
-    // and only from main: a branch is never served to someone not signed in.
-    if (new URL(request.url).pathname.startsWith("/api/")) {
+    // and the application's public procedures, and only from main: a branch
+    // is never served to someone not signed in.
+    const { pathname } = new URL(request.url);
+    if (pathname.startsWith("/api/") && !pathname.startsWith(`${PUBLIC_APP_PATH}/`)) {
       return c.json({ message: "Not signed in" }, 401);
     }
     return handoff(application, request, null, MAIN_BRANCH, null, c.executionCtx);

@@ -27,14 +27,14 @@ const SKIPPED_DIRECTORIES = new Set([
 async function openRepository(): Promise<ArtifactsRepo> {
   const { ARTIFACTS, WORKER_NAME } = repositoryEnv();
   if (!ARTIFACTS) {
-    throw new DomainError("UNAVAILABLE", "The code repository is not available");
+    throw new DomainError("SERVICE_UNAVAILABLE", "The code repository is not available");
   }
   const { repository } = deploymentNames(WORKER_NAME);
   try {
     return await ARTIFACTS.get(repository);
   } catch (err) {
     log.error("repository lookup failed", { err, repository });
-    throw new DomainError("UNAVAILABLE", "The code repository is not available");
+    throw new DomainError("SERVICE_UNAVAILABLE", "The code repository is not available");
   }
 }
 
@@ -63,7 +63,10 @@ export async function mainHead(): Promise<string> {
   return withRepository(async (repo) => {
     const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
     if (!head)
-      throw new DomainError("UNAVAILABLE", "The code repository has no main branch");
+      throw new DomainError(
+        "SERVICE_UNAVAILABLE",
+        "The code repository has no main branch",
+      );
     return head.hash;
   });
 }
@@ -82,7 +85,10 @@ export async function mainHistoryHas(
   return withRepository(async (repo) => {
     const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
     if (!head)
-      throw new DomainError("UNAVAILABLE", "The code repository has no main branch");
+      throw new DomainError(
+        "SERVICE_UNAVAILABLE",
+        "The code repository has no main branch",
+      );
     const wanted = new Set(commits);
     const has = new Set<string>();
     const meet = (hash: string) => {

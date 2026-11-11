@@ -22,6 +22,7 @@ import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { Card } from "@frontend/ds/Card";
 import { Page } from "@frontend/ds/Page";
+import { GoogleOAuthCard } from "../widgets/GoogleOAuthCard";
 
 const ANTHROPIC_OPTIONS = ANTHROPIC_MODELS.map((model) => ({
   value: model,
@@ -75,7 +76,7 @@ export function AppSettingsScreen() {
   return (
     <Page
       title="App settings"
-      description="How the household's assistant and builder work."
+      description="How the household's assistant, builder and integrations work."
     >
       <Stack gap="md">
         <Card>
@@ -138,6 +139,7 @@ export function AppSettingsScreen() {
             )}
           </Stack>
         </Card>
+        <GoogleOAuthCard />
       </Stack>
     </Page>
   );

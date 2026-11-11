@@ -166,7 +166,7 @@ export async function mergeOrigin(
   try {
     status = await originStatus();
   } catch (err) {
-    throw new DomainError("UNAVAILABLE", problemOf(err).message);
+    throw new DomainError("SERVICE_UNAVAILABLE", problemOf(err).message);
   }
   if (status.head.sha !== commit) {
     throw new DomainError("CONFLICT", "Upstream has moved since the check; check again");
@@ -334,7 +334,7 @@ export async function listContainers(
   }
 }
 
-/** Stops a running instance through its builder: the workspace is snapshotted, a running job parks. */
+/** Stops a running instance through its builder: the workspace is snapshotted, a run in progress parks. */
 export async function stopContainer(principal: Principal, name: string): Promise<void> {
   troubleshootingPermissions.require(principal, "manage");
   await troubleshootingEnv().BUILDERS.getByName(name).stopContainer();
@@ -448,7 +448,7 @@ async function mustCall<T>(call: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof CloudflareError) {
       throw new DomainError(
-        err.problem.kind === "error" ? "UNAVAILABLE" : "FORBIDDEN",
+        err.problem.kind === "error" ? "SERVICE_UNAVAILABLE" : "FORBIDDEN",
         err.message,
       );
     }

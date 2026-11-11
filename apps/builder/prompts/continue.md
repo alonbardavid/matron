@@ -2,6 +2,8 @@ The user replied in the build chat:
 
 {{message}}
 
+{{attachments}}
+
 Before this turn the runner fetched main, so the local `origin/main` ref is current: {{sync}}
 
 If main has commits the branch lacks, merge them before anything else: run

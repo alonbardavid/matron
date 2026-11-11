@@ -23,6 +23,7 @@
     "@backend/calendar": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
+    "@backend/files": "workspace:*",
     "@backend/household": "workspace:*",
     "@backend/tasks": "workspace:*",
     "@cloudflare/containers": "^0.3.7",
