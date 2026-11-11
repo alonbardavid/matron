@@ -8,6 +8,8 @@ export function deploymentNames(workerName) {
     bucket: workerName,
     namespace: workerName,
     repository: workerName,
-    image: `${workerName}-builder`,
+    image: workerName,
+    // Container application names are unique in an account.
+    container: workerName,
   };
 }

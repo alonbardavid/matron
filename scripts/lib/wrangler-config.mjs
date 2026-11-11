@@ -5,8 +5,6 @@
 /* global structuredClone */
 import { deploymentNames } from "./names.mjs";
 
-/** The container application's name; the `exports` entry of BuilderObject points at it. */
-export const BUILDER_CONTAINER = "builder";
 /** The image name under `containers[].images`; read as `ctx.container.images.builder`. */
 export const BUILDER_IMAGE_NAME = "builder";
 
@@ -120,7 +118,7 @@ export function generateWranglerConfig(emitted, options) {
       // `ctx.container.images.builder` and picks the instance size then.
       config.containers = [
         {
-          name: BUILDER_CONTAINER,
+          name: names.container,
           class_name: "BuilderObject",
           scheduling_policy: "durable_object",
           images: {
@@ -132,7 +130,7 @@ export function generateWranglerConfig(emitted, options) {
       ];
       config.exports = {
         ...config.exports,
-        BuilderObject: { ...config.exports?.BuilderObject, container: BUILDER_CONTAINER },
+        BuilderObject: { ...config.exports?.BuilderObject, container: names.container },
       };
     }
   } else {
