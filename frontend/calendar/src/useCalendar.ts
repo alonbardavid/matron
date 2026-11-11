@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
@@ -83,36 +82,4 @@ export function useCalendarActions() {
 
 export function useGoogleStatus() {
   return useQuery(orpc.calendar.google.status.queryOptions({ staleTime: 30_000 }));
-}
-
-/** How old an import may get before opening the calendar syncs it again. */
-const STALE_AFTER_MS = 15 * 60_000;
-
-/**
- * Syncs the caller's Google Calendar once when the calendar opens on stale
- * data, then reloads what is shown. Production also syncs on a schedule; a
- * branch only this way.
- */
-export function useGoogleAutoSync() {
-  const queryClient = useQueryClient();
-  const status = useGoogleStatus();
-  const sync = useMutation(
-    orpc.calendar.google.sync.mutationOptions({
-      onSuccess: (data) => {
-        queryClient.setQueryData(orpc.calendar.google.status.queryKey(), data);
-        void queryClient.invalidateQueries({ queryKey: orpc.calendar.occurrences.key() });
-      },
-    }),
-  );
-  const tried = useRef(false);
-  const connection = status.data?.connection;
-  useEffect(() => {
-    if (tried.current || !status.data?.configured || !connection) return;
-    if (connection.status !== "active") return;
-    if (connection.lastSyncedAt && Date.now() - connection.lastSyncedAt < STALE_AFTER_MS)
-      return;
-    tried.current = true;
-    sync.mutate({});
-  }, [status.data?.configured, connection, sync]);
-  return { syncing: sync.isPending };
 }

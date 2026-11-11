@@ -13,6 +13,9 @@ export const AUTH_BASE_PATH = "/api/arch/auth";
 interface AuthEnv {
   BETTER_AUTH_SECRET: string;
   APP_ORIGIN: string;
+  /** The household's Google app, set in App settings as secrets of the Worker. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 const AUTH_MODEL_ENTITIES: Record<string, Entity> = {
@@ -23,14 +26,40 @@ const AUTH_MODEL_ENTITIES: Record<string, Entity> = {
 };
 
 function createAuth() {
-  const { BETTER_AUTH_SECRET, APP_ORIGIN } = env as unknown as AuthEnv;
+  const { BETTER_AUTH_SECRET, APP_ORIGIN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } =
+    env as unknown as AuthEnv;
+  const google =
+    GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
+      ? { clientId: GOOGLE_CLIENT_ID, clientSecret: GOOGLE_CLIENT_SECRET }
+      : null;
   return betterAuth({
     secret: BETTER_AUTH_SECRET,
     baseURL: APP_ORIGIN,
     basePath: AUTH_BASE_PATH,
     database: drizzleAdapter(getDb(), { provider: "sqlite", schema: authSchema }),
     session: { modelName: "user_sessions" },
-    account: { modelName: "user_accounts" },
+    account: {
+      modelName: "user_accounts",
+      // What a provider grants a member is kept sealed with the auth secret.
+      encryptOAuthTokens: true,
+      // A member links the account they choose, whatever its address.
+      accountLinking: { enabled: true, allowDifferentEmails: true },
+    },
+    socialProviders: {
+      // Offered once the household has its Google app. A member links their
+      // account to grant access (the feature that asks names the scopes); the
+      // household stays closed, so Google never creates a user.
+      ...(google && {
+        google: {
+          clientId: google.clientId,
+          clientSecret: google.clientSecret,
+          disableSignUp: true,
+          // A refresh token on every grant, so access outlives the hour.
+          accessType: "offline" as const,
+          prompt: "consent" as const,
+        },
+      }),
+    },
     verification: { modelName: "user_verifications" },
     // Sign-up is closed: the deploy script creates the owner, the owner creates
     // the household through the admin plugin.
@@ -65,6 +94,7 @@ export type Auth = ReturnType<typeof createAuth>;
 
 let cached: Auth | null = null;
 
+/** This isolate's instance, built on first use from what the Worker started with. */
 export function getAuth(): Auth {
   cached ??= createAuth();
   return cached;

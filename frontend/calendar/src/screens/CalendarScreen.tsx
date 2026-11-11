@@ -17,19 +17,14 @@ import dayjs from "dayjs";
 import type { Occurrence } from "@shared/contract/app/calendar";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
 import {
+  allDayBlock,
   allDaySpan,
   fromDateTimeString,
   loadWindow,
   localTimeZone,
   toDayString,
 } from "../times";
-import {
-  useCalendars,
-  useEvent,
-  useEventActions,
-  useGoogleAutoSync,
-  useOccurrences,
-} from "../useCalendar";
+import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
 import {
   EventModal,
   type EventSubmit,
@@ -46,6 +41,17 @@ const VIEW_OPTIONS = [
 ];
 /** The day view's hour, in the week view's proportion; a shorter one shows more of the day. */
 const HOUR_MINUTES = 60;
+
+const QUARTER_MS = 15 * 60_000;
+
+/** The whole quarters of an hour a span touches, and at least one: 7:00 to 7:12 is 7:00 to 7:15. */
+function quarterSpan(startAt: number, endAt: number): { start: Date; end: Date } {
+  // Quarters are counted from local midnight, whatever the zone's offset.
+  const offset = new Date(startAt).getTimezoneOffset() * 60_000;
+  const start = Math.floor((startAt - offset) / QUARTER_MS) * QUARTER_MS + offset;
+  const end = Math.ceil((endAt - offset) / QUARTER_MS) * QUARTER_MS + offset;
+  return { start: new Date(start), end: new Date(Math.max(end, start + QUARTER_MS)) };
+}
 
 /** What the phone's toolbar calls the shown date: the day, the week's span or the month. */
 function dateLabel(date: string, view: View): string {
@@ -80,16 +86,22 @@ export function CalendarScreen() {
   const { create, update, stop, remove, place, editOccurrence, cancelOccurrence } =
     useEventActions();
   const calendars = useCalendars();
-  useGoogleAutoSync();
 
+  // The day and the week draw a block over whole quarters of an hour.
+  const timeGrid = shownView === "day" || shownView === "week";
   const events: ScheduleEventData[] = (occurrences.data ?? []).map(
     (item: Occurrence) => ({
       id: item.id,
       title: item.title,
-      start: new Date(item.startAt),
-      end: new Date(item.endAt),
+      ...(item.allDay
+        ? allDayBlock(item.startAt, item.endAt, item.timeZone)
+        : timeGrid
+          ? quarterSpan(item.startAt, item.endAt)
+          : { start: new Date(item.startAt), end: new Date(item.endAt) }),
       // The colour of the calendar it shows in for you, as you set it.
       color: item.color,
+      // Solid, so an event reads the same over the grid and over another event.
+      variant: "filled",
       payload: {
         eventId: item.eventId,
         occurrence:
@@ -237,6 +249,9 @@ export function CalendarScreen() {
               openNew({ allDay: true, ...allDaySpan(day, day) });
           }}
           onEventClick={openEvent}
+          renderEventBody={(item) => (
+            <span className={classes.eventText}>{item.title}</span>
+          )}
           // A phone's narrow label column has room for one word.
           labels={narrow ? { allDay: "All" } : undefined}
           // Each view takes its own class names; the Schedule passes none down.

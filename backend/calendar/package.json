@@ -7,7 +7,6 @@
     "clean": "rm -rf *.tsbuildinfo"
   },
   "dependencies": {
-    "@backend/arch-settings": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
     "@shared/contract": "workspace:*",

@@ -1,9 +1,8 @@
 import { listModelCatalog } from "@backend/arch-settings/catalog";
 import {
-  getGoogleOAuthSettings,
+  getHouseholdSecrets,
   getSettings,
-  removeGoogleOAuthSettings,
-  updateGoogleOAuthSettings,
+  updateHouseholdSecrets,
   updateSettings,
 } from "@backend/arch-settings/service";
 import { arch } from "../implementer";
@@ -14,13 +13,10 @@ export const settings = arch.settings.router({
     updateSettings(context.principal, input),
   ),
   models: arch.settings.models.handler(() => listModelCatalog()),
-  google: arch.settings.google.handler(({ context }) =>
-    getGoogleOAuthSettings(context.principal),
+  secrets: arch.settings.secrets.handler(({ context }) =>
+    getHouseholdSecrets(context.principal),
   ),
-  updateGoogle: arch.settings.updateGoogle.handler(({ context, input }) =>
-    updateGoogleOAuthSettings(context.principal, input),
-  ),
-  removeGoogle: arch.settings.removeGoogle.handler(({ context }) =>
-    removeGoogleOAuthSettings(context.principal),
+  updateSecrets: arch.settings.updateSecrets.handler(({ context, input }) =>
+    updateHouseholdSecrets(context.principal, input),
   ),
 });

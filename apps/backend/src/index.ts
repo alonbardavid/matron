@@ -21,8 +21,9 @@ export default {
       ? application.fetch(request, env, ctx)
       : router.fetch(request, env, ctx);
   },
-  // Production's cron: keeps every member's imported Google calendars fresh.
-  // Previews have no cron; their copies sync when a member opens the calendar.
+  // Production's daily cron: syncs every member's imported Google calendars
+  // and renews Google's notices, which bring each change in between. Previews
+  // have neither; a member syncs a branch's copy from their settings.
   scheduled(
     _controller: ScheduledController,
     env: Cloudflare.Env,

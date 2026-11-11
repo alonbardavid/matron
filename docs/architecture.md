@@ -14,7 +14,12 @@ how a request moves through it.
    `/api/arch/*` itself through `backend/arch-api` (routes and handler for the
    `shared/contract/src/arch` contract); a path there that no procedure claims is a 404. A
    request naming a branch that does not exist gets `apps/backend/static/branch-not-found.html`
-   from the Worker's assets.
+   from the Worker's assets. better-auth also offers the providers the household has set up in
+   App settings (Google): a member links their account there, and the application asks for a
+   valid access token through `backend/arch-auth/src/app-interface.ts`, the one file of the auth
+   that application code imports.
+   The household's Google app is two secrets of the Worker, set from App settings through
+   Cloudflare's API (`backend/arch-settings/src/worker-secrets.ts`).
 2. Every other path is handed to the **application** (`apps/backend/src/application.ts`) by
    `backend/arch-routing/src/handoff.ts`: the session cookie stripped, the principal (or none,
    when signed out) and the branch signed into the handoff header (`signed-handoff.ts`). On main that is an in-process `application.fetch`; on a branch it is the

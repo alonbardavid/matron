@@ -31,7 +31,8 @@ export function isOwnKey(branch: string, key: string): boolean {
 
 export function filesBucket(): R2Bucket {
   const bucket = (env as unknown as FilesEnv).FILES;
-  if (!bucket) throw new DomainError("UNAVAILABLE", "The files bucket is not bound");
+  if (!bucket)
+    throw new DomainError("SERVICE_UNAVAILABLE", "The files bucket is not bound");
   return bucket;
 }
 

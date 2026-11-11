@@ -3,43 +3,44 @@ import { Badge, Button, Checkbox, Group, Loader, Stack, Text } from "@mantine/co
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
-import type { GoogleStatus } from "@shared/contract/app/calendar";
+import { GOOGLE_CALENDAR_SCOPE, type GoogleStatus } from "@shared/contract/app/calendar";
+import { authClient, unwrapAuth } from "@frontend/api/auth-client";
 import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { Card } from "@frontend/ds/Card";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { useGoogleStatus } from "../useCalendar";
 
-/** What the callback's `?google=` means, shown once when Google sends the member back. */
-const RESULTS: Record<string, { message: string; color?: string }> = {
-  connected: { message: "Google Calendar connected" },
-  denied: { message: "Google Calendar was not connected", color: "yellow" },
-  "no-calendar-access": {
-    message: "Allow access to your calendars on Google's page to import them",
-    color: "yellow",
-  },
-  invalid: { message: "That connection attempt expired; try again", color: "red" },
-  failed: { message: "Google did not complete the connection; try again", color: "red" },
-};
+/** Where Google's page sends the member back to, and what `?google=` says happened there. */
+const RETURN_PATH = "/settings";
+const LINKED = "linked";
+const NOT_LINKED = "failed";
 
 /** Google returns the browser to production, so a branch, whose data is a copy, never connects. */
 const MAIN_ONLY = "Connecting Google Calendar is only available on main.";
 
-function useCallbackResult() {
+/** Reads `?google=` once when Google sends the member back, and takes it off the address. */
+function useReturnFromGoogle(onLinked: () => void) {
   useEffect(() => {
     const url = new URL(window.location.href);
     const result = url.searchParams.get("google");
     if (!result) return;
-    const shown = RESULTS[result];
-    if (shown) notifications.show(shown);
+    if (result === LINKED) onLinked();
+    else {
+      notifications.show({
+        message: "Google Calendar was not connected; try again",
+        color: "yellow",
+      });
+    }
     url.searchParams.delete("google");
+    url.searchParams.delete("error");
     window.history.replaceState(window.history.state, "", url);
+    // Once, on arrival: what the callback is then is what runs.
   }, []);
 }
 
 /** The member's own Google Calendar link: connect, choose calendars, sync, disconnect. */
 export function GoogleCalendarCard() {
-  useCallbackResult();
   const queryClient = useQueryClient();
   const status = useGoogleStatus();
   const connection = status.data?.connection ?? null;
@@ -60,12 +61,20 @@ export function GoogleCalendarCard() {
     queryClient.setQueryData(orpc.calendar.google.status.queryKey(), data);
     void queryClient.invalidateQueries({ queryKey: orpc.calendar.key() });
   };
-  const connect = useMutation(
-    orpc.calendar.google.connect.mutationOptions({
-      onSuccess: ({ url }) => window.location.assign(url),
-      onError: (err) => notifyError(err, "Could not start connecting"),
-    }),
-  );
+  // The member links their Google account through the auth, allowing it to
+  // read their calendars; the browser goes to Google and comes back here.
+  const connect = useMutation({
+    mutationFn: async () =>
+      unwrapAuth(
+        await authClient.linkSocial({
+          provider: "google",
+          scopes: [GOOGLE_CALENDAR_SCOPE],
+          callbackURL: `${RETURN_PATH}?google=${LINKED}`,
+          errorCallbackURL: `${RETURN_PATH}?google=${NOT_LINKED}`,
+        }),
+      ),
+    onError: (err) => notifyError(err, "Could not start connecting"),
+  });
   const select = useMutation(
     orpc.calendar.google.select.mutationOptions({
       onSuccess: (data) => {
@@ -91,7 +100,19 @@ export function GoogleCalendarCard() {
     }),
   );
 
-  const startConnect = () => connect.mutate({ returnTo: "/settings" });
+  // Back from Google with the account linked: the first sync takes it up.
+  const takeUp = useMutation(
+    orpc.calendar.google.sync.mutationOptions({
+      onSuccess: (data) => {
+        saved(data);
+        notifications.show({ message: "Google Calendar connected" });
+      },
+      onError: (err) => notifyError(err, "Could not connect Google Calendar"),
+    }),
+  );
+  useReturnFromGoogle(() => takeUp.mutate({}));
+
+  const startConnect = () => connect.mutate();
   const current = (calendars.data ?? []).filter((c) => c.selected).map((c) => c.id);
   const dirty =
     selected.length !== current.length || selected.some((id) => !current.includes(id));

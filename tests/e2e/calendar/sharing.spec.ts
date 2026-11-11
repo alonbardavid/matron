@@ -121,6 +121,89 @@ test.describe("calendar sharing", () => {
     await context.close();
   });
 
+  test("an event of a shared calendar opens as a read-only view", async ({
+    page,
+    browser,
+  }) => {
+    await signIn(page, OWNER);
+    const owner = page.request;
+    const school = (await (
+      await owner.post("/api/app/calendar/calendars", {
+        data: { name: "School", color: "#2980b9" },
+      })
+    ).json()) as CalendarRow;
+    // Today at noon, so it is on the page the calendar opens on.
+    const start = new Date();
+    start.setHours(12, 0, 0, 0);
+    await owner.post("/api/app/calendar/events", {
+      data: {
+        title: "Parents evening",
+        description: "Room 4, bring the forms",
+        calendarId: school.id,
+        allDay: false,
+        startAt: start.getTime(),
+        endAt: start.getTime() + 3_600_000,
+        timeZone: "UTC",
+      },
+    });
+    await owner.put(`/api/app/calendar/calendars/${school.id}`, {
+      data: { sharedWith: [await memberId(owner)] },
+    });
+
+    const context = await browser.newContext();
+    const memberPage = await context.newPage();
+    await signIn(memberPage, MEMBER);
+    await memberPage.goto("/calendar");
+    await memberPage.getByText("Parents evening", { exact: true }).first().click();
+    const dialog = memberPage.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: "Parents evening" })).toBeVisible();
+    await expect(dialog.getByText("Room 4, bring the forms")).toBeVisible();
+    await expect(dialog.getByText("School", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Shared with you, read-only")).toBeVisible();
+    // Nothing of it is theirs to change: no pencil, no form.
+    await expect(dialog.getByRole("button", { name: "Edit event" })).toHaveCount(0);
+    await expect(dialog.getByLabel("Title")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+    await context.close();
+  });
+
+  test("someone an event is shared with changes it, but not who it is shared with", async ({
+    page,
+    browser,
+  }) => {
+    await signIn(page, OWNER);
+    const start = new Date();
+    start.setHours(14, 0, 0, 0);
+    await page.request.post("/api/app/calendar/events", {
+      data: {
+        title: "Swimming",
+        allDay: false,
+        startAt: start.getTime(),
+        endAt: start.getTime() + 3_600_000,
+        timeZone: "UTC",
+        sharedWith: [await memberId(page.request)],
+      },
+    });
+
+    const context = await browser.newContext();
+    const memberPage = await context.newPage();
+    await signIn(memberPage, MEMBER);
+    await memberPage.goto("/calendar");
+    await memberPage.getByText("Swimming", { exact: true }).first().click();
+    const dialog = memberPage.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Edit event" }).click();
+    // Who it is shared with is its creator's to say.
+    await expect(dialog.getByLabel("Shared with")).toHaveCount(0);
+    await dialog.getByLabel("Title").fill("Swimming gala");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(
+      memberPage.getByText("Swimming gala", { exact: true }).first(),
+    ).toBeVisible();
+    await context.close();
+  });
+
   test("an event shared with you shows in the calendar you choose", async ({
     page,
     browser,

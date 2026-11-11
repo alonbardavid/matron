@@ -21,8 +21,9 @@ declare namespace Cloudflare {
     APP_ORIGIN: string;
     BETTER_AUTH_SECRET: string;
     SIGNING_KEY: string;
-    /** Encrypts secrets kept in the database; `v<version>-<key>`. */
-    SECRETS_KEY: string;
+    /** The household's Google OAuth app, set in App settings as secrets of the Worker. */
+    GOOGLE_CLIENT_ID?: string;
+    GOOGLE_CLIENT_SECRET?: string;
     /** The account token: the router's API calls, and every model call through the gateway. */
     CLOUDFLARE_API_TOKEN?: string;
     CLOUDFLARE_ACCOUNT_ID?: string;

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
+  Alert,
   Anchor,
   Badge,
   Code,
@@ -15,7 +16,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { googleOAuthUpdateSchema } from "@shared/contract/arch/settings";
+import { GOOGLE_REDIRECT_PATH } from "@shared/contract/arch/settings";
 import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { Card } from "@frontend/ds/Card";
@@ -26,67 +27,87 @@ import { FormPasswordInput, FormTextInput } from "@frontend/ds/forms/FormInputs"
 import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
 import { StandardForm } from "@frontend/ds/forms/StandardForm";
 
-// The secret may be left blank to keep the stored one.
-const formSchema = googleOAuthUpdateSchema.extend({
+// Either may be left blank to keep the one that is set.
+const formSchema = z.object({
+  clientId: z
+    .string()
+    .trim()
+    .max(300)
+    .regex(
+      /^$|\.apps\.googleusercontent\.com$/,
+      "A Google client ID ends in .apps.googleusercontent.com",
+    ),
   clientSecret: z.string().trim().max(300),
 });
 type GoogleValues = z.infer<typeof formSchema>;
 
-/** The household's own Google OAuth app, which members connect their Google Calendar through. */
+/**
+ * The household's own Google OAuth app, which members connect their Google
+ * Calendar through: two of the household's secrets.
+ */
 export function GoogleOAuthCard() {
   const queryClient = useQueryClient();
-  const google = useQuery(orpc.settings.google.queryOptions());
+  const stored = useQuery(orpc.settings.secrets.queryOptions());
   const form = useForm<GoogleValues>({
     initialValues: { clientId: "", clientSecret: "" },
     schema: formSchema,
   });
-  const { setValues } = form;
-  // A stored secret shows only as its hint; Replace opens an empty field for a new one.
-  const [replacing, setReplacing] = useState(false);
-  useEffect(() => {
-    if (google.data)
-      setValues({ clientId: google.data.clientId ?? "", clientSecret: "" });
-  }, [google.data, setValues]);
+  // A secret that is set shows only as its hint; Replace opens an empty field for a new one.
+  const [replacing, setReplacing] = useState({ clientId: false, clientSecret: false });
 
-  const saved = (data: NonNullable<typeof google.data>) => {
-    queryClient.setQueryData(orpc.settings.google.queryKey(), data);
-    void queryClient.invalidateQueries({ queryKey: orpc.calendar.google.key() });
-  };
   const update = useMutation(
-    orpc.settings.updateGoogle.mutationOptions({ onSuccess: saved }),
-  );
-  const remove = useMutation(
-    orpc.settings.removeGoogle.mutationOptions({
+    orpc.settings.updateSecrets.mutationOptions({
       onSuccess: (data) => {
-        saved(data);
-        notifications.show({ message: "Google Calendar app removed" });
+        queryClient.setQueryData(orpc.settings.secrets.queryKey(), data);
+        void queryClient.invalidateQueries({ queryKey: orpc.calendar.google.key() });
       },
-      onError: (err) => notifyError(err, "Could not remove the Google app"),
     }),
   );
 
+  const data = stored.data;
+  const clientIdHint = data?.secrets.GOOGLE_CLIENT_ID ?? null;
+  const clientSecretHint = data?.secrets.GOOGLE_CLIENT_SECRET ?? null;
+  const setUp = Boolean(clientIdHint && clientSecretHint);
+  const redirectUri = `${window.location.origin}${GOOGLE_REDIRECT_PATH}`;
+
   const submit = async (values: GoogleValues) => {
+    if (!values.clientId && !clientIdHint) {
+      form.setFieldError("clientId", "Enter the client ID");
+      return;
+    }
+    if (!values.clientSecret && !clientSecretHint) {
+      form.setFieldError("clientSecret", "Enter the client secret");
+      return;
+    }
     await update.mutateAsync({
-      clientId: values.clientId,
-      clientSecret: values.clientSecret || undefined,
+      GOOGLE_CLIENT_ID: values.clientId || undefined,
+      GOOGLE_CLIENT_SECRET: values.clientSecret || undefined,
     });
-    form.setFieldValue("clientSecret", "");
-    setReplacing(false);
-    notifications.show({ message: "Google Calendar app saved" });
+    form.setValues({ clientId: "", clientSecret: "" });
+    setReplacing({ clientId: false, clientSecret: false });
+    notifications.show({
+      message: "Google Calendar app saved. Matron is restarting with it.",
+    });
+  };
+  const remove = async () => {
+    try {
+      await update.mutateAsync({ GOOGLE_CLIENT_ID: null, GOOGLE_CLIENT_SECRET: null });
+      notifications.show({
+        message: "Google Calendar app removed. Matron is restarting without it.",
+      });
+    } catch (err) {
+      notifyError(err, "Could not remove the Google app");
+    }
   };
 
-  const data = google.data;
   return (
     <Card>
       <Stack gap="sm">
         <Group justify="space-between">
           <Text fw={600}>Google Calendar</Text>
           {data && (
-            <Badge
-              color={data.clientId && data.clientSecretHint ? "sage" : "gray"}
-              variant="light"
-            >
-              {data.clientId && data.clientSecretHint ? "Set up" : "Not set up"}
+            <Badge color={setUp ? "sage" : "gray"} variant="light">
+              {setUp ? "Set up" : "Not set up"}
             </Badge>
           )}
         </Group>
@@ -95,7 +116,7 @@ export function GoogleOAuthCard() {
           connects their Google Calendar from their settings, and its events show on the
           Matron calendar. Events only come from Google; nothing is written back.
         </Text>
-        {google.isLoading || !data ? (
+        {stored.isLoading || !data ? (
           <Loader size="sm" />
         ) : (
           <>
@@ -119,8 +140,8 @@ export function GoogleOAuthCard() {
                 Create an OAuth client ID of type Web application with this authorized
                 redirect URI:
                 <Group gap="xs" mt={4} wrap="nowrap">
-                  <Code style={{ wordBreak: "break-all" }}>{data.redirectUri}</Code>
-                  <CopyButton value={data.redirectUri}>
+                  <Code style={{ wordBreak: "break-all" }}>{redirectUri}</Code>
+                  <CopyButton value={redirectUri}>
                     {({ copied, copy }) => (
                       <Button size="compact-xs" variant="light" onClick={copy}>
                         {copied ? "Copied" : "Copy"}
@@ -131,35 +152,74 @@ export function GoogleOAuthCard() {
               </List.Item>
               <List.Item>Paste its client ID and client secret here.</List.Item>
             </List>
+            {data.changeable ? (
+              <Alert color="yellow" variant="light">
+                Saving or removing the app deploys Matron again, which takes a moment and
+                can interrupt a build that is running. A branch takes the change the next
+                time it is built.
+              </Alert>
+            ) : (
+              <Alert color="gray" variant="light">
+                This deployment holds no Cloudflare API token, so the app cannot be
+                changed from here.
+              </Alert>
+            )}
             <StandardForm form={form} onSubmit={submit}>
-              <FormTextInput
-                name="clientId"
-                label="Client ID"
-                placeholder="1234-abc.apps.googleusercontent.com"
-                autoComplete="off"
-                maw={480}
-              />
-              {data.clientSecretHint && !replacing ? (
+              {clientIdHint && !replacing.clientId ? (
                 <Group gap="xs" align="flex-end" wrap="nowrap">
                   <TextInput
-                    label="Client secret"
-                    value={data.clientSecretHint}
+                    label="Client ID"
+                    value={clientIdHint}
                     readOnly
                     disabled
                     maw={360}
                     style={{ flex: 1 }}
                   />
-                  <Button variant="light" onClick={() => setReplacing(true)}>
+                  <Button
+                    variant="light"
+                    onClick={() => setReplacing((r) => ({ ...r, clientId: true }))}
+                  >
+                    Replace
+                  </Button>
+                </Group>
+              ) : (
+                <FormTextInput
+                  name="clientId"
+                  label={clientIdHint ? "New client ID" : "Client ID"}
+                  description={
+                    clientIdHint
+                      ? `Replaces ${clientIdHint}; leave it empty to keep that one.`
+                      : undefined
+                  }
+                  placeholder="1234-abc.apps.googleusercontent.com"
+                  autoComplete="off"
+                  maw={480}
+                />
+              )}
+              {clientSecretHint && !replacing.clientSecret ? (
+                <Group gap="xs" align="flex-end" wrap="nowrap">
+                  <TextInput
+                    label="Client secret"
+                    value={clientSecretHint}
+                    readOnly
+                    disabled
+                    maw={360}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    variant="light"
+                    onClick={() => setReplacing((r) => ({ ...r, clientSecret: true }))}
+                  >
                     Replace
                   </Button>
                 </Group>
               ) : (
                 <FormPasswordInput
                   name="clientSecret"
-                  label={data.clientSecretHint ? "New client secret" : "Client secret"}
+                  label={clientSecretHint ? "New client secret" : "Client secret"}
                   description={
-                    data.clientSecretHint
-                      ? `Replaces ${data.clientSecretHint}; leave it empty to keep that one.`
+                    clientSecretHint
+                      ? `Replaces ${clientSecretHint}; leave it empty to keep that one.`
                       : undefined
                   }
                   autoComplete="new-password"
@@ -168,14 +228,16 @@ export function GoogleOAuthCard() {
               )}
               <FormGeneralErrors />
               <Group>
-                <FormSubmitButton w="fit-content">Save Google app</FormSubmitButton>
-                {data.clientId && (
+                <FormSubmitButton w="fit-content" disabled={!data.changeable}>
+                  Save Google app
+                </FormSubmitButton>
+                {(clientIdHint || clientSecretHint) && data.changeable && (
                   <ConfirmButton
                     variant="subtle"
                     color="red"
-                    message="Remove the Google app? Members' calendars stop syncing until it is set up again."
+                    message="Remove the Google app? Members' calendars stop syncing until it is set up again, and Matron deploys again."
                     confirmLabel="Remove"
-                    onConfirm={() => remove.mutateAsync({})}
+                    onConfirm={remove}
                   >
                     Remove
                   </ConfirmButton>

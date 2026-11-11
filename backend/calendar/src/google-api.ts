@@ -1,36 +1,16 @@
 import { logger } from "@backend/commons/logger";
 
 /**
- * The few Google endpoints the calendar import uses, over plain fetch: the
- * OAuth consent URL and token exchange, the account's email, its calendar
- * list and the events in a window. Nothing here touches the database.
+ * The few Google endpoints the calendar import reads with a member's access
+ * token, over plain fetch: the account's email, its calendar list, the events
+ * in a window, and the notice of a calendar's changes. Nothing here touches
+ * the database or asks for access.
  */
 
 const log = logger("calendar/google-api");
 
-const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
-
-export const CALENDAR_READ_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
-
-/** Read-only calendar access, and the email to show which account is connected. */
-export const GOOGLE_SCOPES = ["openid", "email", CALENDAR_READ_SCOPE];
-
-export interface GoogleOAuthApp {
-  clientId: string;
-  clientSecret: string;
-  redirectUri: string;
-}
-
-export interface GoogleTokens {
-  accessToken: string;
-  /** Milliseconds since the epoch. */
-  expiresAt: number;
-  /** Only on the first grant, or when consent is asked again. */
-  refreshToken: string | null;
-}
 
 /** Google refused the grant itself (revoked, expired, wrong client): the member connects again. */
 export class GoogleGrantError extends Error {
@@ -38,50 +18,6 @@ export class GoogleGrantError extends Error {
     super(message);
     this.name = "GoogleGrantError";
   }
-}
-
-/** Where to send the browser to ask for access. `prompt=consent` makes Google return a refresh token every time. */
-export function authorizationUrl(app: GoogleOAuthApp, state: string): string {
-  const url = new URL(AUTH_URL);
-  url.searchParams.set("client_id", app.clientId);
-  url.searchParams.set("redirect_uri", app.redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", GOOGLE_SCOPES.join(" "));
-  url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
-  url.searchParams.set("include_granted_scopes", "true");
-  url.searchParams.set("state", state);
-  return url.toString();
-}
-
-export async function exchangeCode(
-  app: GoogleOAuthApp,
-  code: string,
-): Promise<GoogleTokens & { grantedScopes: string[] }> {
-  const body = await tokenRequest({
-    client_id: app.clientId,
-    client_secret: app.clientSecret,
-    redirect_uri: app.redirectUri,
-    grant_type: "authorization_code",
-    code,
-  });
-  return {
-    ...tokensOf(body),
-    grantedScopes: typeof body.scope === "string" ? body.scope.split(" ") : [],
-  };
-}
-
-export async function refreshAccessToken(
-  app: GoogleOAuthApp,
-  refreshToken: string,
-): Promise<GoogleTokens> {
-  const body = await tokenRequest({
-    client_id: app.clientId,
-    client_secret: app.clientSecret,
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  });
-  return tokensOf(body);
 }
 
 export async function fetchAccountEmail(accessToken: string): Promise<string> {
@@ -224,31 +160,7 @@ async function listPaged(
   return { timeZone, events };
 }
 
-async function tokenRequest(
-  form: Record<string, string>,
-): Promise<Record<string, unknown>> {
-  const response = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(form).toString(),
-  });
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const error = typeof body.error === "string" ? body.error : `HTTP ${response.status}`;
-    log.warn("google token request failed", { status: response.status, error });
-    if (
-      error === "invalid_grant" ||
-      error === "invalid_client" ||
-      error === "unauthorized_client"
-    ) {
-      throw new GoogleGrantError(describeTokenError(error));
-    }
-    throw new Error(`Google refused the token request (${error})`);
-  }
-  return body;
-}
-
-/** Google refused an access token; refreshing it once may be enough. */
+/** Google refused an access token; a renewed one may be enough. */
 export class GoogleUnauthorizedError extends GoogleGrantError {
   constructor() {
     super("Google no longer accepts this connection; connect again");
@@ -256,27 +168,53 @@ export class GoogleUnauthorizedError extends GoogleGrantError {
   }
 }
 
-function describeTokenError(error: string): string {
-  if (error === "invalid_grant")
-    return "Google no longer accepts this connection; connect again";
-  return "Google rejected the household's OAuth client; check it in App settings";
-}
-
-function tokensOf(body: Record<string, unknown>): GoogleTokens {
-  if (typeof body.access_token !== "string")
-    throw new Error("Google sent no access token");
-  const expiresIn = typeof body.expires_in === "number" ? body.expires_in : 3600;
+/**
+ * Asks Google to post to `address` whenever the calendar's events change,
+ * until the notice expires. Google names `channelId` in every post.
+ */
+export async function watchEvents(
+  accessToken: string,
+  calendarId: string,
+  channelId: string,
+  address: string,
+): Promise<{ resourceId: string; expiresAt: number | null }> {
+  const body = await request<{ resourceId: string; expiration?: string }>(
+    `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/watch`,
+    accessToken,
+    { id: channelId, type: "web_hook", address },
+  );
+  const expiresAt = Number(body.expiration);
   return {
-    accessToken: body.access_token,
-    // A minute early, so a token never expires mid-sync.
-    expiresAt: Date.now() + (expiresIn - 60) * 1000,
-    refreshToken: typeof body.refresh_token === "string" ? body.refresh_token : null,
+    resourceId: body.resourceId,
+    expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : null,
   };
 }
 
-async function getJson<T>(url: string, accessToken: string): Promise<T> {
+/** Ends a notice `watchEvents` started. */
+export async function stopChannel(
+  accessToken: string,
+  channelId: string,
+  resourceId: string,
+): Promise<void> {
+  await request(`${CALENDAR_API}/channels/stop`, accessToken, {
+    id: channelId,
+    resourceId,
+  });
+}
+
+function getJson<T>(url: string, accessToken: string): Promise<T> {
+  return request<T>(url, accessToken);
+}
+
+/** A GET, or a POST of `body` as JSON; an answer without a body comes back as undefined. */
+async function request<T>(url: string, accessToken: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
-    headers: { authorization: `Bearer ${accessToken}` },
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
   if (response.status === 401) throw new GoogleUnauthorizedError();
   if (!response.ok) {
@@ -289,7 +227,8 @@ async function getJson<T>(url: string, accessToken: string): Promise<T> {
       `Google answered ${response.status}${text ? `: ${text.slice(0, 200)}` : ""}`,
     );
   }
-  return (await response.json()) as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /** Asks Google to forget a grant; best effort, as the member may have revoked it already. */

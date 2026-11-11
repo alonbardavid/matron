@@ -106,10 +106,6 @@ interface RunBase {
   branch: BuilderBranch;
   repository: BuilderRepository;
   cloudflare: BuilderCloudflare;
-  /** The production SIGNING_KEY; set as a secret on every Preview. */
-  signingKey: string;
-  /** The production SECRETS_KEY; set on every Preview, whose database copy holds values it sealed. */
-  secretsKey: string;
   /** The user's original request, for the commit message. */
   request: string;
   /** The image reference used for production's container, repeated on deploys. */

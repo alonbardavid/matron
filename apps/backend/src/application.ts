@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
+import { servePublicAppApi } from "@backend/api/public/handler";
 import { openAskSocket } from "@backend/ask/socket";
-import { finishGoogleConnect } from "@backend/calendar/google";
 import { answerError } from "@backend/commons/errors";
 import {
   requireHandoff,
   type ApplicationVariables,
 } from "@backend/arch-routing/require-handoff";
 import { logger } from "@backend/commons/logger";
-import { GOOGLE_CALLBACK_PATH } from "@shared/contract/app/calendar";
+import { PUBLIC_APP_PATH } from "@shared/contract/app/public/path";
 
 const log = logger("backend/application");
 
@@ -23,17 +23,13 @@ application.onError(answerError);
 
 application.use("*", requireHandoff);
 
-// Google sends the browser back here after the member allowed calendar access:
-// a navigation, so it answers with a redirect rather than a procedure's JSON.
-application.get(GOOGLE_CALLBACK_PATH, async (c) => {
-  const principal = c.get("principal");
-  if (!principal) return c.redirect("/");
-  try {
-    return c.redirect(await finishGoogleConnect(principal, new URL(c.req.url)));
-  } catch (err) {
-    log.error("google callback failed", { err, userId: principal.userId });
-    return c.redirect("/settings?google=failed");
-  }
+// The public procedures answer anyone the router let through, signed in or not.
+application.use(`${PUBLIC_APP_PATH}/*`, async (c, next) => {
+  const response = await servePublicAppApi(c.req.raw, {
+    principal: c.get("principal"),
+    branch: c.get("branch"),
+  });
+  return response ?? next();
 });
 
 application.use("/api/app/*", async (c, next) => {

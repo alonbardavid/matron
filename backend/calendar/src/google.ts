@@ -1,25 +1,34 @@
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
-import { getGoogleOAuthApp } from "@backend/arch-settings/service";
-import { base64url, fromBase64url, hmacSign, hmacVerify } from "@backend/commons/crypto";
+import {
+  AccountGrantError,
+  AccountNotLinkedError,
+  accessTokenOf,
+  linkedAccountOf,
+  providerAvailable,
+  unlinkAccountsOf,
+} from "@backend/arch-auth/app-interface";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import { decryptSecret, encryptSecret } from "@backend/commons/secrets";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import {
+  calendar,
   calendarEvent,
   calendarEventException,
   calendarEventShare,
   googleCalendarConnection,
+  googleCalendarWatch,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
 import {
   CALENDAR_COLORS,
+  GOOGLE_CALENDAR_SCOPE,
   type GoogleCalendar,
   type GoogleStatus,
 } from "@shared/contract/app/calendar";
+import { GOOGLE_PUSH_PATH } from "@shared/contract/app/public/calendar";
 import {
   deleteCalendars,
   ensureImportedCalendar,
@@ -27,19 +36,16 @@ import {
   type CalendarRow,
 } from "./calendars";
 import {
-  authorizationUrl,
-  exchangeCode,
   fetchAccountEmail,
-  CALENDAR_READ_SCOPE,
   GoogleGrantError,
   GoogleUnauthorizedError,
   listCalendars as listGoogleCalendarsAt,
   listEvents,
   listInstances,
-  refreshAccessToken,
   revokeToken,
+  stopChannel,
+  watchEvents,
   type GoogleEvent,
-  type GoogleOAuthApp,
 } from "./google-api";
 import { calendarPermissions } from "./permissions";
 import { canonicalRule, expandSeries, fromWallClock } from "./recurrence";
@@ -48,34 +54,31 @@ const log = logger("calendar/google");
 
 type ConnectionRow = typeof googleCalendarConnection.$inferSelect;
 
-/** The purpose the stored tokens are sealed for, under SECRETS_KEY. */
-const TOKEN_PURPOSE = "google-calendar-token";
-const STATE_PURPOSE = "google-oauth-state";
-const STATE_TTL_MS = 10 * 60_000;
+/** The provider members link their account at; the link and its tokens are the auth's. */
+const PROVIDER = "google";
 /** What a sync mirrors: a month back and a year ahead. Older imported events stay as they were. */
 const SYNC_PAST_MS = 31 * 24 * 60 * 60_000;
 const SYNC_AHEAD_MS = 366 * 24 * 60 * 60_000;
+/** A notice this close to its end is replaced by the next full sync. */
+const WATCH_RENEW_BEFORE_MS = 2 * 24 * 60 * 60_000;
+/** How long Google keeps a notice when it does not say. */
+const WATCH_DEFAULT_MS = 7 * 24 * 60 * 60_000;
 /** D1 binds at most 100 parameters a statement, so ids go in chunks. */
 const ID_CHUNK = 90;
 const WRITE_CHUNK = 50;
-const DEFAULT_RETURN = "/settings";
 
-function signingKey(): string {
-  return (env as unknown as { SIGNING_KEY: string }).SIGNING_KEY;
-}
-
-/** The caller's Google Calendar link, and whether one can be made here. */
+/** The caller's Google Calendar import, and whether one can be started here. */
 export async function getGoogleStatus(
   principal: Principal,
   branch: string,
 ): Promise<GoogleStatus> {
   calendarPermissions.require(principal, "view");
-  const [app, row] = await Promise.all([
-    getGoogleOAuthApp(),
+  const [configured, row] = await Promise.all([
+    providerAvailable(PROVIDER),
     connectionOf(principal.userId),
   ]);
   return {
-    configured: app !== null,
+    configured,
     canConnect: branch === MAIN_BRANCH,
     connection: row
       ? {
@@ -88,110 +91,62 @@ export async function getGoogleStatus(
   };
 }
 
-/** The Google consent URL to send the caller to, with a signed state naming them. */
-export async function startGoogleConnect(
-  principal: Principal,
-  branch: string,
-  returnTo: string | undefined,
-): Promise<{ url: string }> {
-  calendarPermissions.require(principal, "connect");
-  if (branch !== MAIN_BRANCH) {
-    // Google returns to production, whose database a branch only copies.
-    throw new DomainError("CONFLICT", "Connect Google Calendar on main, not on a branch");
-  }
-  const app = await requireApp();
-  const state = await signState({
-    u: principal.userId,
-    e: Date.now() + STATE_TTL_MS,
-    r: safeReturn(returnTo),
-    n: base64url(crypto.getRandomValues(new Uint8Array(12))),
-  });
-  log.info("google connect started", { userId: principal.userId });
-  return { url: authorizationUrl(app, state) };
-}
-
 /**
- * Finishes the consent: Google sent the browser back with a code. Stores the
- * grant, imports the primary calendar the first time, syncs, and answers where
- * to send the browser next.
+ * Takes up the Google account the member linked: records whose it is, imports
+ * its primary calendar the first time, and lets a refused import resume. The
+ * member links the account through the auth; this is what the import makes of it.
  */
-export async function finishGoogleConnect(
-  principal: Principal,
-  callbackUrl: URL,
-): Promise<string> {
-  calendarPermissions.require(principal, "connect");
-  const state = await verifyState(callbackUrl.searchParams.get("state"));
-  const back = (result: string) =>
-    withParam(state?.r ?? DEFAULT_RETURN, "google", result);
-  if (!state || state.u !== principal.userId) {
-    log.warn("google callback with a bad state", { userId: principal.userId });
-    return back("invalid");
+async function adoptLinkedAccount(userId: string): Promise<ConnectionRow> {
+  const existing = await connectionOf(userId);
+  const linked = await linkedAccountOf(userId, PROVIDER);
+  if (!linked) {
+    throw new DomainError("NOT_FOUND", "Google Calendar is not connected");
   }
-  if (callbackUrl.searchParams.get("error")) return back("denied");
-  const code = callbackUrl.searchParams.get("code");
-  if (!code) return back("invalid");
-  const app = await requireApp();
-  let tokens;
-  try {
-    tokens = await exchangeCode(app, code);
-  } catch (err) {
-    log.warn("google code exchange failed", { err, userId: principal.userId });
-    return back("failed");
-  }
-  if (!tokens.grantedScopes.includes(CALENDAR_READ_SCOPE))
-    return back("no-calendar-access");
-  const existing = await connectionOf(principal.userId);
-  const refreshToken =
-    tokens.refreshToken ??
-    (existing ? await decryptSecret(TOKEN_PURPOSE, existing.refreshToken) : null);
-  if (!refreshToken) return back("failed");
-  const googleEmail = await fetchAccountEmail(tokens.accessToken);
-  if (existing && existing.googleEmail !== googleEmail) {
-    // Another account: what the old one imported goes with it.
-    await deleteCalendars(
-      (await importedCalendarsOf(principal.userId, "google")).map((c) => c.id),
+  if (!linked.scopes.includes(GOOGLE_CALENDAR_SCOPE)) {
+    throw new DomainError(
+      "BAD_REQUEST",
+      "Allow access to your calendars on Google's page to import them",
     );
   }
-  const sealed = {
+  const googleEmail = await withAccess(userId, fetchAccountEmail);
+  if (existing && existing.googleEmail !== googleEmail) {
+    // Another account: what the old one imported goes with it. Its notices
+    // are not this account's to end; Google lets them run out.
+    const old = (await importedCalendarsOf(userId, PROVIDER)).map((c) => c.id);
+    await unwatchCalendars(userId, old, false);
+    await deleteCalendars(old);
+  }
+  const values = {
     googleEmail,
-    refreshToken: await encryptSecret(TOKEN_PURPOSE, refreshToken),
-    accessToken: await encryptSecret(TOKEN_PURPOSE, tokens.accessToken),
-    accessTokenExpiresAt: new Date(tokens.expiresAt),
     status: "active" as const,
     lastError: null,
     updatedAt: new Date(),
   };
   await getDb()
     .insert(googleCalendarConnection)
-    .values({
-      id: newEntityId("GOOGLE_CALENDAR_CONNECTION"),
-      userId: principal.userId,
-      ...sealed,
-    })
-    .onConflictDoUpdate({ target: googleCalendarConnection.userId, set: sealed });
-  log.info("google calendar connected", { userId: principal.userId });
+    .values({ id: newEntityId("GOOGLE_CALENDAR_CONNECTION"), userId, ...values })
+    .onConflictDoUpdate({ target: googleCalendarConnection.userId, set: values });
+  log.info("google calendar connected", { userId });
 
-  if ((await importedCalendarsOf(principal.userId, "google")).length === 0) {
+  if ((await importedCalendarsOf(userId, PROVIDER)).length === 0) {
     try {
-      const primary = (await listGoogleCalendarsAt(tokens.accessToken)).find(
+      const primary = (await withAccess(userId, listGoogleCalendarsAt)).find(
         (c) => c.primary,
       );
       if (primary) {
         await ensureImportedCalendar(
-          principal.userId,
-          "google",
+          userId,
+          PROVIDER,
           primary.id,
           primary.summary,
           googleColor(primary.backgroundColor),
         );
       }
     } catch (err) {
-      log.warn("google calendar list failed", { err, userId: principal.userId });
+      log.warn("google calendar list failed", { err, userId });
     }
   }
-  const row = await connectionOf(principal.userId);
-  if (row) await syncConnection(row, app);
-  return back("connected");
+  return (await connectionOf(userId))!;
 }
 
 /** The caller's calendars at Google, marked with which are imported. */
@@ -200,10 +155,9 @@ export async function listGoogleCalendars(
 ): Promise<GoogleCalendar[]> {
   calendarPermissions.require(principal, "view");
   const row = await requireConnection(principal.userId);
-  const app = await requireApp();
   const [entries, imported] = await Promise.all([
-    withAccess(row, app, (token) => listGoogleCalendarsAt(token)),
-    importedCalendarsOf(principal.userId, "google"),
+    withAccess(row.userId, (token) => listGoogleCalendarsAt(token)),
+    importedCalendarsOf(principal.userId, PROVIDER),
   ]);
   const selected = new Set(imported.map((c) => c.externalId));
   return entries.map((entry) => ({
@@ -223,18 +177,19 @@ export async function selectGoogleCalendars(
 ): Promise<GoogleStatus> {
   calendarPermissions.require(principal, "update");
   const row = await requireConnection(principal.userId);
-  const app = await requireApp();
-  const entries = await withAccess(row, app, (token) => listGoogleCalendarsAt(token));
+  const entries = await withAccess(row.userId, (token) => listGoogleCalendarsAt(token));
   const wanted = new Set(calendarIds);
-  const imported = await importedCalendarsOf(principal.userId, "google");
-  await deleteCalendars(
-    imported.filter((c) => !wanted.has(c.externalId ?? "")).map((c) => c.id),
-  );
+  const imported = await importedCalendarsOf(principal.userId, PROVIDER);
+  const dropped = imported
+    .filter((c) => !wanted.has(c.externalId ?? ""))
+    .map((c) => c.id);
+  await unwatchCalendars(principal.userId, dropped, branch === MAIN_BRANCH);
+  await deleteCalendars(dropped);
   for (const entry of entries) {
     if (!wanted.has(entry.id)) continue;
     await ensureImportedCalendar(
       principal.userId,
-      "google",
+      PROVIDER,
       entry.id,
       entry.summary,
       googleColor(entry.backgroundColor),
@@ -244,17 +199,34 @@ export async function selectGoogleCalendars(
     userId: principal.userId,
     count: entries.filter((e) => wanted.has(e.id)).length,
   });
-  await syncConnection((await connectionOf(principal.userId))!, app);
+  await syncConnection((await connectionOf(principal.userId))!, {
+    watch: branch === MAIN_BRANCH,
+  });
   return getGoogleStatus(principal, branch);
 }
 
+/**
+ * Brings the caller's imported calendars up to date, and on main has Google
+ * tell of their changes from then on. A newly linked account,
+ * or one linked again after Google refused the old grant, is taken up first.
+ */
 export async function syncGoogleCalendar(
   principal: Principal,
   branch: string,
 ): Promise<GoogleStatus> {
   calendarPermissions.require(principal, "view");
-  const row = await requireConnection(principal.userId);
-  await syncConnection(row, await requireApp());
+  let row = await connectionOf(principal.userId);
+  if (!row || row.status !== "active") {
+    calendarPermissions.require(principal, "connect");
+    try {
+      row = await adoptLinkedAccount(principal.userId);
+    } catch (err) {
+      // Linked, but Google will not honour it: the member links again.
+      if (err instanceof GoogleGrantError) throw new DomainError("CONFLICT", err.message);
+      throw err;
+    }
+  }
+  await syncConnection(row, { watch: branch === MAIN_BRANCH });
   return getGoogleStatus(principal, branch);
 }
 
@@ -264,41 +236,92 @@ export async function disconnectGoogle(
   branch: string,
 ): Promise<GoogleStatus> {
   calendarPermissions.require(principal, "connect");
-  const row = await connectionOf(principal.userId);
-  await deleteCalendars(
-    (await importedCalendarsOf(principal.userId, "google")).map((c) => c.id),
-  );
-  if (row) {
-    await getDb()
-      .delete(googleCalendarConnection)
-      .where(eq(googleCalendarConnection.id, row.id));
-    // Only main revokes: a branch's copy of the grant is production's too.
-    if (branch === MAIN_BRANCH) {
-      const token = await decryptSecret(TOKEN_PURPOSE, row.refreshToken).catch(
-        () => null,
-      );
-      if (token) await revokeToken(token);
-    }
+  const userId = principal.userId;
+  const imported = (await importedCalendarsOf(userId, PROVIDER)).map((c) => c.id);
+  await unwatchCalendars(userId, imported, branch === MAIN_BRANCH);
+  await deleteCalendars(imported);
+  await getDb()
+    .delete(googleCalendarConnection)
+    .where(eq(googleCalendarConnection.userId, userId));
+  // Only main tells Google: a branch's copy of the grant is production's too.
+  if (branch === MAIN_BRANCH) {
+    const token = await accessTokenOf(userId, PROVIDER).catch(() => null);
+    if (token) await revokeToken(token);
   }
-  log.info("google calendar disconnected", { userId: principal.userId });
+  await unlinkAccountsOf(userId, PROVIDER);
+  log.info("google calendar disconnected", { userId });
   return getGoogleStatus(principal, branch);
 }
 
-/** Syncs every member's active link; the scheduled run. Never throws for one member's failure. */
+/**
+ * Syncs every member's active link and renews Google's notices; production's
+ * daily run, for whatever a notice missed. Never throws for one member's failure.
+ */
 export async function syncAllGoogleConnections(): Promise<void> {
-  const app = await getGoogleOAuthApp();
-  if (!app) return;
+  if (!(await providerAvailable(PROVIDER))) return;
   const rows = await getDb()
     .select()
     .from(googleCalendarConnection)
     .where(eq(googleCalendarConnection.status, "active"));
-  for (const row of rows) await syncConnection(row, app);
+  for (const row of rows) await syncConnection(row, { watch: true });
   log.info("google calendars synced", { connections: rows.length });
 }
 
-/** Mirrors the window of every imported calendar of the link's owner; records the outcome on the link. */
-async function syncConnection(row: ConnectionRow, app: GoogleOAuthApp): Promise<void> {
-  const calendars = await importedCalendarsOf(row.userId, "google");
+/**
+ * Takes Google's post that a watched calendar changed. Anyone can post here,
+ * so the notice must be one the import started: its id, which only Google was
+ * given, with the resource Google named for it. The sync it calls for runs
+ * after the answer, so Google has it at once.
+ */
+export async function receiveGooglePush(
+  channelId: string,
+  resourceId: string,
+  state: string | undefined,
+): Promise<void> {
+  const watch = await getDb()
+    .select()
+    .from(googleCalendarWatch)
+    .where(eq(googleCalendarWatch.id, channelId))
+    .get();
+  if (!watch || watch.resourceId !== resourceId) {
+    throw new DomainError("NOT_FOUND", "No such notice");
+  }
+  // Google's first post only says the notice began.
+  if (state === "sync") return;
+  waitUntil(syncWatchedCalendar(watch.calendarId));
+}
+
+/** Syncs the one calendar Google said changed. Never throws. */
+async function syncWatchedCalendar(calendarId: string): Promise<void> {
+  try {
+    const cal = await getDb()
+      .select()
+      .from(calendar)
+      .where(eq(calendar.id, calendarId))
+      .get();
+    if (!cal) return;
+    const row = await connectionOf(cal.ownerId);
+    if (row?.status !== "active") return;
+    await syncConnection(row, { only: cal.id });
+    log.info("google calendar synced on notice", { calendarId, userId: cal.ownerId });
+  } catch (err) {
+    log.warn("google notice sync failed", { err, calendarId });
+  }
+}
+
+interface SyncOptions {
+  /** Whether Google is asked to tell of each calendar's changes: on main only. */
+  watch?: boolean;
+  /** Only this calendar, the rest left as they are. */
+  only?: string;
+}
+
+/** Mirrors the window of the imported calendars of the link's owner; records the outcome on the link. */
+async function syncConnection(row: ConnectionRow, options: SyncOptions): Promise<void> {
+  const imported = await importedCalendarsOf(row.userId, PROVIDER);
+  const calendars = options.only
+    ? imported.filter((cal) => cal.id === options.only)
+    : imported;
   const now = Date.now();
   const from = now - SYNC_PAST_MS;
   const to = now + SYNC_AHEAD_MS;
@@ -306,11 +329,11 @@ async function syncConnection(row: ConnectionRow, app: GoogleOAuthApp): Promise<
   let status: ConnectionRow["status"] = "active";
   for (const cal of calendars) {
     try {
-      const { timeZone, events } = await withAccess(row, app, (token) =>
+      const { timeZone, events } = await withAccess(row.userId, (token) =>
         listEvents(token, cal.externalId!, from, to),
       );
       await mirrorCalendar(cal, timeZone, events, from, to, (eventId) =>
-        withAccess(row, app, (token) =>
+        withAccess(row.userId, (token) =>
           listInstances(token, cal.externalId!, eventId, from, to),
         ),
       );
@@ -328,15 +351,106 @@ async function syncConnection(row: ConnectionRow, app: GoogleOAuthApp): Promise<
       failures.push(`${cal.name}: ${err instanceof Error ? err.message : "sync failed"}`);
     }
   }
+  // One calendar going well says nothing of the others' last failure.
+  const outcome =
+    options.only && failures.length === 0
+      ? {}
+      : {
+          status,
+          lastError: failures.length ? failures.join("; ").slice(0, 1000) : null,
+        };
   await getDb()
     .update(googleCalendarConnection)
     .set({
-      status,
-      lastError: failures.length ? failures.join("; ").slice(0, 1000) : null,
+      ...outcome,
       ...(failures.length === 0 && { lastSyncedAt: new Date() }),
       updatedAt: new Date(),
     })
     .where(eq(googleCalendarConnection.id, row.id));
+  if (options.watch && status === "active") await watchCalendars(row.userId, calendars);
+}
+
+/** Where Google can post: production's own address, which Google takes over https only. */
+function pushAddress(): string | null {
+  const origin = (env as unknown as { APP_ORIGIN: string }).APP_ORIGIN.replace(/\/$/, "");
+  return origin.startsWith("https://") ? `${origin}${GOOGLE_PUSH_PATH}` : null;
+}
+
+/**
+ * Has Google tell of each calendar's changes: starts a notice where there is
+ * none and replaces one near its end. A calendar Google will not watch (some
+ * of its own, like holidays) is left to the daily sync. Never throws.
+ */
+async function watchCalendars(userId: string, calendars: CalendarRow[]): Promise<void> {
+  const address = pushAddress();
+  if (!address) return;
+  const db = getDb();
+  for (const cal of calendars) {
+    try {
+      const current = await db
+        .select()
+        .from(googleCalendarWatch)
+        .where(eq(googleCalendarWatch.calendarId, cal.id))
+        .get();
+      if (current && current.expiresAt.getTime() - Date.now() > WATCH_RENEW_BEFORE_MS)
+        continue;
+      const id = newEntityId("GOOGLE_CALENDAR_WATCH");
+      const started = await withAccess(userId, (token) =>
+        watchEvents(token, cal.externalId!, id, address),
+      );
+      const values = {
+        id,
+        resourceId: started.resourceId,
+        expiresAt: new Date(started.expiresAt ?? Date.now() + WATCH_DEFAULT_MS),
+        updatedAt: new Date(),
+      };
+      await db
+        .insert(googleCalendarWatch)
+        .values({ calendarId: cal.id, ...values })
+        .onConflictDoUpdate({ target: googleCalendarWatch.calendarId, set: values });
+      if (current) {
+        await withAccess(userId, (token) =>
+          stopChannel(token, current.id, current.resourceId),
+        ).catch((err: unknown) =>
+          log.warn("google notice not ended", { err, calendarId: cal.id }),
+        );
+      }
+      log.info("google calendar watched", { calendarId: cal.id, userId });
+    } catch (err) {
+      log.warn("google calendar not watched", { err, calendarId: cal.id, userId });
+    }
+  }
+}
+
+/**
+ * Forgets the notices of these calendars, and with `tellGoogle` ends them
+ * there too. A branch's rows are copies of production's, so only main tells
+ * Google. Never throws for Google's part.
+ */
+async function unwatchCalendars(
+  userId: string,
+  calendarIds: string[],
+  tellGoogle: boolean,
+): Promise<void> {
+  const db = getDb();
+  for (const ids of chunks(calendarIds, ID_CHUNK)) {
+    const watches = await db
+      .select()
+      .from(googleCalendarWatch)
+      .where(inArray(googleCalendarWatch.calendarId, ids));
+    if (tellGoogle) {
+      for (const watch of watches) {
+        await withAccess(userId, (token) =>
+          stopChannel(token, watch.id, watch.resourceId),
+        ).catch((err: unknown) =>
+          log.warn("google notice not ended", { err, calendarId: watch.calendarId }),
+        );
+      }
+    }
+    await db
+      .delete(googleCalendarWatch)
+      .where(inArray(googleCalendarWatch.calendarId, ids));
+  }
 }
 
 type EventValues = NonNullable<ReturnType<typeof eventValues>>;
@@ -680,48 +794,33 @@ function midnight(day: string, timeZone: string): number {
 }
 
 /**
- * Runs `call` with a live access token, refreshing a stale one first, and once
- * more when Google refuses it. A refreshed token is stored for the next call.
+ * Calls Google with the member's access token, which the auth keeps valid.
+ * A token Google refuses all the same is renewed once.
  */
 async function withAccess<T>(
-  row: ConnectionRow,
-  app: GoogleOAuthApp,
+  userId: string,
   call: (token: string) => Promise<T>,
 ): Promise<T> {
-  let token =
-    row.accessToken && (row.accessTokenExpiresAt?.getTime() ?? 0) > Date.now()
-      ? await decryptSecret(TOKEN_PURPOSE, row.accessToken).catch(() => null)
-      : null;
-  let refreshed = false;
-  if (!token) {
-    token = await refresh(row, app);
-    refreshed = true;
-  }
   try {
-    return await call(token);
+    return await call(await accessToken(userId));
   } catch (err) {
-    if (!(err instanceof GoogleUnauthorizedError) || refreshed) throw err;
-    return call(await refresh(row, app));
+    if (!(err instanceof GoogleUnauthorizedError)) throw err;
+    return call(await accessToken(userId, true));
   }
 }
 
-async function refresh(row: ConnectionRow, app: GoogleOAuthApp): Promise<string> {
-  let refreshToken: string;
+/** The member's access token; a link that is gone or no longer honoured is a refused grant. */
+async function accessToken(userId: string, renew = false): Promise<string> {
   try {
-    refreshToken = await decryptSecret(TOKEN_PURPOSE, row.refreshToken);
-  } catch {
-    throw new GoogleGrantError("The stored connection cannot be read; connect again");
+    return await accessTokenOf(userId, PROVIDER, { renew });
+  } catch (err) {
+    if (err instanceof AccountNotLinkedError || err instanceof AccountGrantError) {
+      throw new GoogleGrantError(
+        "Google no longer accepts this connection; connect again",
+      );
+    }
+    throw err;
   }
-  const tokens = await refreshAccessToken(app, refreshToken);
-  const accessToken = await encryptSecret(TOKEN_PURPOSE, tokens.accessToken);
-  const expiresAt = new Date(tokens.expiresAt);
-  await getDb()
-    .update(googleCalendarConnection)
-    .set({ accessToken, accessTokenExpiresAt: expiresAt, updatedAt: new Date() })
-    .where(eq(googleCalendarConnection.id, row.id));
-  row.accessToken = accessToken;
-  row.accessTokenExpiresAt = expiresAt;
-  return tokens.accessToken;
 }
 
 async function connectionOf(userId: string): Promise<ConnectionRow | undefined> {
@@ -736,59 +835,6 @@ async function requireConnection(userId: string): Promise<ConnectionRow> {
   const row = await connectionOf(userId);
   if (!row) throw new DomainError("NOT_FOUND", "Google Calendar is not connected");
   return row;
-}
-
-async function requireApp(): Promise<GoogleOAuthApp> {
-  const app = await getGoogleOAuthApp();
-  if (!app) {
-    throw new DomainError(
-      "UNAVAILABLE",
-      "Google Calendar is not set up yet; an owner or admin adds it in App settings",
-    );
-  }
-  return app;
-}
-
-interface State {
-  /** The user who started. */
-  u: string;
-  /** Expires at, ms. */
-  e: number;
-  /** The page to return to. */
-  r: string;
-  n: string;
-}
-
-async function signState(state: State): Promise<string> {
-  const payload = base64url(new TextEncoder().encode(JSON.stringify(state)));
-  return `${payload}.${await hmacSign(signingKey(), `${STATE_PURPOSE}:${payload}`)}`;
-}
-
-async function verifyState(value: string | null): Promise<State | null> {
-  const [payload, signature] = (value ?? "").split(".");
-  if (!payload || !signature) return null;
-  if (!(await hmacVerify(signingKey(), `${STATE_PURPOSE}:${payload}`, signature)))
-    return null;
-  try {
-    const state = JSON.parse(new TextDecoder().decode(fromBase64url(payload))) as State;
-    return state.e > Date.now() ? { ...state, r: safeReturn(state.r) } : null;
-  } catch {
-    return null;
-  }
-}
-
-/** A same-origin path to return to; anything else falls back to the settings page. */
-function safeReturn(path: string | undefined): string {
-  if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
-    return DEFAULT_RETURN;
-  }
-  return path.slice(0, 500);
-}
-
-function withParam(path: string, key: string, value: string): string {
-  const url = new URL(path, "https://matron.invalid");
-  url.searchParams.set(key, value);
-  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 /** Google's colour for the calendar when it is a plain hex, else the first of Matron's. */

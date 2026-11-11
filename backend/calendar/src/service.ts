@@ -712,6 +712,7 @@ function toOccurrence(
     ...fields,
     eventId: row.id,
     allDay: row.allDay,
+    timeZone: row.timeZone,
     creatorId: row.creatorId,
     calendarId: placement.shownIn,
     color: placement.color,

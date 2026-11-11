@@ -1,7 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createdAt, timestamp, updatedAt } from "./columns";
 
-
 /** Where a calendar's events come from: made in Matron, or imported from the owner's Google Calendar. */
 export const CALENDAR_SOURCES = ["matron", "google"] as const;
 export type CalendarSource = (typeof CALENDAR_SOURCES)[number];
@@ -24,7 +23,9 @@ export const calendar = sqliteTable(
     /** The owner's calendar new events go to; one per owner. */
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
     /** Where events others share with the owner show, unless placed elsewhere; one per owner, else the default. */
-    receivesShared: integer("receives_shared", { mode: "boolean" }).notNull().default(false),
+    receivesShared: integer("receives_shared", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -146,24 +147,38 @@ export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const
 export type GoogleConnectionStatus = (typeof GOOGLE_CONNECTION_STATUSES)[number];
 
 /**
- * A member's link to their own Google Calendar: the OAuth tokens, encrypted.
- * Which Google calendars are imported is the member's `google` calendars. One
- * per user; left off the assistant's readable tables.
+ * A member's import of their own Google Calendar: whose account it is and how
+ * the last sync went. The linked account and its tokens are the auth's. Which
+ * Google calendars are imported is the member's `google` calendars. One per user.
  */
 export const googleCalendarConnection = sqliteTable("google_calendar_connection", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().unique(),
   /** The Google account's email, to show which account is connected. */
   googleEmail: text("google_email").notNull(),
-  refreshToken: text("refresh_token").notNull(),
-  accessToken: text("access_token"),
-  accessTokenExpiresAt: timestamp("access_token_expires_at"),
   status: text("status", { enum: GOOGLE_CONNECTION_STATUSES })
     .notNull()
     .default("active"),
   lastSyncedAt: timestamp("last_synced_at"),
   /** Why the last sync failed, cleared by the next one that succeeds. */
   lastError: text("last_error"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
+ * Google's standing notice for one imported calendar: Google posts to the
+ * router when the calendar changes, naming this row's id, and that calendar is
+ * synced. Google ends a notice after a while, so each is renewed before
+ * `expiresAt`. One per imported calendar, on production only.
+ */
+export const googleCalendarWatch = sqliteTable("google_calendar_watch", {
+  /** Also the channel id Google is given; nobody else learns it. */
+  id: text("id").primaryKey(),
+  calendarId: text("calendar_id").notNull().unique(),
+  /** Google's own name for what is watched; it is needed to end the notice. */
+  resourceId: text("resource_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

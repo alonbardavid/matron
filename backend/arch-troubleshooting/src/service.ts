@@ -284,11 +284,10 @@ async function mustCall<T>(call: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof CloudflareError) {
       throw new DomainError(
-        err.problem.kind === "error" ? "UNAVAILABLE" : "FORBIDDEN",
+        err.problem.kind === "error" ? "SERVICE_UNAVAILABLE" : "FORBIDDEN",
         err.message,
       );
     }
     throw err;
   }
 }
-

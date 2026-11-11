@@ -130,6 +130,8 @@ export const occurrenceSchema = z.object({
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
+  /** The zone the event is reckoned in: an all-day one covers whole days there. */
+  timeZone: z.string(),
   recurring: z.boolean(),
   creatorId: z.string(),
   /** The calendar it shows in for the caller (see the event's `shownIn`). */
@@ -171,8 +173,8 @@ export const occurrenceUpdateSchema = z.object({
 });
 export type OccurrenceUpdate = z.infer<typeof occurrenceUpdateSchema>;
 
-/** Where Google sends a member back after they allow access; registered on the OAuth client. */
-export const GOOGLE_CALLBACK_PATH = "/api/app/calendar/google/callback";
+/** What a member allows when they link their Google account for the import: reading their calendars. */
+export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 
 /** One of the member's calendars at Google, and whether it is imported as one of theirs here. */
 export const googleCalendarSchema = z.object({
@@ -208,11 +210,6 @@ export const googleCalendarContract = {
   status: oc
     .route({ method: "GET", path: "/api/app/calendar/google" })
     .output(googleStatusSchema),
-  /** Where to send the browser to allow access; Google returns it to GOOGLE_CALLBACK_PATH. */
-  connect: oc
-    .route({ method: "POST", path: "/api/app/calendar/google/connect" })
-    .input(z.object({ returnTo: z.string().max(500).optional() }))
-    .output(z.object({ url: z.string() })),
   /** The caller's Google calendars, read from Google. */
   calendars: oc
     .route({ method: "GET", path: "/api/app/calendar/google/calendars" })
@@ -222,6 +219,11 @@ export const googleCalendarContract = {
     .route({ method: "PUT", path: "/api/app/calendar/google/calendars" })
     .input(z.object({ calendarIds: z.array(z.string().min(1).max(300)).min(1).max(50) }))
     .output(googleStatusSchema),
+  /**
+   * Brings the imported calendars up to date. The first time after the member
+   * linked their Google account, it also records the link and imports their
+   * primary calendar.
+   */
   sync: oc
     .route({ method: "POST", path: "/api/app/calendar/google/sync" })
     .output(googleStatusSchema),

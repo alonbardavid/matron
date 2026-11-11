@@ -12,6 +12,7 @@ import type { ApiContext } from "@backend/commons/api";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH } from "@backend/commons/principal";
+import { PUBLIC_APP_PATH } from "@shared/contract/app/public/path";
 import { application } from "./application";
 
 const log = logger("backend/router");
@@ -53,8 +54,10 @@ router.all("*", async (c) => {
   const request = c.req.raw;
   if (!principal) {
     // A signed-out visitor still gets the SPA, which shows the sign-in screen,
-    // and only from main: a branch is never served to someone not signed in.
-    if (new URL(request.url).pathname.startsWith("/api/")) {
+    // and the application's public procedures, and only from main: a branch
+    // is never served to someone not signed in.
+    const { pathname } = new URL(request.url);
+    if (pathname.startsWith("/api/") && !pathname.startsWith(`${PUBLIC_APP_PATH}/`)) {
       return c.json({ message: "Not signed in" }, 401);
     }
     return handoff(application, request, null, MAIN_BRANCH, null, c.executionCtx);

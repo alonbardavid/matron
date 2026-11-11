@@ -7,7 +7,7 @@
 
 /**
  * The application's tables, readable by every member. `google_calendar_connection`
- * (members' OAuth tokens) and `secret_settings` are left off on purpose: no role reads them.
+ * and `google_calendar_watch` are left off on purpose: no role reads them.
  */
 export const APP_TABLES = [
   "task",

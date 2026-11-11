@@ -20,7 +20,6 @@ import {
   getGoogleStatus,
   listGoogleCalendars,
   selectGoogleCalendars,
-  startGoogleConnect,
   syncGoogleCalendar,
 } from "@backend/calendar/google";
 import { app } from "../implementer";
@@ -74,9 +73,6 @@ export const calendar = app.calendar.router({
   google: app.calendar.google.router({
     status: app.calendar.google.status.handler(({ context }) =>
       getGoogleStatus(context.principal, context.branch),
-    ),
-    connect: app.calendar.google.connect.handler(({ context, input }) =>
-      startGoogleConnect(context.principal, context.branch, input.returnTo),
     ),
     calendars: app.calendar.google.calendars.handler(({ context }) =>
       listGoogleCalendars(context.principal),

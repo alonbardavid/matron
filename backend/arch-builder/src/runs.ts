@@ -46,8 +46,6 @@ async function runCommon(
       appOrigin: env.APP_ORIGIN,
       aiGateway: AI_GATEWAY,
     },
-    signingKey: env.SIGNING_KEY,
-    secretsKey: env.SECRETS_KEY,
     request,
     builderImage: env.BUILDER_IMAGE || undefined,
   };
