@@ -68,47 +68,55 @@ export function ChatComposer({
           ))}
         </Group>
       )}
-      <Group gap="xs" align="flex-end" wrap="nowrap">
-        <Textarea
-          flex={1}
-          autosize
-          minRows={1}
-          maxRows={6}
-          placeholder={placeholder}
-          value={text}
-          disabled={disabled}
-          onChange={(event) => setText(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        />
-        <input
-          ref={picker}
-          type="file"
-          hidden
-          multiple
-          accept={ATTACHMENT_ACCEPT}
-          onChange={(event) => void attach(event.currentTarget.files)}
-        />
-        <Tooltip label="Attach a picture, a PDF or a text file" withArrow>
-          <ActionIcon
-            size="lg"
-            variant="default"
-            aria-label="Attach a file"
-            disabled={disabled || reading}
-            onClick={() => picker.current?.click()}
-          >
-            {reading ? <Loader size={14} /> : <IconPaperclip />}
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <Group gap="xs" align="flex-end" wrap="nowrap">
+          <Textarea
+            flex={1}
+            autosize
+            minRows={1}
+            maxRows={6}
+            placeholder={placeholder}
+            value={text}
+            disabled={disabled}
+            onChange={(event) => setText(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <input
+            ref={picker}
+            type="file"
+            hidden
+            multiple
+            accept={ATTACHMENT_ACCEPT}
+            onChange={(event) => void attach(event.currentTarget.files)}
+          />
+          <Tooltip label="Attach a picture, a PDF or a text file" withArrow>
+            <ActionIcon
+              size="lg"
+              variant="default"
+              aria-label="Attach a file"
+              disabled={disabled || reading}
+              onClick={() => picker.current?.click()}
+            >
+              {reading ? <Loader size={14} /> : <IconPaperclip />}
+            </ActionIcon>
+          </Tooltip>
+          <ActionIcon type="submit" size="lg" aria-label="Send" disabled={!canSend}>
+            <IconSend />
           </ActionIcon>
-        </Tooltip>
-        <ActionIcon size="lg" aria-label="Send" disabled={!canSend} onClick={submit}>
-          <IconSend />
-        </ActionIcon>
-        {extra}
-      </Group>
+          {extra}
+        </Group>
+      </form>
       <Text size="xs" c="dimmed">
         {hint}
       </Text>

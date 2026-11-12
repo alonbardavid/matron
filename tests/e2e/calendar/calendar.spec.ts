@@ -76,7 +76,7 @@ test.describe("calendar", () => {
     await dialog.getByRole("button", { name: "Edit event" }).click();
     await expect(dialog.getByLabel("Title")).toHaveValue("Dentist");
     await dialog.getByLabel("Title").fill("Dentist, moved");
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByLabel("Title").press("Enter");
     await expect(page.getByText("Dentist, moved", { exact: true }).first()).toBeVisible();
   });
 });

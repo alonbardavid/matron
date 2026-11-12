@@ -106,32 +106,40 @@ export function AskPanel({
         )}
         <Box ref={end} />
       </Stack>
-      <Group gap="xs" align="flex-end" wrap="nowrap" pt="sm">
-        <Textarea
-          flex={1}
-          autosize
-          minRows={1}
-          maxRows={6}
-          placeholder="Ask about the code"
-          aria-label="Question"
-          value={text}
-          onChange={(event) => setText(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              send();
-            }
-          }}
-        />
-        <ActionIcon
-          size="lg"
-          aria-label="Send"
-          disabled={!text.trim() || ask.isPending}
-          onClick={send}
-        >
-          <IconSend />
-        </ActionIcon>
-      </Group>
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          send();
+        }}
+      >
+        <Group gap="xs" align="flex-end" wrap="nowrap" pt="sm">
+          <Textarea
+            flex={1}
+            autosize
+            minRows={1}
+            maxRows={6}
+            placeholder="Ask about the code"
+            aria-label="Question"
+            value={text}
+            onChange={(event) => setText(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <ActionIcon
+            type="submit"
+            size="lg"
+            aria-label="Send"
+            disabled={!text.trim() || ask.isPending}
+          >
+            <IconSend />
+          </ActionIcon>
+        </Group>
+      </form>
     </SidePanel>
   );
 }
