@@ -7,6 +7,7 @@ import {
   editOccurrence,
   getEvent,
   hideEvent,
+  leaveEvent,
   listOccurrences,
   placeEvent,
   removeEvent,
@@ -77,6 +78,10 @@ export const calendar = app.calendar.router({
   detach: app.calendar.detach.handler(({ context, input }) =>
     detachFromEvent(context.principal, context.branch, input.id, input.attachmentId),
   ),
+  leave: app.calendar.leave.handler(async ({ context, input }) => {
+    await leaveEvent(context.principal, input.id);
+    return { ok: true as const };
+  }),
   reply: app.calendar.reply.handler(({ context, input }) =>
     replyToEvent(context.principal, input.id, input.response),
   ),

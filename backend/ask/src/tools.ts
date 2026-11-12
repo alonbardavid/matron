@@ -99,7 +99,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
     }),
     create_event: tool({
       description:
-        "Add a calendar event. Times are milliseconds since the epoch in the user's zone; an all-day event spans whole days. To repeat it, rrule is an iCalendar RRULE value (RFC 5545) without the RRULE: prefix: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with INTERVAL, BYDAY (MO,WE; in a monthly rule 2TU is the second Tuesday, -1FR the last Friday), BYMONTHDAY (-1 is the last day), and UNTIL=YYYYMMDD (the last day) or COUNT. The start is the first occurrence.",
+        "Add a calendar event. Times are milliseconds since the epoch in the user's zone; an all-day event spans whole days. permissions sets what each user it is shared with may do (view, edit or manage; edit by default). To repeat it, rrule is an iCalendar RRULE value (RFC 5545) without the RRULE: prefix: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with INTERVAL, BYDAY (MO,WE; in a monthly rule 2TU is the second Tuesday, -1FR the last Friday), BYMONTHDAY (-1 is the last day), and UNTIL=YYYYMMDD (the last day) or COUNT. The start is the first occurrence.",
       inputSchema: calendarEventCreateSchema.omit({ timeZone: true }).extend({
         timeZone: z.string().optional(),
       }),

@@ -63,6 +63,12 @@ export function useEventActions() {
   const attachLink = useMutation(
     orpc.calendar.attachLink.mutationOptions({ onSuccess: refresh }),
   );
+  const leave = useMutation(
+    orpc.calendar.leave.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not leave the event"),
+    }),
+  );
   const reply = useMutation(orpc.calendar.reply.mutationOptions({ onSuccess: refresh }));
   const detach = useMutation(
     orpc.calendar.detach.mutationOptions({
@@ -83,6 +89,7 @@ export function useEventActions() {
     attachLink,
     detach,
     reply,
+    leave,
   };
 }
 
