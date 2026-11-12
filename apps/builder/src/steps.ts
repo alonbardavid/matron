@@ -285,8 +285,8 @@ export class Steps {
       return { headCommit: head };
     }
     progress(`moving main back to ${revert.commit.slice(0, 12)}`);
-    await git.moveBackTo(g, revert.commit);
-    await git.pushBack(g, "main", head);
+    await git.revertTo(g, revert.commit);
+    await git.pushRevert(g, "main", head);
     progress("main pushed");
     return { headCommit: revert.commit };
   }

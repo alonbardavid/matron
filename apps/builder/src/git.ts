@@ -171,7 +171,7 @@ export async function deleteRemoteBranch(ctx: GitContext, branch: string): Promi
  * commits: the index and the working tree become that commit's, and the
  * commits after it are no longer on the branch.
  */
-export async function moveBackTo(ctx: GitContext, commit: string): Promise<void> {
+export async function revertTo(ctx: GitContext, commit: string): Promise<void> {
   const contained = await git(ctx, ["merge-base", "--is-ancestor", commit, "HEAD"]);
   if (contained.code !== 0) {
     throw new BuilderError(
@@ -186,7 +186,7 @@ export async function moveBackTo(ctx: GitContext, commit: string): Promise<void>
  * Pushes the checked-out commit as `branch`, which goes back with it. Refused
  * when the remote branch is no longer at `expected`: someone moved it meanwhile.
  */
-export async function pushBack(
+export async function pushRevert(
   ctx: GitContext,
   branch: string,
   expected: string,
