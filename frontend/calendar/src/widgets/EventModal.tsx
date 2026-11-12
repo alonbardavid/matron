@@ -18,6 +18,7 @@ import dayjs from "dayjs";
 import type {
   Calendar,
   CalendarEvent,
+  EventResponse,
   OccurrenceUpdate,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
@@ -108,6 +109,8 @@ interface EventModalProps {
   onAttachFiles?: (files: File[]) => Promise<void>;
   onAttachLink?: (link: LinkDraft) => Promise<void>;
   onDetach?: (attachmentId: string) => Promise<void>;
+  /** The caller's own answer: going, maybe or not. */
+  onReply?: (response: Exclude<EventResponse, "needs_action">) => Promise<void>;
 }
 
 /** An existing event opens as it reads; changing it is a step further. */
@@ -163,6 +166,7 @@ export function EventModal({
   onAttachFiles,
   onAttachLink,
   onDetach,
+  onReply,
 }: EventModalProps) {
   const { me } = useMe();
   const [mode, setMode] = useState<Mode>("edit");
@@ -206,6 +210,15 @@ export function EventModal({
     event.creatorId !== me?.id &&
     event.sharedWith.includes(me?.id ?? "");
   const shownCalendar = event ? calendars.find((c) => c.id === event.shownIn) : undefined;
+  // Whoever made it or was given it answers it; an event imported to your own
+  // calendar is answered at its source.
+  const iMadeIt = !!event && event.creatorId === me?.id;
+  const canReply =
+    !!event &&
+    !readOnly &&
+    (event.sharedWith.includes(me?.id ?? "") || (iMadeIt && !imported));
+  const myResponse =
+    event && me ? (event.replies[me.id] ?? (iMadeIt ? "accepted" : null)) : null;
   const writable = calendars.filter((c) => c.access === "owner" && c.source === "matron");
   const defaultCalendar = writable.find((c) => c.isDefault) ?? writable[0];
   // Moving between calendars is the creator's, among their own Matron calendars.
@@ -372,6 +385,14 @@ export function EventModal({
           placeIn={placing ? writable : []}
           onPlace={onPlace && ((calendarId) => void onPlace(calendarId))}
           onEdit={changeable ? () => setMode("edit") : undefined}
+          reply={
+            canReply && onReply
+              ? {
+                  value: myResponse,
+                  onChange: (response) => void onReply(response),
+                }
+              : undefined
+          }
           onHide={
             onHide &&
             (async (hidden) => {

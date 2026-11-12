@@ -97,6 +97,8 @@ type ItemPayload =
       labels: Label[];
       hidden: boolean;
       location: string;
+      /** The caller said they are not going: drawn crossed out. */
+      declined: boolean;
     }
   | { kind: "task"; task: Task };
 
@@ -121,7 +123,10 @@ const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, pr
       }
       labels={payload?.kind === "event" ? payload.labels : []}
       muted={payload?.kind === "event" && payload.hidden}
-      struck={payload?.kind === "task" && payload.task.completedAt !== null}
+      struck={
+        (payload?.kind === "task" && payload.task.completedAt !== null) ||
+        (payload?.kind === "event" && payload.declined)
+      }
     />
   );
 };
@@ -150,6 +155,7 @@ export function CalendarScreen() {
     attachFile,
     attachLink,
     detach,
+    reply,
   } = useEventActions();
   const calendars = useCalendars();
   const labels = useLabels();
@@ -186,6 +192,7 @@ export function CalendarScreen() {
       labels: labelsOf(item.labelIds, labels.data ?? []),
       hidden: item.hidden,
       location: item.location,
+      declined: item.response === "declined",
       occurrence:
         item.originalStartAt === null
           ? null
@@ -487,6 +494,13 @@ export function CalendarScreen() {
           opening?.eventId
             ? async (attachmentId) => {
                 await detach.mutateAsync({ id: opening.eventId!, attachmentId });
+              }
+            : undefined
+        }
+        onReply={
+          opening?.eventId
+            ? async (response) => {
+                await reply.mutateAsync({ id: opening.eventId!, response });
               }
             : undefined
         }

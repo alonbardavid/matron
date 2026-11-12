@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   ColorSwatch,
+  Divider,
   Group,
   Select,
   Stack,
@@ -14,7 +15,11 @@ import {
   Title,
 } from "@mantine/core";
 import dayjs from "dayjs";
-import type { Calendar, CalendarEvent } from "@shared/contract/app/calendar";
+import type {
+  Calendar,
+  CalendarEvent,
+  EventResponse,
+} from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 import {
@@ -33,6 +38,7 @@ import {
 } from "@frontend/ds/icons";
 import { isLink, mapsUrl } from "../places";
 import { describeRule } from "../rrule";
+import { ExternalGuestsList, ReplyControl, ResponseBadge, summary } from "./GuestReplies";
 import { useLabels } from "../useCalendar";
 import { labelsOf } from "./LabelBars";
 
@@ -50,6 +56,11 @@ interface EventViewProps {
   onPlace?: (calendarId: string) => void;
   /** Absent when nothing about the event is the caller's to change. */
   onEdit?: () => void;
+  /** The caller's own answer, when theirs to give: going, maybe or not. */
+  reply?: {
+    value: EventResponse | null;
+    onChange: (response: Exclude<EventResponse, "needs_action">) => void;
+  };
   /** Hides the event from the caller's own calendar, or shows it again. */
   onHide?: (hidden: boolean) => void | Promise<void>;
   onClose: () => void;
@@ -93,6 +104,7 @@ export function EventView({
   placeIn,
   onPlace,
   onEdit,
+  reply,
   onHide,
   onClose,
 }: EventViewProps) {
@@ -250,10 +262,26 @@ export function EventView({
       {(event.attendees.length > 0 || alsoSharedWith.length > 0) && (
         <Row icon={<IconUsers size={18} />}>
           <Stack gap={6}>
+            {event.attendees.length > 0 && (
+              <Text size="xs" c="dimmed">
+                {summary(
+                  event.attendees.map((id) => event.replies[id] ?? "needs_action"),
+                )}
+              </Text>
+            )}
             {event.attendees.map((id) => (
-              <Group key={id} gap="xs" wrap="nowrap">
+              <Group
+                key={id}
+                gap="xs"
+                wrap="nowrap"
+                role="listitem"
+                aria-label={nameOf(id)}
+              >
                 <UserAvatar size="sm" name={nameOf(id)} avatarUrl={avatarUrlOf(id)} />
-                <Text size="sm">{nameOf(id)}</Text>
+                <Text size="sm" style={{ flex: 1 }} truncate>
+                  {nameOf(id)}
+                </Text>
+                <ResponseBadge response={event.replies[id] ?? "needs_action"} />
               </Group>
             ))}
             {alsoSharedWith.length > 0 && (
@@ -262,6 +290,11 @@ export function EventView({
               </Text>
             )}
           </Stack>
+        </Row>
+      )}
+      {event.externalGuests.length > 0 && (
+        <Row icon={<IconUsers size={18} />}>
+          <ExternalGuestsList guests={event.externalGuests} />
         </Row>
       )}
       <Row icon={<IconCalendar size={18} />}>
@@ -286,6 +319,12 @@ export function EventView({
           />
         )}
       </Row>
+      {reply && (
+        <>
+          <Divider />
+          <ReplyControl value={reply.value} onChange={reply.onChange} />
+        </>
+      )}
     </Stack>
   );
 }
