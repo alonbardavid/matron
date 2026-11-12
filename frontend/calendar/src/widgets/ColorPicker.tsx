@@ -14,7 +14,14 @@ export function ColorPicker({
 }) {
   const [opened, setOpened] = useState(false);
   return (
-    <Popover opened={opened} onChange={setOpened} position="bottom-start" shadow="md">
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-start"
+      shadow="md"
+      trapFocus
+      returnFocus
+    >
       <Popover.Target>
         <ColorSwatch
           component="button"

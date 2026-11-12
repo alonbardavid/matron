@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Button, Group, Modal, Stack, Textarea, TextInput } from "@mantine/core";
+import { Button, Group, Modal, Textarea, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import type { Task, TaskCreate } from "@shared/contract/app/tasks";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { Form } from "@frontend/ds/forms/Form";
 
 export interface TaskValues {
   title: string;
@@ -92,7 +93,7 @@ export function TaskModal({ opened, onClose, task, onSave, onRemove }: TaskModal
       title={task ? "Edit task" : "New task"}
       centered
     >
-      <Stack gap="sm">
+      <Form onSubmit={() => void save()}>
         <TextInput
           label="Title"
           value={values.title}
@@ -152,11 +153,11 @@ export function TaskModal({ opened, onClose, task, onSave, onRemove }: TaskModal
           ) : (
             <span />
           )}
-          <Button loading={saving} onClick={() => void save()}>
+          <Button type="submit" loading={saving}>
             {task ? "Save" : "Add task"}
           </Button>
         </Group>
-      </Stack>
+      </Form>
     </Modal>
   );
 }

@@ -17,6 +17,7 @@ import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { Card } from "@frontend/ds/Card";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { useForm } from "@frontend/ds/forms/context";
+import { Form } from "@frontend/ds/forms/Form";
 import { FormGeneralErrors } from "@frontend/ds/forms/FormGeneralErrors";
 import { FormTextInput } from "@frontend/ds/forms/FormInputs";
 import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
@@ -43,6 +44,8 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
       position="bottom-end"
       shadow="md"
       width={300}
+      trapFocus
+      returnFocus
     >
       <Popover.Target>
         <Button
@@ -57,7 +60,15 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
         </Button>
       </Popover.Target>
       <Popover.Dropdown>
-        <Stack gap="xs">
+        <Form
+          gap="xs"
+          onSubmit={() =>
+            update.mutate(
+              { id: calendar.id, sharedWith: people },
+              { onSuccess: () => setOpened(false) },
+            )
+          }
+        >
           <PeoplePicker
             label="Share read-only with"
             placeholder="No one"
@@ -71,17 +82,14 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
             it.
           </Text>
           <Button
+            type="submit"
             size="compact-sm"
             w="fit-content"
             loading={update.isPending}
-            onClick={async () => {
-              await update.mutateAsync({ id: calendar.id, sharedWith: people });
-              setOpened(false);
-            }}
           >
             Save
           </Button>
-        </Stack>
+        </Form>
       </Popover.Dropdown>
     </Popover>
   );

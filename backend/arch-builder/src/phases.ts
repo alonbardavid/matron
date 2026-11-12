@@ -120,6 +120,8 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
             ...outcome,
             summary: at.outcome.summary || outcome.summary,
             reasoning: at.outcome.reasoning || outcome.reasoning,
+            // A fix turn regroups the branch with its new line numbers.
+            reviewReport: outcome.reviewReport ?? at.outcome.reviewReport,
           }
         : outcome;
       at.phase = "verify";
@@ -163,7 +165,7 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
       // The Preview URL is not for people: the session posts the branch link once
       // the deploy is recorded. Only the agent's own words go here.
       await ctx.say(at.outcome?.message.trim() || "The change is ready.");
-      await ctx.finish("deployed", result);
+      await ctx.finish("deployed", { ...result, reviewReport: at.outcome?.reviewReport });
       return "end";
     }
     case "deploy-production":
