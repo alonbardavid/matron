@@ -12,10 +12,19 @@ import {
 } from "@mantine/core";
 import { DatePicker } from "@mantine/dates";
 import { useMediaQuery } from "@mantine/hooks";
-import { MobileMonthView, Schedule, type ScheduleEventData } from "@mantine/schedule";
+import {
+  MobileMonthView,
+  Schedule,
+  type ScheduleEventData,
+  type WeekViewProps,
+} from "@mantine/schedule";
 import dayjs from "dayjs";
 import type { Occurrence } from "@shared/contract/app/calendar";
+import type { Task } from "@shared/contract/app/tasks";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
+import { useTaskActions, useTasks } from "@frontend/tasks/useTasks";
+import { TaskModal } from "@frontend/tasks/widgets/TaskModal";
+import { useCalendarFilters } from "../filters";
 import {
   allDayBlock,
   allDaySpan,
@@ -25,6 +34,8 @@ import {
   toDayString,
 } from "../times";
 import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import { CalendarItem } from "../widgets/CalendarItem";
+import { FiltersButton } from "../widgets/FiltersButton";
 import {
   EventModal,
   type EventSubmit,
@@ -71,6 +82,35 @@ interface Opening {
   initial: { allDay: boolean; startAt: number; endAt: number } | null;
 }
 
+/** What the screen puts on each item it hands the schedule. */
+type ItemPayload =
+  | {
+      kind: "event";
+      eventId: string;
+      occurrence: OpenedOccurrence | null;
+      hidden: boolean;
+    }
+  | { kind: "task"; task: Task };
+
+function payloadOf(item: ScheduleEventData): ItemPayload | undefined {
+  return item.payload as ItemPayload | undefined;
+}
+
+/**
+ * An item as the schedule draws it, in every view: a hidden event faded, a
+ * completed task crossed out.
+ */
+const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
+  const payload = payloadOf(item);
+  return (
+    <CalendarItem
+      {...props}
+      muted={payload?.kind === "event" && payload.hidden}
+      struck={payload?.kind === "task" && payload.task.completedAt !== null}
+    />
+  );
+};
+
 /** Day, week and month views of the household's calendar. */
 export function CalendarScreen() {
   const narrow = useMediaQuery("(max-width: 48em)");
@@ -83,46 +123,70 @@ export function CalendarScreen() {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
-  const { create, update, stop, remove, place, editOccurrence, cancelOccurrence } =
+  const { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide } =
     useEventActions();
   const calendars = useCalendars();
+  const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
+  const tasks = useTasks();
+  const taskActions = useTaskActions();
+  const [openTask, setOpenTask] = useState<Task | null>(null);
 
+  // What this device's filters leave on the calendar.
+  const shown = (occurrences.data ?? []).filter(
+    (item) =>
+      (filters.showHidden || !item.hidden) &&
+      !filters.hiddenCalendars.includes(item.calendarId),
+  );
   // The day and the week draw a block over whole quarters of an hour.
   const timeGrid = shownView === "day" || shownView === "week";
-  const events: ScheduleEventData[] = (occurrences.data ?? []).map(
-    (item: Occurrence) => ({
-      id: item.id,
-      title: item.title,
-      ...(item.allDay
-        ? allDayBlock(item.startAt, item.endAt, item.timeZone)
-        : timeGrid
-          ? quarterSpan(item.startAt, item.endAt)
-          : { start: new Date(item.startAt), end: new Date(item.endAt) }),
-      // The colour of the calendar it shows in for you, as you set it.
-      color: item.color,
-      // Solid, so an event reads the same over the grid and over another event.
-      variant: "filled",
-      payload: {
-        eventId: item.eventId,
-        occurrence:
-          item.originalStartAt === null
-            ? null
-            : {
-                originalStartAt: item.originalStartAt,
-                startAt: item.startAt,
-                endAt: item.endAt,
-                title: item.title,
-              },
-      },
-    }),
-  );
+  const events: ScheduleEventData[] = shown.map((item: Occurrence) => ({
+    id: item.id,
+    title: item.title,
+    ...(item.allDay
+      ? allDayBlock(item.startAt, item.endAt, item.timeZone)
+      : timeGrid
+        ? quarterSpan(item.startAt, item.endAt)
+        : { start: new Date(item.startAt), end: new Date(item.endAt) }),
+    // The colour of the calendar it shows in for you, as you set it.
+    color: item.color,
+    // Solid, so an event reads the same over the grid and over another event.
+    variant: "filled",
+    payload: {
+      kind: "event",
+      eventId: item.eventId,
+      hidden: item.hidden,
+      occurrence:
+        item.originalStartAt === null
+          ? null
+          : {
+              originalStartAt: item.originalStartAt,
+              startAt: item.startAt,
+              endAt: item.endAt,
+              title: item.title,
+            },
+    } satisfies ItemPayload,
+  }));
+  if (filters.showTasks) {
+    // Tasks with a due date, as all-day items on that day.
+    for (const task of tasks.data ?? []) {
+      if (!task.dueDate) continue;
+      const span = allDaySpan(task.dueDate, task.dueDate);
+      events.push({
+        id: `task:${task.id}`,
+        title: `${task.completedAt === null ? "☐" : "☑"} ${task.title}`,
+        ...allDayBlock(span.startAt, span.endAt, localTimeZone()),
+        color: "gray",
+        payload: { kind: "task", task } satisfies ItemPayload,
+      });
+    }
+  }
 
   const openNew = (initial: Opening["initial"]) =>
     setOpening({ eventId: null, occurrence: null, initial });
   const openEvent = (item: ScheduleEventData) => {
-    const payload = item.payload as
-      { eventId: string; occurrence: OpenedOccurrence | null } | undefined;
-    if (payload)
+    const payload = payloadOf(item);
+    if (payload?.kind === "task") setOpenTask(payload.task);
+    else if (payload)
       setOpening({
         eventId: payload.eventId,
         occurrence: payload.occurrence,
@@ -150,6 +214,16 @@ export function CalendarScreen() {
     if (opening?.eventId) await update.mutateAsync({ id: opening.eventId, ...input });
     else await create.mutateAsync(input);
   };
+
+  const filtersButton = (compact: boolean) => (
+    <FiltersButton
+      compact={compact}
+      filters={filters}
+      onChange={setFilters}
+      onReset={resetFilters}
+      calendars={calendars.data ?? []}
+    />
+  );
 
   return (
     <Box p="md">
@@ -199,6 +273,7 @@ export function CalendarScreen() {
               w={104}
               comboboxProps={{ width: 120, position: "bottom-end" }}
             />
+            {filtersButton(true)}
             <ActionIcon size={36} aria-label="New event" onClick={openNextHour}>
               <IconPlus />
             </ActionIcon>
@@ -207,9 +282,12 @@ export function CalendarScreen() {
       ) : (
         <Group justify="space-between" mb="sm">
           <Title order={2}>Calendar</Title>
-          <Button leftSection={<IconPlus />} onClick={openNextHour}>
-            New event
-          </Button>
+          <Group gap="xs">
+            {filtersButton(false)}
+            <Button leftSection={<IconPlus />} onClick={openNextHour}>
+              New event
+            </Button>
+          </Group>
         </Group>
       )}
       {narrow && shownView === "month" ? (
@@ -221,6 +299,20 @@ export function CalendarScreen() {
           defaultSelectedDate={date}
           renderHeader={() => null}
           onEventClick={openEvent}
+          renderEvent={(item, { children, ...props }) => {
+            const payload = payloadOf(item);
+            return (
+              <UnstyledButton
+                {...props}
+                style={{
+                  ...props.style,
+                  opacity: payload?.kind === "event" && payload.hidden ? 0.5 : undefined,
+                }}
+              >
+                {children}
+              </UnstyledButton>
+            );
+          }}
         />
       ) : (
         <Schedule
@@ -264,8 +356,10 @@ export function CalendarScreen() {
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
+            renderEvent: renderItem,
           }}
           weekViewProps={{
+            renderEvent: renderItem,
             classNames: classes,
             startTime: "06:00",
             endTime: "23:00",
@@ -275,7 +369,7 @@ export function CalendarScreen() {
             // The bubble with the time would cover a phone's narrow label column.
             withCurrentTimeBubble: !narrow,
           }}
-          monthViewProps={{ withHeader: !narrow }}
+          monthViewProps={{ withHeader: !narrow, renderEvent: renderItem }}
         />
       )}
       <EventModal
@@ -326,6 +420,29 @@ export function CalendarScreen() {
           opening?.eventId
             ? async (fromDay) => {
                 await stop.mutateAsync({ id: opening.eventId!, from: fromDay });
+              }
+            : undefined
+        }
+        onHide={
+          opening?.eventId
+            ? async (hidden) => {
+                await hide.mutateAsync({ id: opening.eventId!, hidden });
+              }
+            : undefined
+        }
+      />
+      <TaskModal
+        opened={openTask !== null}
+        onClose={() => setOpenTask(null)}
+        task={openTask}
+        onSave={async (values) => {
+          if (openTask)
+            await taskActions.update.mutateAsync({ id: openTask.id, ...values });
+        }}
+        onRemove={
+          openTask
+            ? async () => {
+                await taskActions.remove.mutateAsync({ id: openTask.id });
               }
             : undefined
         }

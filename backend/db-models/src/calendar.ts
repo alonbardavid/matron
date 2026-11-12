@@ -143,6 +143,24 @@ export const calendarEventException = sqliteTable(
   ],
 );
 
+/**
+ * An event a member hid from their own calendar: every occurrence of it, for
+ * them alone. Others still see it; they can show hidden events and unhide it.
+ */
+export const calendarEventHidden = sqliteTable(
+  "calendar_event_hidden",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_event_hidden_event_user").on(table.eventId, table.userId),
+    index("calendar_event_hidden_user_idx").on(table.userId),
+  ],
+);
+
 export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const;
 export type GoogleConnectionStatus = (typeof GOOGLE_CONNECTION_STATUSES)[number];
 

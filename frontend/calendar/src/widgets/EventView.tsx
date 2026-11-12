@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Box,
+  Button,
   Group,
   Select,
   Stack,
@@ -15,6 +17,7 @@ import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 import {
   IconCalendar,
+  IconEyeOff,
   IconNotes,
   IconPencil,
   IconRepeat,
@@ -37,6 +40,8 @@ interface EventViewProps {
   onPlace?: (calendarId: string) => void;
   /** Absent when nothing about the event is the caller's to change. */
   onEdit?: () => void;
+  /** Hides the event from the caller's own calendar, or shows it again. */
+  onHide?: (hidden: boolean) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -78,6 +83,7 @@ export function EventView({
   placeIn,
   onPlace,
   onEdit,
+  onHide,
   onClose,
 }: EventViewProps) {
   const { nameOf, avatarUrlOf } = useHouseholdMembers();
@@ -96,6 +102,21 @@ export function EventView({
   return (
     <Stack gap="md">
       <Group justify="flex-end" gap={4}>
+        {onHide && !event.hidden && (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={event.rrule ? "Hide series" : "Hide event"}
+            title={
+              event.rrule
+                ? "Hide every occurrence from your calendar"
+                : "Hide from your calendar"
+            }
+            onClick={() => void onHide(true)}
+          >
+            <IconEyeOff size={18} />
+          </ActionIcon>
+        )}
         {onEdit && (
           <ActionIcon
             variant="subtle"
@@ -110,6 +131,19 @@ export function EventView({
           <IconX size={18} />
         </ActionIcon>
       </Group>
+      {event.hidden && onHide && (
+        <Alert color="gray" variant="light" icon={<IconEyeOff size={18} />} p="xs">
+          <Group justify="space-between" gap="xs" wrap="nowrap">
+            <Text size="sm">
+              Hidden from your calendar
+              {event.rrule ? ", every occurrence" : ""}; others still see it.
+            </Text>
+            <Button size="compact-sm" variant="light" onClick={() => void onHide(false)}>
+              Unhide
+            </Button>
+          </Group>
+        </Alert>
+      )}
       <Row
         icon={
           <Box

@@ -17,6 +17,7 @@ import {
   calendar,
   calendarEvent,
   calendarEventException,
+  calendarEventHidden,
   calendarEventShare,
   googleCalendarConnection,
   googleCalendarWatch,
@@ -603,6 +604,7 @@ async function mirrorCalendar(
   for (const ids of chunks(gone, ID_CHUNK)) {
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
+      db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, ids)),
       db
         .delete(calendarEventException)
         .where(inArray(calendarEventException.eventId, ids)),

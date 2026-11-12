@@ -3,6 +3,7 @@ import {
   createEvent,
   editOccurrence,
   getEvent,
+  hideEvent,
   listOccurrences,
   placeEvent,
   removeEvent,
@@ -50,6 +51,9 @@ export const calendar = app.calendar.router({
   ),
   cancelOccurrence: app.calendar.cancelOccurrence.handler(({ context, input }) =>
     cancelOccurrence(context.principal, input.id, input.originalStartAt),
+  ),
+  hide: app.calendar.hide.handler(({ context, input }) =>
+    hideEvent(context.principal, input.id, input.hidden),
   ),
   place: app.calendar.place.handler(({ context, input }) =>
     placeEvent(context.principal, input.id, input.calendarId),
