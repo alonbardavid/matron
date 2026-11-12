@@ -12,11 +12,14 @@ import {
   calendarEventShare,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
-import { knownUserIds } from "@backend/household/users";
+import { knownUserIds, listHouseholdUsers } from "@backend/household/users";
 import {
   CALENDAR_COLORS,
+  EVENT_RESPONSES,
   type Attachment,
   type CalendarEvent,
+  type EventResponse,
+  type ExternalGuest,
   type CalendarEventCreate,
   type CalendarEventUpdate,
   type Occurrence,
@@ -170,6 +173,7 @@ export async function listOccurrences(
     if (!placement) continue;
     const labelIds = labels.get(row.id) ?? [];
     const isHidden = hidden.has(row.id);
+    const response = responseOf(row, principal.userId, shareOf.get(row.id));
     if (!row.rrule) {
       out.push(
         toOccurrence(row, cal, placement, {
@@ -183,6 +187,7 @@ export async function listOccurrences(
           changed: false,
           labelIds,
           hidden: isHidden,
+          response,
         }),
       );
       continue;
@@ -207,6 +212,7 @@ export async function listOccurrences(
           changed: window.changed,
           labelIds,
           hidden: isHidden,
+          response,
         }),
       );
     }
@@ -265,6 +271,55 @@ export async function detachFromEvent(
   eventPermissions.require(principal, "update");
   requireEditable(await getEvent(principal, id));
   await detach(principal, branch, id, attachmentId);
+  return getEvent(principal, id);
+}
+
+/**
+ * The caller answers an event they made or were given, for every occurrence.
+ * Yes and maybe make them an attendee; no keeps them invited, declined.
+ */
+export async function replyToEvent(
+  principal: Principal,
+  id: string,
+  response: Exclude<EventResponse, "needs_action">,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "view");
+  const current = await getEvent(principal, id);
+  const mine = current.creatorId === principal.userId;
+  if (!mine && !current.sharedWith.includes(principal.userId)) {
+    throw new DomainError(
+      "FORBIDDEN",
+      "Only whoever made the event, or someone it was shared with, answers it",
+    );
+  }
+  const db = getDb();
+  const going = response !== "declined";
+  const existing = await db
+    .select({ id: calendarEventShare.id })
+    .from(calendarEventShare)
+    .where(
+      and(
+        eq(calendarEventShare.eventId, id),
+        eq(calendarEventShare.userId, principal.userId),
+      ),
+    )
+    .get();
+  if (existing) {
+    await db
+      .update(calendarEventShare)
+      .set({ response, ...(going && { attendee: true }) })
+      .where(eq(calendarEventShare.id, existing.id));
+  } else {
+    // The creator, not listed among those attending, answers all the same.
+    await db.insert(calendarEventShare).values({
+      id: newEntityId("CALENDAR_EVENT_SHARE"),
+      eventId: id,
+      userId: principal.userId,
+      attendee: going,
+      response,
+    });
+  }
+  log.info("event answered", { eventId: id, response, userId: principal.userId });
   return getEvent(principal, id);
 }
 
@@ -378,7 +433,7 @@ export async function createEvent(
       rrule: storedRule(input.rrule ?? null, input.timeZone, input.allDay),
     })
     .returning();
-  await writeShares(id, sharedWith, attendees);
+  await writeShares(id, principal.userId, sharedWith, attendees);
   if (input.labelIds?.length) await setEventLabels(id, input.labelIds);
   log.info("event created", {
     eventId: id,
@@ -458,15 +513,15 @@ export async function updateEvent(
       changes.sharedWith ?? current.sharedWith,
       changes.attendees ?? current.attendees,
     );
-    // Each remaining recipient keeps the calendar they placed it in.
-    const placed = new Map(
+    // Each remaining recipient keeps the calendar they placed it in, and their answer.
+    const kept = new Map(
       ((await sharesOf([id])).get(id) ?? []).map((share) => [
         share.userId,
-        share.calendarId,
+        { calendarId: share.calendarId, response: share.response },
       ]),
     );
     await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
-    await writeShares(id, sharedWith, attendees, placed);
+    await writeShares(id, current.creatorId, sharedWith, attendees, kept);
   }
   if (changes.labelIds !== undefined) await setEventLabels(id, changes.labelIds);
   log.info("event updated", { eventId: id, userId: principal.userId });
@@ -677,7 +732,23 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     labelIds: labels.get(row.id) ?? [],
     hidden: hidden !== undefined,
     attachments: attachments.get(row.id) ?? [],
+    externalGuests: await externalGuestsOf(principal, row),
   });
+}
+
+/** An imported event's guests, each matched by email to a household member where one is. */
+async function externalGuestsOf(
+  principal: Principal,
+  row: EventRow,
+): Promise<ExternalGuest[]> {
+  const guests = parseGuests(row.externalGuests);
+  if (guests.length === 0) return [];
+  const members = await listHouseholdUsers(principal);
+  const byEmail = new Map(members.map((m) => [m.email.toLowerCase(), m.id]));
+  return guests.map(({ self: _self, ...guest }) => ({
+    ...guest,
+    userId: byEmail.get(guest.email.toLowerCase()) ?? null,
+  }));
 }
 
 function checkTimes(startAt: number, endAt: number): void {
@@ -709,11 +780,18 @@ async function resolvePeople(
   return { sharedWith: everyone, attendees: attending };
 }
 
+/** What a recipient keeps when the people on an event change: where they placed it, and their answer. */
+interface KeptShare {
+  calendarId: string | null;
+  response: EventResponse;
+}
+
 async function writeShares(
   eventId: string,
+  creatorId: string,
   sharedWith: string[],
   attendees: string[],
-  placed: Map<string, string | null> = new Map(),
+  kept: Map<string, KeptShare> = new Map(),
 ): Promise<void> {
   const people = new Set([...sharedWith, ...attendees]);
   if (people.size === 0) return;
@@ -725,7 +803,11 @@ async function writeShares(
         eventId,
         userId,
         attendee: attendees.includes(userId),
-        calendarId: placed.get(userId) ?? null,
+        calendarId: kept.get(userId)?.calendarId ?? null,
+        // Whoever made it is going; everyone else has yet to say.
+        response:
+          kept.get(userId)?.response ??
+          (userId === creatorId ? ("accepted" as const) : ("needs_action" as const)),
       })),
     );
 }
@@ -813,6 +895,7 @@ function toEvent(
     labelIds: string[];
     hidden: boolean;
     attachments: Attachment[];
+    externalGuests: ExternalGuest[];
   },
 ): CalendarEvent {
   return {
@@ -830,6 +913,10 @@ function toEvent(
     exceptions: extra.exceptions.map(toException),
     sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
     attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
+    replies: Object.fromEntries(
+      shares.filter((s) => s.attendee).map((s) => [s.userId, s.response]),
+    ),
+    externalGuests: extra.externalGuests,
     calendarId: row.calendarId,
     shownIn: placement.shownIn,
     access: placement.access,
@@ -854,6 +941,57 @@ interface OccurrenceFields {
   changed: boolean;
   labelIds: string[];
   hidden: boolean;
+  response: EventResponse | null;
+}
+
+/**
+ * The caller's answer to an event: theirs when they attend. For an event
+ * imported to their own calendar, their answer at the source.
+ */
+function responseOf(
+  row: EventRow,
+  userId: string,
+  share: ShareRow | undefined,
+): EventResponse | null {
+  if (row.creatorId === userId) {
+    const self = parseGuests(row.externalGuests).find((guest) => guest.self);
+    return self?.response ?? share?.response ?? "accepted";
+  }
+  return share?.attendee ? share.response : null;
+}
+
+interface StoredGuest {
+  email: string;
+  name: string | null;
+  response: EventResponse;
+  organizer: boolean;
+  /** Whether this guest is the calendar's owner, who imported the event. */
+  self: boolean;
+}
+
+/** An imported event's guests as stored; anything malformed is left out. */
+function parseGuests(value: string | null): StoredGuest[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item: Partial<StoredGuest>) =>
+      typeof item?.email === "string" &&
+      (EVENT_RESPONSES as readonly string[]).includes(item.response ?? "")
+        ? [
+            {
+              email: item.email,
+              name: typeof item.name === "string" ? item.name : null,
+              response: item.response as EventResponse,
+              organizer: item.organizer === true,
+              self: item.self === true,
+            },
+          ]
+        : [],
+    );
+  } catch {
+    return [];
+  }
 }
 
 function toOccurrence(
