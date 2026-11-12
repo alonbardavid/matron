@@ -1002,6 +1002,7 @@ function toOccurrence(
 ): Occurrence {
   return {
     ...fields,
+    editable: placement.access === "edit" && (cal?.source ?? "matron") === "matron",
     eventId: row.id,
     allDay: row.allDay,
     timeZone: row.timeZone,
