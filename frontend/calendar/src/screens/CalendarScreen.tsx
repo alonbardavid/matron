@@ -38,6 +38,7 @@ import {
   useEvent,
   useEventActions,
   useLabels,
+  useMoveEvent,
   useOccurrences,
 } from "../useCalendar";
 import { FiltersButton } from "../widgets/FiltersButton";
@@ -99,6 +100,11 @@ type ItemPayload =
       location: string;
       /** The caller said they are not going: drawn crossed out. */
       declined: boolean;
+      /** Whether the caller may drag it to move or resize it. */
+      editable: boolean;
+      allDay: boolean;
+      startAt: number;
+      endAt: number;
     }
   | { kind: "task"; task: Task };
 
@@ -193,6 +199,10 @@ export function CalendarScreen() {
       hidden: item.hidden,
       location: item.location,
       declined: item.response === "declined",
+      editable: item.editable,
+      allDay: item.allDay,
+      startAt: item.startAt,
+      endAt: item.endAt,
       occurrence:
         item.originalStartAt === null
           ? null
@@ -259,6 +269,70 @@ export function CalendarScreen() {
     for (const file of pendingFiles) await attachFile.mutateAsync({ id: made.id, file });
     for (const link of pendingLinks)
       await attachLink.mutateAsync({ id: made.id, url: link.url, title: link.title });
+  };
+
+  const moveEvent = useMoveEvent(window.from, window.to);
+  /**
+   * Drops an item where it was dragged (`move`), or stretches it to its new
+   * edges (`resize`). The calendar draws a timed event over whole quarters of
+   * an hour, so its times shift by as much as its block did rather than taking
+   * the block's edges: 7:05 to 7:12 dragged an hour on is 8:05 to 8:12. An
+   * all-day event keeps its length in days; a task takes the day as its due date.
+   */
+  const dropped = (
+    kind: "move" | "resize",
+    {
+      event: item,
+      newStart,
+      newEnd,
+    }: {
+      event: ScheduleEventData;
+      newStart: string;
+      newEnd: string;
+    },
+  ) => {
+    const payload = payloadOf(item);
+    if (payload?.kind === "task") {
+      const day = toDayString(fromDateTimeString(newStart));
+      if (day !== payload.task.dueDate)
+        taskActions.update.mutate({ id: payload.task.id, dueDate: day });
+      return;
+    }
+    if (!payload?.editable) return;
+    const shownStart = new Date(item.start).getTime();
+    const shownEnd = new Date(item.end).getTime();
+    const startShift = fromDateTimeString(newStart) - shownStart;
+    const endShift = fromDateTimeString(newEnd) - shownEnd;
+    let startAt: number;
+    let endAt: number;
+    if (payload.allDay) {
+      startAt = dayjs(newStart).startOf("day").valueOf();
+      endAt = startAt + (payload.endAt - payload.startAt);
+    } else if (kind === "move") {
+      startAt = payload.startAt + startShift;
+      endAt = payload.endAt + startShift;
+    } else {
+      // Only the edge that was pulled moves.
+      startAt = startShift ? fromDateTimeString(newStart) : payload.startAt;
+      endAt = endShift ? fromDateTimeString(newEnd) : payload.endAt;
+      if (endAt <= startAt) return;
+    }
+    if (startAt === payload.startAt && endAt === payload.endAt) return;
+    void moveEvent({
+      occurrenceId: String(item.id),
+      eventId: payload.eventId,
+      originalStartAt: payload.occurrence?.originalStartAt ?? null,
+      startAt,
+      endAt,
+    });
+  };
+  const draggable = (item: ScheduleEventData) => {
+    const payload = payloadOf(item);
+    return payload?.kind === "task" || (payload?.kind === "event" && payload.editable);
+  };
+  const resizable = (item: ScheduleEventData) => {
+    const payload = payloadOf(item);
+    return payload?.kind === "event" && payload.editable && !payload.allDay;
   };
 
   const filtersButton = (compact: boolean) => (
@@ -371,6 +445,12 @@ export function CalendarScreen() {
           onViewChange={(next) => setView(next)}
           layout="default"
           withDragSlotSelect
+          withEventsDragAndDrop
+          canDragEvent={draggable}
+          onEventDrop={(data) => dropped("move", data)}
+          withEventResize
+          canResizeEvent={resizable}
+          onEventResize={(data) => dropped("resize", data)}
           onTimeSlotClick={({ slotStart, slotEnd }) =>
             openNew({
               allDay: false,
