@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runCleanupSteps } from "./cleanup-steps.js";
+import { d1Find, d1Restore } from "./cloudflare.js";
 import {
   deployPreview,
   deployProduction,
@@ -269,6 +270,38 @@ export class Steps {
 
   async deployProduction(): Promise<void> {
     await deployProduction(this.deployContext());
+  }
+
+  /**
+   * Takes production back to where the branch was cut. Main is moved to
+   * `branch.baseCommit` and that version installed; only then is the
+   * production database restored to when the branch was created, main pushed
+   * with force, and production deployed. Everything after that point goes:
+   * later commits, and every row written since, the router's included.
+   */
+  async revert(): Promise<void> {
+    const { branch, cloudflare } = this.run;
+    const g = await this.clone();
+    await git.checkout(g, "main");
+    const head = await git.revParse(g);
+    progress(`moving main back to ${branch.baseCommit.slice(0, 12)}`);
+    await git.revertTo(g, branch.baseCommit);
+    await this.install();
+    const database = await d1Find(
+      wranglerContext(this.deployContext()),
+      cloudflare.productionDatabaseName,
+    );
+    if (!database) {
+      throw new BuilderError(
+        `The production database ${cloudflare.productionDatabaseName} was not found.`,
+      );
+    }
+    const at = new Date(branch.createdAt);
+    progress(`restoring the production database to ${at.toISOString()}`);
+    await d1Restore(this.run, database, at);
+    await git.pushRevert(g, "main", head);
+    progress("main pushed");
+    await this.deployProduction();
   }
 
   /** Removes what the branch leaves behind (`cleanup-steps.ts` lists the cleanup steps); each tolerates failure. */

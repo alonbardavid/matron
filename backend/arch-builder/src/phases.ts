@@ -43,7 +43,7 @@ export interface PhaseContext {
  * agent (as many turns as the agent needs; a question parks the run), verify
  * with up to three fix turns, commit-push, deploy-preview. A merge goes
  * merge-main, install, deploy-production, cleanup. An abandon goes
- * prepare-cleanup, cleanup.
+ * prepare-cleanup, cleanup. A revert is the revert step alone.
  */
 export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next> {
   const { run } = at;
@@ -70,6 +70,12 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
           await ctx.step("prepare-cleanup");
           at.phase = "cleanup";
           return "continue";
+        case "revert":
+          await ctx.step("revert");
+          await ctx.say("Reverted: production is back to where this branch was cut.");
+          // The branch's session is archived, so the status changes nothing there.
+          await ctx.finish("deployed");
+          return "end";
       }
       break;
     }

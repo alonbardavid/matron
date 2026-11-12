@@ -44,6 +44,11 @@ test.describe("troubleshooting", () => {
     await page.getByRole("button", { name: "Check updates" }).click();
     await expect(page.getByText("Could not check upstream")).toBeVisible();
     await expect(page.getByText("The code repository is not available")).toBeVisible();
+    // Only a merged branch can be reverted.
+    const revert = await page.request.post(
+      "/api/arch/troubleshooting/branches/unknown/revert",
+    );
+    expect(revert.status()).toBe(404);
   });
 
   test("a member has no troubleshooting page", async ({ page }) => {
@@ -57,5 +62,9 @@ test.describe("troubleshooting", () => {
     expect(branches.status()).toBe(403);
     const upstream = await page.request.post("/api/arch/upstream/check");
     expect(upstream.status()).toBe(403);
+    const revert = await page.request.post(
+      "/api/arch/troubleshooting/branches/any/revert",
+    );
+    expect(revert.status()).toBe(403);
   });
 });

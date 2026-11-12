@@ -9,7 +9,7 @@
  * agent's CLI in the checkout.
  */
 
-export type RunMode = "build" | "continue" | "merge" | "abandon";
+export type RunMode = "build" | "continue" | "merge" | "abandon" | "revert";
 
 export type BuilderRun = {
   mode: RunMode;
@@ -20,6 +20,7 @@ export type BuilderRun = {
     previewName: string;
     databaseName: string;
     baseCommit: string;
+    createdAt: number;
   };
   repository: { remote: string; token: string };
   cloudflare: {
@@ -48,7 +49,8 @@ export type StepName =
   | "deploy-preview"
   | "merge-main"
   | "deploy-production"
-  | "cleanup";
+  | "cleanup"
+  | "revert";
 
 /** A file the user attached to a message for the agent: written to the attachments folder, named in the prompt. */
 export interface BuilderFile {

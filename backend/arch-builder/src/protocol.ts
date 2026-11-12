@@ -34,12 +34,14 @@
  *   merge-main         fast-forward main onto the branch and push it (fails when main diverged) → {@link MergeMainResult}
  *   deploy-production  build, migrate the production D1, deploy production
  *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
+ *   revert             take production back to where the branch was cut: main to `branch.baseCommit`
+ *                      with force, the production D1 to `branch.createdAt`, then deploy production
  *
  * The object sequences them: a build or a continue runs prepare, install,
  * agent turns until the agent is done (a question parks the run as `waiting`
  * until the user replies), verify with up to three fix turns, commit-push,
  * deploy-preview; a merge runs merge-main, install, deploy-production,
- * cleanup; an abandon runs prepare-cleanup, cleanup.
+ * cleanup; an abandon runs prepare-cleanup, cleanup; a revert runs revert.
  *
  * Status rules
  * ------------
@@ -56,7 +58,7 @@
 
 import type { ReviewReport } from "@shared/contract/arch/review";
 
-export type RunMode = "build" | "continue" | "merge" | "abandon";
+export type RunMode = "build" | "continue" | "merge" | "abandon" | "revert";
 
 export type BuilderStatus =
   | "idle"
@@ -82,6 +84,8 @@ export interface BuilderBranch {
   databaseName: string;
   /** Main's head when the branch was cut. */
   baseCommit: string;
+  /** When the branch was cut, in ms. */
+  createdAt: number;
 }
 
 export interface BuilderRepository {
@@ -138,7 +142,12 @@ export interface AbandonRun extends RunBase {
   mode: "abandon";
 }
 
-export type BuilderRun = BuildRun | ContinueRun | MergeRun | AbandonRun;
+/** Takes production back to where a merged branch was cut. */
+export interface RevertRun extends RunBase {
+  mode: "revert";
+}
+
+export type BuilderRun = BuildRun | ContinueRun | MergeRun | AbandonRun | RevertRun;
 
 export type StepName =
   | "prepare-build"
@@ -150,7 +159,8 @@ export type StepName =
   | "deploy-preview"
   | "merge-main"
   | "deploy-production"
-  | "cleanup";
+  | "cleanup"
+  | "revert";
 
 /**
  * A file the user attached to a message for the agent: the daemon writes it

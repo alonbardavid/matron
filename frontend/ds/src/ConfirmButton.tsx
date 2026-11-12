@@ -11,6 +11,13 @@ interface ConfirmButtonProps extends ButtonProps {
   confirmLabel?: string;
 }
 
+/**
+ * The widest the question grows before its text wraps: a comfortable line on
+ * a wide screen, and the screen less a margin on a narrow one. A short
+ * question keeps its own width.
+ */
+const MAX_WIDTH = "min(22rem, calc(100vw - 2rem))";
+
 export function ConfirmButton({
   children,
   onConfirm,
@@ -50,7 +57,7 @@ export function ConfirmButton({
           {children}
         </Button>
       </Popover.Target>
-      <Popover.Dropdown>
+      <Popover.Dropdown maw={MAX_WIDTH}>
         <Stack gap="xs">
           <Text size="sm">{message}</Text>
           <Group justify="flex-end" gap="xs">
