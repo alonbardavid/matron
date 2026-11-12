@@ -52,29 +52,6 @@ export const troubleshootingBranchSchema = branchSchema.extend({
 });
 export type TroubleshootingBranch = z.infer<typeof troubleshootingBranchSchema>;
 
-export const mergeSchema = z.object({
-  /** The branch's id. */
-  id: z.string(),
-  name: z.string(),
-  userName: z.string(),
-  sessionTitle: z.string().nullable(),
-  createdAt: z.number(),
-  mergedAt: z.number().nullable(),
-  /** Main before the merge: a revert takes main back to it. */
-  baseCommit: z.string(),
-  headCommit: z.string().nullable(),
-  revertStatus: z.enum(["reverting", "reverted", "failed"]).nullable(),
-  revertError: z.string().nullable(),
-  revertedAt: z.number().nullable(),
-  /** The last moment a revert may start: Time Travel reaches thirty days back. */
-  revertableUntil: z.number(),
-  /** Why it cannot be reverted now, or null when it can. */
-  refusal: z.string().nullable(),
-  /** The later merges a revert would take out with it, by name. */
-  later: z.array(z.string()),
-});
-export type TroubleshootingMerge = z.infer<typeof mergeSchema>;
-
 /** A listing, or the problem that stopped it. */
 const listOf = <T extends z.ZodType>(item: T) =>
   z.object({ items: z.array(item), problem: apiProblemSchema.nullable() });
@@ -98,18 +75,14 @@ export const troubleshootingContract = {
     list: oc
       .route({ method: "GET", path: "/api/arch/troubleshooting/branches" })
       .output(listOf(troubleshootingBranchSchema)),
-  },
-  merges: {
-    list: oc
-      .route({ method: "GET", path: "/api/arch/troubleshooting/merges" })
-      .output(listOf(mergeSchema)),
     /**
-     * Reverts a merged branch: main returns to the commit before it and is
-     * deployed, and the production database to when the branch was created.
-     * Later merges go with it. Starts the run; the branch row tells how it went.
+     * Takes production back to where a merged branch was cut: main returns to
+     * the commit the branch started from, the production database to when the
+     * branch was created, and production is deployed again. Answers once the
+     * builder has it; the progress is in the branch's build chat.
      */
     revert: oc
-      .route({ method: "POST", path: "/api/arch/troubleshooting/merges/{id}/revert" })
+      .route({ method: "POST", path: "/api/arch/troubleshooting/branches/{id}/revert" })
       .input(z.object({ id: z.string() }))
       .output(doneSchema),
   },

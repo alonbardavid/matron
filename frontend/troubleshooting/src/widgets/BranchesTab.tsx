@@ -26,6 +26,7 @@ import {
 } from "@frontend/upstream/widgets/UpstreamUpdates";
 import { ProblemNotice } from "./ProblemNotice";
 import { RefreshButton } from "./RefreshButton";
+import { RevertButton } from "./RevertButton";
 import { TableLoading } from "./TableLoading";
 
 const column = createColumnHelper<TroubleshootingBranch>();
@@ -74,7 +75,7 @@ export function BranchesTab() {
         header: "Status",
         cell: ({ row }) => (
           <Group gap={4} wrap="nowrap">
-            <BranchStatusBadge branch={row.original} />
+            <BranchStatusBadge status={row.original.status} />
             {row.original.behindMain && (
               <Badge size="xs" variant="light" color="yellow">
                 behind main
@@ -94,16 +95,11 @@ export function BranchesTab() {
       column.accessor("updatedAt", {
         header: "Last change",
         cell: ({ row }) => {
-          const { revertedAt, archivedAt, updatedAt } = row.original;
-          const at = revertedAt ?? archivedAt ?? updatedAt;
+          const at = row.original.archivedAt ?? row.original.updatedAt;
           return (
             <Tooltip label={formatWhen(at)}>
               <Text size="sm">
-                {revertedAt !== null
-                  ? "reverted "
-                  : archivedAt !== null
-                    ? "archived "
-                    : ""}
+                {row.original.archivedAt !== null ? "archived " : ""}
                 {formatAgo(at, now)}
               </Text>
             </Tooltip>
@@ -124,6 +120,7 @@ export function BranchesTab() {
                 Open
               </Anchor>
             )}
+            {row.original.status === "merged" && <RevertButton branch={row.original} />}
             {row.original.sessionViewable ? (
               <Button
                 size="xs"

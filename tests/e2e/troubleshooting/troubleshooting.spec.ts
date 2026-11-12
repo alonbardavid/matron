@@ -1,6 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { executeSql } from "../../d1";
-import { mergedBranchSql } from "../../seed-sql";
 import { navLink, signIn } from "../helpers";
 import { MEMBER, OWNER } from "../users";
 
@@ -46,56 +44,11 @@ test.describe("troubleshooting", () => {
     await page.getByRole("button", { name: "Check updates" }).click();
     await expect(page.getByText("Could not check upstream")).toBeVisible();
     await expect(page.getByText("The code repository is not available")).toBeVisible();
-  });
-
-  test("merged branches are listed, and a revert the database cannot reach fails visibly", async ({
-    page,
-  }) => {
-    const suffix = Date.now().toString(36);
-    const recent = `pantry-${suffix}`;
-    const old = `ancient-${suffix}`;
-    executeSql([
-      mergedBranchSql({ ownerEmail: OWNER.email, name: recent, createdDaysAgo: 2 }),
-      mergedBranchSql({ ownerEmail: OWNER.email, name: old, createdDaysAgo: 40 }),
-    ]);
-    await signIn(page, OWNER);
-    await page.goto("/troubleshooting?tab=merges");
-    const recentRow = page.getByRole("row").filter({ hasText: recent });
-    const oldRow = page.getByRole("row").filter({ hasText: old });
-    // Time Travel keeps thirty days: the older branch cannot be reverted.
-    await expect(oldRow.getByRole("button", { name: "Revert" })).toBeDisabled();
-    await recentRow.getByRole("button", { name: "Revert" }).click();
-    const confirm = page.locator(".mantine-Popover-dropdown");
-    await expect(confirm).toContainText(`Revert ${recent}?`);
-    await expect(confirm).toContainText("Users, sign-ins, build sessions");
-    await confirm.getByRole("button", { name: "Revert" }).click();
-    // Locally there is no API token: the restore point check refuses before anything changes.
-    await expect(page.getByText(/no Cloudflare API token/).first()).toBeVisible();
-    await expect(recentRow.getByText("failed")).toBeVisible();
-  });
-
-  test("a reverted branch stays in the branch list, marked reverted", async ({
-    page,
-  }) => {
-    const suffix = Date.now().toString(36);
-    const kept = `shelf-${suffix}`;
-    const gone = `ladder-${suffix}`;
-    executeSql([
-      mergedBranchSql({ ownerEmail: OWNER.email, name: kept, createdDaysAgo: 5 }),
-      mergedBranchSql({
-        ownerEmail: OWNER.email,
-        name: gone,
-        createdDaysAgo: 3,
-        reverted: true,
-      }),
-    ]);
-    await signIn(page, OWNER);
-    await page.goto("/troubleshooting?tab=branches&archived=1");
-    const keptRow = page.getByRole("row").filter({ hasText: kept });
-    const goneRow = page.getByRole("row").filter({ hasText: gone });
-    await expect(keptRow.getByText("merged", { exact: true })).toBeVisible();
-    await expect(goneRow.getByText("reverted", { exact: true })).toBeVisible();
-    await expect(goneRow.getByText("merged", { exact: true })).toHaveCount(0);
+    // Only a merged branch can be reverted.
+    const revert = await page.request.post(
+      "/api/arch/troubleshooting/branches/unknown/revert",
+    );
+    expect(revert.status()).toBe(404);
   });
 
   test("a member has no troubleshooting page", async ({ page }) => {
@@ -109,7 +62,9 @@ test.describe("troubleshooting", () => {
     expect(branches.status()).toBe(403);
     const upstream = await page.request.post("/api/arch/upstream/check");
     expect(upstream.status()).toBe(403);
-    const revert = await page.request.post("/api/arch/troubleshooting/merges/any/revert");
+    const revert = await page.request.post(
+      "/api/arch/troubleshooting/branches/any/revert",
+    );
     expect(revert.status()).toBe(403);
   });
 });

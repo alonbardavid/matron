@@ -25,11 +25,6 @@ export const branchSchema = z.object({
   status: z.enum(BRANCH_STATUSES),
   /** Set once merged or abandoned: the branch is history, shown only on request. */
   archivedAt: z.number().nullable(),
-  /**
-   * Set once a revert took the branch back out of production: its own, or the
-   * revert of a branch merged before it. The branch stays listed as history.
-   */
-  revertedAt: z.number().nullable(),
   /** Main has moved since the branch last took it in: it must update before it can merge. */
   behindMain: z.boolean(),
   type: z.enum(BRANCH_TYPES),

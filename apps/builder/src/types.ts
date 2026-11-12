@@ -20,6 +20,7 @@ export type BuilderRun = {
     previewName: string;
     databaseName: string;
     baseCommit: string;
+    createdAt: number;
   };
   repository: { remote: string; token: string };
   cloudflare: {
@@ -49,7 +50,7 @@ export type StepName =
   | "merge-main"
   | "deploy-production"
   | "cleanup"
-  | "revert-main";
+  | "revert";
 
 /** A file the user attached to a message for the agent: written to the attachments folder, named in the prompt. */
 export interface BuilderFile {
@@ -124,7 +125,6 @@ export type PrepareContinueResult = { sync: string };
 export type VerifyResult = { failure: { label: string; output: string } | null };
 export type CommitPushResult = { committed: boolean };
 export type MergeMainResult = { headCommit: string };
-export type RevertMainResult = { headCommit: string };
 
 export type DeployResult = {
   previewUrl: string;

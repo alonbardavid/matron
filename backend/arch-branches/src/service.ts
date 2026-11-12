@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { and, desc, eq, gt, isNull, like, ne, or } from "drizzle-orm";
+import { and, desc, eq, isNull, like } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
@@ -9,7 +9,6 @@ import {
   branches,
   type BranchStatus,
   type BranchType,
-  type RevertStatus,
 } from "@backend/db-models/arch-branches";
 import { buildSessions } from "@backend/db-models/arch-sessions";
 import { getDb } from "@backend/db-models/db";
@@ -33,23 +32,7 @@ export interface BranchRow {
   type: BranchType;
   status: BranchStatus;
   archivedAt: Date | null;
-  revertStatus: RevertStatus | null;
-  revertError: string | null;
-  revertedAt: Date | null;
   createdAt: Date;
-}
-
-/**
- * How far back the production database can be restored: D1 Time Travel keeps
- * thirty days. A revert must start an hour inside them, so the restore point is
- * still there when the run reaches it.
- */
-export const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60_000;
-const RESTORE_MARGIN_MS = 60 * 60_000;
-
-/** The last moment a revert of a branch created at `createdAt` may start. */
-export function revertableUntil(createdAt: Date): number {
-  return createdAt.getTime() + RESTORE_WINDOW_MS - RESTORE_MARGIN_MS;
 }
 
 /**
@@ -208,12 +191,6 @@ export async function beginMerge(
   if (branch.status !== "ready") {
     throw new DomainError("CONFLICT", "The branch is not ready to merge");
   }
-  if (await revertUnderWay()) {
-    throw new DomainError(
-      "CONFLICT",
-      "A revert is under way; merge once it has finished",
-    );
-  }
   if (branch.baseCommit !== mainHead) {
     log.info("merge refused: main moved", { branchId: id });
     throw new DomainError(
@@ -273,152 +250,6 @@ export async function markReady(id: string): Promise<void> {
     .where(eq(branches.id, id));
 }
 
-// ── Reverts ───────────────────────────────────────────────────────────────────
-
-export interface MergedBranchRow extends BranchRow {
-  userName: string;
-  sessionTitle: string | null;
-}
-
-/** Every merged branch, the latest merge first, with who made it. */
-export async function listMerged(): Promise<MergedBranchRow[]> {
-  const rows = await getDb()
-    .select({ branch: branches, userName: user.name, sessionTitle: buildSessions.title })
-    .from(branches)
-    .innerJoin(user, eq(user.id, branches.userId))
-    .leftJoin(buildSessions, eq(buildSessions.id, branches.buildSessionId))
-    .where(eq(branches.status, "merged"))
-    .orderBy(desc(branches.archivedAt));
-  return rows.map(({ branch, userName, sessionTitle }) => ({
-    ...branch,
-    userName,
-    sessionTitle,
-  }));
-}
-
-/**
- * The merges after `branch` still on main: going back to before `branch`
- * takes them out too.
- */
-export async function laterMerges(branch: BranchRow): Promise<BranchRow[]> {
-  if (!branch.archivedAt) return [];
-  return getDb()
-    .select()
-    .from(branches)
-    .where(
-      and(
-        eq(branches.status, "merged"),
-        gt(branches.archivedAt, branch.archivedAt),
-        or(isNull(branches.revertStatus), ne(branches.revertStatus, "reverted")),
-      ),
-    )
-    .orderBy(desc(branches.archivedAt));
-}
-
-/**
- * Why `branch` cannot be reverted now, or null when it can. `builderActive`
- * says whether its builder is running: a revert marked under way whose
- * builder is idle stopped without reporting, and may be started again.
- */
-export async function revertRefusal(
-  branch: BranchRow,
-  builderActive: boolean,
-  now = Date.now(),
-): Promise<string | null> {
-  if (branch.status !== "merged") return "Only a merged branch can be reverted";
-  if (branch.revertStatus === "reverted") return "Already reverted";
-  if (branch.revertStatus === "reverting" && builderActive) return "Being reverted";
-  if (now > revertableUntil(branch.createdAt)) {
-    return "Created more than 30 days ago: the database cannot be restored that far back";
-  }
-  const [busy] = await getDb()
-    .select({ name: branches.name, status: branches.status })
-    .from(branches)
-    .where(
-      and(
-        ne(branches.id, branch.id),
-        or(eq(branches.status, "merging"), eq(branches.revertStatus, "reverting")),
-      ),
-    )
-    .limit(1);
-  if (busy) {
-    return busy.status === "merging"
-      ? `${busy.name} is being merged`
-      : `${busy.name} is being reverted`;
-  }
-  return null;
-}
-
-/**
- * Checks a revert may start and marks the branch reverting. Returns the
- * branch and the later merges the revert takes out with it. `builderActive`
- * is asked only about a branch already marked reverting.
- */
-export async function beginRevert(
-  principal: Principal,
-  id: string,
-  builderActive: (buildSessionId: string) => Promise<boolean>,
-): Promise<{ branch: BranchRow; later: BranchRow[] }> {
-  if (!branchPermissions.can(principal.role, "merge")) {
-    throw new DomainError("FORBIDDEN", "You cannot revert branches");
-  }
-  const [branch] = await getDb().select().from(branches).where(eq(branches.id, id));
-  if (!branch) throw new DomainError("NOT_FOUND", "Branch not found");
-  const active =
-    branch.revertStatus === "reverting" && (await builderActive(branch.buildSessionId));
-  const refusal = await revertRefusal(branch, active);
-  if (refusal) throw new DomainError("CONFLICT", refusal);
-  await getDb()
-    .update(branches)
-    .set({ revertStatus: "reverting", revertError: null, updatedAt: new Date() })
-    .where(eq(branches.id, id));
-  log.info("revert started", { branchId: id, userId: principal.userId });
-  return {
-    branch: { ...branch, revertStatus: "reverting" },
-    later: await laterMerges(branch),
-  };
-}
-
-/** The moment a revert of `id` takes the production database back to: when the branch was created, in ms. */
-export async function revertPoint(id: string): Promise<number> {
-  const [branch] = await getDb().select().from(branches).where(eq(branches.id, id));
-  if (!branch) throw new DomainError("NOT_FOUND", "Branch not found");
-  return branch.createdAt.getTime();
-}
-
-/** Main and the database are back to before `id`: it and every later merge are reverted. */
-export async function markReverted(id: string): Promise<void> {
-  const [branch] = await getDb().select().from(branches).where(eq(branches.id, id));
-  if (!branch) return;
-  const later = await laterMerges(branch);
-  const at = new Date();
-  for (const row of [branch, ...later]) {
-    await getDb()
-      .update(branches)
-      .set({ revertStatus: "reverted", revertError: null, revertedAt: at, updatedAt: at })
-      .where(eq(branches.id, row.id));
-  }
-  log.info("branch reverted", { branchId: id, later: later.map((row) => row.id) });
-}
-
-/** The revert stopped; it may be started again. */
-export async function markRevertFailed(id: string, error: string): Promise<void> {
-  await getDb()
-    .update(branches)
-    .set({ revertStatus: "failed", revertError: error, updatedAt: new Date() })
-    .where(eq(branches.id, id));
-  log.info("revert failed", { branchId: id });
-}
-
-async function revertUnderWay(): Promise<boolean> {
-  const [row] = await getDb()
-    .select({ id: branches.id })
-    .from(branches)
-    .where(eq(branches.revertStatus, "reverting"))
-    .limit(1);
-  return row !== undefined;
-}
-
 function toBranch(
   row: typeof branches.$inferSelect,
   userName: string,
@@ -437,8 +268,6 @@ function toBranch(
     userName,
     status: row.status,
     archivedAt: row.archivedAt?.getTime() ?? null,
-    revertedAt:
-      row.revertStatus === "reverted" ? (row.revertedAt?.getTime() ?? null) : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };

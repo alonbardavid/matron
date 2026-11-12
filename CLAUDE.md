@@ -60,8 +60,6 @@ in place, never append history.
   restores `dist/` without the redirect and config generation fails.
 - `kysely` is pinned in `pnpm.overrides`: better-auth imports its kysely adapter even on the
   Drizzle path, and newer versions break in workerd.
-- A new router table goes into `ROUTER_TABLES` in `backend/arch-time-travel/src/router-tables.ts`,
-  or a revert's database restore rolls it back with the household's data.
 - A Preview inherits nothing from production: everything a fork needs is repeated in the
   `previews` block that `scripts/gen-wrangler-config.mjs` writes. Previews declare no
   container, so no Docker is needed to deploy one.

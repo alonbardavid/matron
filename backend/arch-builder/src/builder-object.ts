@@ -6,22 +6,12 @@ import {
   type FiberRecoveryContext,
 } from "agents";
 import type { ContainerHarness } from "agents/harness/container";
-import {
-  markReady,
-  markReverted,
-  markRevertFailed,
-  revertPoint,
-} from "@backend/arch-branches/service";
-import {
-  restoreProductionDatabase,
-  storageSnapshotStore,
-} from "@backend/arch-time-travel/service";
+import { markReady } from "@backend/arch-branches/service";
 import { logger } from "@backend/commons/logger";
 import type {
   BuilderFile,
   BuilderRun,
   BuilderStatusDetail,
-  RevertRun,
   RunMode,
   StepInput,
   StepName,
@@ -60,13 +50,12 @@ const SUMMARIES: Record<Exclude<TerminalStatus, "failed">, string> = {
   deployed: "Deployed",
   merged: "Merged into main",
   abandoned: "Branch abandoned",
-  reverted: "Reverted",
 };
 
 /**
  * The builder of one session: the Durable Object that owns the builder
  * container, named by the session id like the session object. It runs the
- * session's builds, merges, abandons and reverts, one at a time.
+ * session's builds, merges and abandons, one at a time.
  *
  * A run is a fiber: a sequence of container turns, checkpointed before each
  * phase, so an evicted object resumes it from the last checkpoint. A question
@@ -315,7 +304,6 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
       line: (line) => this.records.line(at.runId, line.text, line.kind),
       progress: (phase, message = PHASE_TEXT[phase] ?? phase) =>
         this.records.progress(at.runId, phase, message),
-      restoreDatabase: () => this.restoreDatabase(at.run.branch.id),
       finish: (status, detail) => this.finish(at, status, detail),
     };
   }
@@ -330,11 +318,7 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     return joinPending(all);
   }
 
-  /**
-   * The run is over: the session is told, the record closed, the container
-   * stopped unless a fix may follow. A revert's session is archived, so its
-   * outcome goes on the branch row instead.
-   */
+  /** The run is over: the session is told, the record closed, the container stopped unless a fix may follow. */
   private async finish(
     at: Checkpoint,
     status: TerminalStatus,
@@ -353,18 +337,11 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     state.pending = [];
     await this.forgetSilenceCheck(state);
     await this.save(state);
-    if (run.mode === "revert") {
-      await this.recordRevert(
-        run,
-        status === "reverted" ? null : (detail?.error ?? "failed"),
-      );
-    } else if (status !== "reverted") {
-      await this.session().builderStatus(status, detail);
-    }
+    await this.session().builderStatus(status, detail);
     if (status === "failed")
       this.records.end(at.runId, "error", detail?.error ?? "failed");
     else this.records.end(at.runId, "completed", SUMMARIES[status]);
-    // Nothing more comes for a deployed, merged, abandoned or reverted run: the container
+    // Nothing more comes for a deployed, merged or abandoned run: the container
     // goes now, its workspace snapshotted. A failed run is left to the idle
     // stop, like a question: a fix may follow within minutes.
     if (status !== "failed") await this.stopHarness(false);
@@ -405,16 +382,16 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
 
   /**
    * The silence limit hit mid-run. A build parks, to resume on the next
-   * message; a merge, an abandon or a revert cannot resume, so it fails.
+   * message; a merge or an abandon cannot resume, so it fails.
    */
   private async timedOut(at: Checkpoint, state: BuilderState): Promise<void> {
     const { run } = at;
     state.timedOut = false;
     log.info("run timed out", { sessionId: this.name, mode: run.mode, phase: at.phase });
-    if (run.mode === "merge" || run.mode === "abandon" || run.mode === "revert") {
+    if (run.mode === "merge" || run.mode === "abandon") {
       await this.save(state);
       await this.session().relay(
-        `The ${run.mode} stopped: thirty minutes passed without a message. Start it again from ${run.mode === "revert" ? "the troubleshooting page" : "the branch menu"}.`,
+        `The ${run.mode} stopped: thirty minutes passed without a message. Start it again from the branch menu.`,
       );
       await this.finish(at, "failed", { error: "timed out" });
       return;
@@ -424,33 +401,6 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     await this.session().relay(TIMED_OUT_TEXT);
     await this.session().builderStatus("timed_out");
     this.records.progress(at.runId, "stopped", "stopped until your next message");
-  }
-
-  /**
-   * Restores the production database to when the branch was created. That
-   * moment is kept beside the router tables' snapshot: a restore cut short
-   * may leave the database without the branch's row until it is run again.
-   */
-  private async restoreDatabase(branchId: string): Promise<number> {
-    const key = `revert:${branchId}`;
-    let to = await this.ctx.storage.get<number>(`${key}:to`);
-    if (to === undefined) {
-      to = await revertPoint(branchId);
-      await this.ctx.storage.put(`${key}:to`, to);
-    }
-    await restoreProductionDatabase(to, storageSnapshotStore(this.ctx.storage, key));
-    await this.ctx.storage.delete(`${key}:to`);
-    return to;
-  }
-
-  /** A revert's outcome on its branch row: reverted, or failed with `error`. */
-  private async recordRevert(run: RevertRun, error: string | null): Promise<void> {
-    try {
-      if (error === null) await markReverted(run.branch.id);
-      else await markRevertFailed(run.branch.id, error);
-    } catch (err) {
-      log.error("revert outcome not recorded", { err, sessionId: this.name });
-    }
   }
 
   // ── Plumbing ──────────────────────────────────────────────────────────────

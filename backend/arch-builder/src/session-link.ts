@@ -10,6 +10,6 @@ export interface BuildSessionLink extends Rpc.DurableObjectBranded {
   /** A builder message for the chat, markdown. */
   relay(text: string): Promise<void>;
   builderStatus(status: RelayedStatus, detail?: BuilderStatusDetail): Promise<void>;
-  /** A merge or an abandon from the branch menu, or a revert from troubleshooting: the session runs it as a run of the builder. */
+  /** A merge or an abandon from the branch menu: the session runs it as a run of the builder. */
   startRun(run: BuilderRun): Promise<void>;
 }

@@ -25,7 +25,6 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "gray",
   merged: "sage",
   abandoned: "gray",
-  reverted: "gray",
 };
 
 export function statusColor(status: string): string {

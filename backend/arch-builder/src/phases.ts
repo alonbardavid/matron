@@ -6,7 +6,6 @@ import type {
   DeployResult,
   MergeMainResult,
   PrepareContinueResult,
-  RevertMainResult,
   StepInput,
   StepName,
   TerminalStatus,
@@ -34,11 +33,6 @@ export interface PhaseContext {
   line(line: Line): void;
   /** What the run is up to, as its status line. */
   progress(phase: string, message?: string): void;
-  /**
-   * Restores the production database to when the run's branch was created,
-   * keeping the router's tables as they are; answers that moment, in ms.
-   */
-  restoreDatabase(): Promise<number>;
   /** The run is over with this status; nothing runs after it. */
   finish(status: TerminalStatus, detail?: BuilderStatusDetail): Promise<void>;
 }
@@ -49,8 +43,7 @@ export interface PhaseContext {
  * agent (as many turns as the agent needs; a question parks the run), verify
  * with up to three fix turns, commit-push, deploy-preview. A merge goes
  * merge-main, install, deploy-production, cleanup. An abandon goes
- * prepare-cleanup, cleanup. A revert goes revert-main, install,
- * restore-database, deploy-revert.
+ * prepare-cleanup, cleanup. A revert is the revert step alone.
  */
 export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next> {
   const { run } = at;
@@ -77,12 +70,12 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
           await ctx.step("prepare-cleanup");
           at.phase = "cleanup";
           return "continue";
-        case "revert": {
-          const result = await ctx.step<RevertMainResult>("revert-main");
-          at.mergedHead = result.headCommit;
-          at.phase = "install";
-          return "continue";
-        }
+        case "revert":
+          await ctx.step("revert");
+          await ctx.say("Reverted: production is back to where this branch was cut.");
+          // The branch's session is archived, so the status changes nothing there.
+          await ctx.finish("deployed");
+          return "end";
       }
       break;
     }
@@ -90,10 +83,6 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
       await ctx.step("install");
       if (run.mode === "merge") {
         at.phase = "deploy-production";
-        return "continue";
-      }
-      if (run.mode === "revert") {
-        at.phase = "restore-database";
         return "continue";
       }
       if (run.mode === "build") {
@@ -189,24 +178,6 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
       await ctx.step("deploy-production");
       at.phase = "cleanup";
       return "continue";
-    case "restore-database": {
-      if (run.mode !== "revert") throw new Error("only a revert restores the database");
-      ctx.line({ text: "restoring the production database", kind: "step" });
-      // Right before the deploy: the code that runs meanwhile is the newer one.
-      const to = new Date(await ctx.restoreDatabase()).toISOString();
-      await ctx.say(
-        `The production database is back to ${to}; users, sign-ins, build sessions, branches and settings were kept as they are. Deploying the reverted version.`,
-      );
-      at.phase = "deploy-revert";
-      return "continue";
-    }
-    case "deploy-revert":
-      await ctx.step("deploy-production");
-      await ctx.say(
-        `Reverted: main is at ${at.mergedHead?.slice(0, 12) ?? "the earlier version"} and production is deployed from it.`,
-      );
-      await ctx.finish("reverted");
-      return "end";
     case "cleanup":
       await ctx.step("cleanup");
       if (run.mode === "merge") {
@@ -235,7 +206,5 @@ export const PHASE_TEXT: Record<string, string> = {
   "commit-push": "committing and pushing",
   "deploy-preview": "deploying the Preview",
   "deploy-production": "deploying production",
-  "restore-database": "restoring the production database",
-  "deploy-revert": "deploying production",
   cleanup: "cleaning up",
 };

@@ -9,9 +9,7 @@ export type Phase =
   | "commit-push"
   | "deploy-preview"
   | "deploy-production"
-  | "cleanup"
-  | "restore-database"
-  | "deploy-revert";
+  | "cleanup";
 
 /**
  * One run's checkpoint: the run, where it is, and what it has learned so
@@ -38,7 +36,7 @@ export interface Checkpoint {
   fixRound: number;
   /** What prepare-continue said about main, for the agent's prompt. */
   sync: string | null;
-  /** Main's head after a merge or a revert, for the report. */
+  /** Main's head after a merge, for the merged report. */
   mergedHead: string | null;
 }
 

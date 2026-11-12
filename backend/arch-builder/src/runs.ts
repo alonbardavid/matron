@@ -59,6 +59,7 @@ function toBuilderBranch(branch: BranchRow): BuilderBranch {
     previewName: branch.previewName,
     databaseName: branch.databaseName ?? "",
     baseCommit: branch.baseCommit,
+    createdAt: branch.createdAt.getTime(),
   };
 }
 
@@ -109,18 +110,6 @@ export async function abandonRun(branch: BranchRow): Promise<AbandonRun> {
   };
 }
 
-/**
- * Takes production back to before `branch`: main returns to the commit it had
- * before the merge, and the production D1 to when the branch was created.
- * Every merge after it goes with it.
- */
-export async function revertRun(branch: BranchRow): Promise<RevertRun> {
-  return {
-    ...(await runCommon(branch.buildSessionId, branch, `Revert ${branch.name}`)),
-    mode: "revert",
-  };
-}
-
 /** Hands a merge to the branch's session, which runs it on the builder; the row is already marked merging. */
 export async function startMerge(branch: BranchRow): Promise<void> {
   const run = await mergeRun(branch);
@@ -134,7 +123,14 @@ export async function startAbandon(branch: BranchRow): Promise<void> {
   await builderEnv().BUILD_SESSIONS.getByName(branch.buildSessionId).startRun(run);
 }
 
-/** Hands a revert to the branch's session, which runs it on the builder; the row is already marked reverting. */
+export async function revertRun(branch: BranchRow): Promise<RevertRun> {
+  return {
+    ...(await runCommon(branch.buildSessionId, branch, `Revert ${branch.name}`)),
+    mode: "revert",
+  };
+}
+
+/** Hands a revert to the merged branch's session, which runs it on the builder. */
 export async function startRevert(branch: BranchRow): Promise<void> {
   const run = await revertRun(branch);
   log.info("revert sent", { branchId: branch.id, sessionId: branch.buildSessionId });

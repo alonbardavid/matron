@@ -34,16 +34,14 @@
  *   merge-main         fast-forward main onto the branch and push it (fails when main diverged) → {@link MergeMainResult}
  *   deploy-production  build, migrate the production D1, deploy production
  *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
- *   revert-main        move main back to `branch.baseCommit` and push it with force → {@link RevertMainResult}
+ *   revert             take production back to where the branch was cut: main to `branch.baseCommit`
+ *                      with force, the production D1 to `branch.createdAt`, then deploy production
  *
  * The object sequences them: a build or a continue runs prepare, install,
  * agent turns until the agent is done (a question parks the run as `waiting`
  * until the user replies), verify with up to three fix turns, commit-push,
  * deploy-preview; a merge runs merge-main, install, deploy-production,
- * cleanup; an abandon runs prepare-cleanup, cleanup; a revert runs
- * revert-main, install, then restores the production D1 in the object itself
- * (Time Travel, not a step: the container never touches the database), then
- * deploy-production.
+ * cleanup; an abandon runs prepare-cleanup, cleanup; a revert runs revert.
  *
  * Status rules
  * ------------
@@ -53,8 +51,6 @@
  *   building → (waiting ↔ building)* → deploying → deployed | failed
  *   merging → merged | failed
  *   abandoning → abandoned | failed
- * A revert ends `reverted` or `failed` and reports neither to the session,
- * whose chat it only writes to: its outcome is recorded on the branch row.
  * A run parked as `waiting` runs nothing; the harness snapshots and stops
  * the container after its idle timeout (five minutes) and restores it for
  * the next turn.
@@ -74,7 +70,6 @@ export type BuilderStatus =
   | "merged"
   | "abandoning"
   | "abandoned"
-  | "reverted"
   | "failed"
   | "timed_out";
 
@@ -89,6 +84,8 @@ export interface BuilderBranch {
   databaseName: string;
   /** Main's head when the branch was cut. */
   baseCommit: string;
+  /** When the branch was cut, in ms. */
+  createdAt: number;
 }
 
 export interface BuilderRepository {
@@ -145,11 +142,7 @@ export interface AbandonRun extends RunBase {
   mode: "abandon";
 }
 
-/**
- * Takes a merged branch, and every merge after it, back out of main and
- * production: main goes back to `branch.baseCommit`, the production D1 to
- * when the branch was created.
- */
+/** Takes production back to where a merged branch was cut. */
 export interface RevertRun extends RunBase {
   mode: "revert";
 }
@@ -167,7 +160,7 @@ export type StepName =
   | "merge-main"
   | "deploy-production"
   | "cleanup"
-  | "revert-main";
+  | "revert";
 
 /**
  * A file the user attached to a message for the agent: the daemon writes it
@@ -226,9 +219,6 @@ export interface CommitPushResult {
 export interface MergeMainResult {
   headCommit: string;
 }
-export interface RevertMainResult {
-  headCommit: string;
-}
 export interface DeployResult {
   previewUrl: string;
   databaseId: string;
@@ -249,11 +239,10 @@ export interface BuilderStatusDetail {
 }
 
 /** Statuses after which there is nothing more to do for a run. */
-export type TerminalStatus = "deployed" | "failed" | "merged" | "abandoned" | "reverted";
+export type TerminalStatus = "deployed" | "failed" | "merged" | "abandoned";
 export const TERMINAL_STATUSES: ReadonlySet<BuilderStatus> = new Set<TerminalStatus>([
   "deployed",
   "failed",
   "merged",
   "abandoned",
-  "reverted",
 ]);

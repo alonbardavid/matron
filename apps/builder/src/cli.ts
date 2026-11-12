@@ -39,8 +39,8 @@ async function main(step: StepName): Promise<unknown> {
       return steps.deployProduction();
     case "cleanup":
       return steps.cleanup();
-    case "revert-main":
-      return steps.revertMain();
+    case "revert":
+      return steps.revert();
     default:
       throw new BuilderError(`Unknown step ${String(step)}`);
   }
