@@ -172,10 +172,10 @@ Divergence is only checked when merging. If main has diverged, the merge call fa
 
 ## Reverting
 
-The troubleshooting page lists every merged branch, the latest first, and lets the owner revert one. A revert takes the branch out of production, and with it every merge after it:
+The troubleshooting page lists every merged branch, the latest first, and lets the owner revert one. A revert takes production back to the point before the branch, in code and in data. The branch goes, and with it every merge after it:
 
 1. The router checks that nothing is being merged or reverted, and that D1 Time Travel still reaches the moment the branch was created. Time Travel keeps 30 days, so a revert must start at least an hour inside them. Then it marks the branch `reverting` and hands a revert run to the branch's session, which runs it on the branch's builder.
-2. The builder commits the tree of the branch's base commit (main before the merge) on top of main, and pushes main to the Artifacts repository. History is kept and no push is forced. Live branches then fall behind main and take the revert in with their next update.
+2. The builder moves main back to the branch's base commit, the commit main had before the merge, and pushes it to the Artifacts repository with force. Main is then exactly what it was at that point: the commits after it are no longer on it. A live branch cut after that point still carries them, and merging it brings them back.
 3. The builder object restores the production D1 in place, with Time Travel, to when the branch was created. The router's tables (users, sign-ins, build sessions, branches, settings) are kept as they were just before the restore. They are snapshotted into the object's storage, and after the restore they are upserted back and their stale rows deleted, in one transaction. Only the household's own data goes back in time.
 4. The builder deploys production from the new main. Migrations the version has but the restored database lacks are applied as on any deploy.
 

@@ -49,7 +49,7 @@ Thirty minutes without a word from the member halts the builder: the turn under
 way is aborted, the container stopped, and the run parks instead of failing. A
 merge or an abandon cannot park, so it fails and the branch is released.
 
-A revert takes a merged branch back out: the container commits the earlier tree
-on main, the object restores the production database itself between two turns,
+A revert takes production back to before a merged branch: the container moves
+main back to the commit it had then, the object restores the production database itself between two turns,
 and the container deploys. Its session is archived, so it writes to the chat but
 records its outcome on the branch row.

@@ -171,8 +171,8 @@ export async function listMerges(
 }
 
 /**
- * Reverts a merged branch and every merge after it: the builder commits the
- * tree main had before the merge and deploys it, after restoring the
+ * Reverts a merged branch and every merge after it: the builder moves main
+ * back to the commit it had before the merge and deploys it, after restoring the
  * production database to when the branch was created.
  */
 export async function revertMerge(principal: Principal, id: string): Promise<void> {
@@ -180,7 +180,7 @@ export async function revertMerge(principal: Principal, id: string): Promise<voi
   const { branch, later } = await beginRevert(principal, id, builderActive);
   try {
     await checkRestorePoint(branch.createdAt.getTime());
-    await startRevert(branch, later);
+    await startRevert(branch);
   } catch (err) {
     await markRevertFailed(id, err instanceof Error ? err.message : String(err));
     throw err;

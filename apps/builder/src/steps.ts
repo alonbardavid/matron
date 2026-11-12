@@ -272,34 +272,26 @@ export class Steps {
   }
 
   /**
-   * Main goes back to the revert's commit: its tree is committed on top of main
-   * and pushed, so history is kept and every later merge is undone with it.
+   * Main goes back to the revert's commit, a point in its own history: the
+   * branch is moved to that commit and pushed with force, so every commit
+   * after it is gone from main. A revert started again finds main already
+   * there and pushes nothing.
    */
   async revertMain(): Promise<RevertMainResult> {
-    const { revert, branch, request } = this.run;
+    const { revert } = this.run;
     if (!revert) throw new BuilderError("revert-main needs the run's revert");
     const g = await this.clone();
     await git.checkout(g, "main");
-    progress(`restoring main to ${revert.commit.slice(0, 12)}`);
-    await git.restoreTree(g, revert.commit);
-    const later = revert.alsoReverted.length
-      ? ` Later merges taken out with it: ${revert.alsoReverted.join(", ")}.`
-      : "";
-    const committed = await git.commitAll(
-      g,
-      git.formatCommitMessage(
-        `Revert ${branch.name}`,
-        request,
-        `Main returns to ${revert.commit}, the commit it had before ${branch.name} was merged.${later}`,
-      ),
-    );
-    if (committed) {
-      await git.push(g, "main");
-      progress("main pushed");
-    } else {
-      progress("main already has that version; nothing to commit");
+    const head = await git.revParse(g);
+    if (head === revert.commit) {
+      progress("main is already at that commit");
+      return { headCommit: head };
     }
-    return { headCommit: await git.revParse(g), committed };
+    progress(`moving main back to ${revert.commit.slice(0, 12)}`);
+    await git.moveBackTo(g, revert.commit);
+    await git.pushBack(g, "main", head);
+    progress("main pushed");
+    return { headCommit: revert.commit };
   }
 
   async deployProduction(): Promise<void> {

@@ -34,7 +34,7 @@
  *   merge-main         fast-forward main onto the branch and push it (fails when main diverged) → {@link MergeMainResult}
  *   deploy-production  build, migrate the production D1, deploy production
  *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
- *   revert-main        commit `revert.commit`'s tree on top of main and push main → {@link RevertMainResult}
+ *   revert-main        move main back to `revert.commit` and push it with force → {@link RevertMainResult}
  *
  * The object sequences them: a build or a continue runs prepare, install,
  * agent turns until the agent is done (a question parks the run as `waiting`
@@ -147,12 +147,10 @@ export interface AbandonRun extends RunBase {
 export interface RevertRun extends RunBase {
   mode: "revert";
   revert: {
-    /** The commit main had before the branch was merged: its tree becomes main's. */
+    /** The commit main had before the branch was merged: main goes back to it. */
     commit: string;
     /** When the branch was created, in ms: the production D1 is restored to it. */
     restoreTo: number;
-    /** The later merges taken out with it, by name, for the commit message. */
-    alsoReverted: string[];
   };
 }
 
@@ -228,8 +226,6 @@ export interface MergeMainResult {
 }
 export interface RevertMainResult {
   headCommit: string;
-  /** False when main already had that tree: nothing was committed. */
-  committed: boolean;
 }
 export interface DeployResult {
   previewUrl: string;

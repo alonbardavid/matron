@@ -97,8 +97,8 @@ A Preview holds the token too, so its assistant takes the same route.
 - Merge and abandon are runs for the same container in `merge`/`abandon` mode
   (`backend/arch-builder/src/runs.ts`). `backend/arch-builder/README.md` lays out the moving parts.
 - A revert, started from the troubleshooting page (`backend/arch-troubleshooting`), is a
-  `revert` run on the reverted branch's builder. The container commits the old tree onto
-  main (`revert-main`) and deploys production. Between the two, the object restores the
+  `revert` run on the reverted branch's builder. The container moves main back to
+  the commit it had before the merge (`revert-main`) and deploys production. Between the two, the object restores the
   production D1 with Time Travel through `backend/arch-time-travel`, which keeps the router's
   tables (`router-tables.ts`) across the restore.
 

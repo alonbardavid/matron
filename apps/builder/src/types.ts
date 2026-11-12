@@ -34,8 +34,8 @@ export type BuilderRun = {
   plan?: string;
   message?: string;
   files?: BuilderFile[];
-  /** A revert's target: main goes back to `commit`'s tree. */
-  revert?: { commit: string; restoreTo: number; alsoReverted: string[] };
+  /** A revert's target: main goes back to `commit`. */
+  revert?: { commit: string; restoreTo: number };
   builderImage?: string;
 };
 
@@ -94,7 +94,7 @@ export type PrepareContinueResult = { sync: string };
 export type VerifyResult = { failure: { label: string; output: string } | null };
 export type CommitPushResult = { committed: boolean };
 export type MergeMainResult = { headCommit: string };
-export type RevertMainResult = { headCommit: string; committed: boolean };
+export type RevertMainResult = { headCommit: string };
 
 export type DeployResult = {
   previewUrl: string;

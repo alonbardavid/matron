@@ -110,21 +110,17 @@ export async function abandonRun(branch: BranchRow): Promise<AbandonRun> {
 }
 
 /**
- * Takes `branch` back out of main: main returns to the commit it had before the
- * merge, and the production D1 to when the branch was created. `later` are the
- * merges after it, which go with it.
+ * Takes production back to before `branch`: main returns to the commit it had
+ * before the merge, and the production D1 to when the branch was created.
+ * Every merge after it goes with it.
  */
-export async function revertRun(
-  branch: BranchRow,
-  later: BranchRow[],
-): Promise<RevertRun> {
+export async function revertRun(branch: BranchRow): Promise<RevertRun> {
   return {
     ...(await runCommon(branch.buildSessionId, branch, `Revert ${branch.name}`)),
     mode: "revert",
     revert: {
       commit: branch.baseCommit,
       restoreTo: branch.createdAt.getTime(),
-      alsoReverted: later.map((row) => row.name),
     },
   };
 }
@@ -143,8 +139,8 @@ export async function startAbandon(branch: BranchRow): Promise<void> {
 }
 
 /** Hands a revert to the branch's session, which runs it on the builder; the row is already marked reverting. */
-export async function startRevert(branch: BranchRow, later: BranchRow[]): Promise<void> {
-  const run = await revertRun(branch, later);
+export async function startRevert(branch: BranchRow): Promise<void> {
+  const run = await revertRun(branch);
   log.info("revert sent", { branchId: branch.id, sessionId: branch.buildSessionId });
   await builderEnv().BUILD_SESSIONS.getByName(branch.buildSessionId).startRun(run);
 }
