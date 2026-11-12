@@ -51,7 +51,13 @@ export function useEventActions() {
       onError: (err) => notifyError(err, "Could not remove the event"),
     }),
   );
-  return { create, update, stop, remove, place, editOccurrence, cancelOccurrence };
+  const hide = useMutation(
+    orpc.calendar.hide.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not change the event"),
+    }),
+  );
+  return { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide };
 }
 
 /** The caller's own calendars. */

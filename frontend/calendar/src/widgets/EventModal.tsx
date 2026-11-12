@@ -86,6 +86,8 @@ interface EventModalProps {
   onCancelOccurrence?: (originalStartAt: number) => Promise<void>;
   /** For an event someone shared with the caller: which of their calendars it shows in. */
   onPlace?: (calendarId: string) => Promise<void>;
+  /** Hides the event from the caller's own calendar, or shows it again. */
+  onHide?: (hidden: boolean) => Promise<void>;
 }
 
 /** An existing event opens as it reads; changing it is a step further. */
@@ -135,6 +137,7 @@ export function EventModal({
   onPlace,
   onEditOccurrence,
   onCancelOccurrence,
+  onHide,
 }: EventModalProps) {
   const { me } = useMe();
   const [mode, setMode] = useState<Mode>("edit");
@@ -285,6 +288,13 @@ export function EventModal({
           placeIn={placing ? writable : []}
           onPlace={onPlace && ((calendarId) => void onPlace(calendarId))}
           onEdit={changeable ? () => setMode("edit") : undefined}
+          onHide={
+            onHide &&
+            (async (hidden) => {
+              await onHide(hidden);
+              onClose();
+            })
+          }
           onClose={onClose}
         />
       ) : (
