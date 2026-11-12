@@ -379,6 +379,13 @@ export async function beginRevert(
   };
 }
 
+/** The moment a revert of `id` takes the production database back to: when the branch was created, in ms. */
+export async function revertPoint(id: string): Promise<number> {
+  const [branch] = await getDb().select().from(branches).where(eq(branches.id, id));
+  if (!branch) throw new DomainError("NOT_FOUND", "Branch not found");
+  return branch.createdAt.getTime();
+}
+
 /** Main and the database are back to before `id`: it and every later merge are reverted. */
 export async function markReverted(id: string): Promise<void> {
   const [branch] = await getDb().select().from(branches).where(eq(branches.id, id));

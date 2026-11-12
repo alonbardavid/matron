@@ -10,6 +10,7 @@ import {
   markReady,
   markReverted,
   markRevertFailed,
+  revertPoint,
 } from "@backend/arch-branches/service";
 import {
   restoreProductionDatabase,
@@ -314,12 +315,7 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
       line: (line) => this.records.line(at.runId, line.text, line.kind),
       progress: (phase, message = PHASE_TEXT[phase] ?? phase) =>
         this.records.progress(at.runId, phase, message),
-      restoreDatabase: async (to) => {
-        await restoreProductionDatabase(
-          to,
-          storageSnapshotStore(this.ctx.storage, `revert:${at.run.branch.id}`),
-        );
-      },
+      restoreDatabase: () => this.restoreDatabase(at.run.branch.id),
       finish: (status, detail) => this.finish(at, status, detail),
     };
   }
@@ -428,6 +424,23 @@ export class BuilderObject extends Agent<Cloudflare.Env> {
     await this.session().relay(TIMED_OUT_TEXT);
     await this.session().builderStatus("timed_out");
     this.records.progress(at.runId, "stopped", "stopped until your next message");
+  }
+
+  /**
+   * Restores the production database to when the branch was created. That
+   * moment is kept beside the router tables' snapshot: a restore cut short
+   * may leave the database without the branch's row until it is run again.
+   */
+  private async restoreDatabase(branchId: string): Promise<number> {
+    const key = `revert:${branchId}`;
+    let to = await this.ctx.storage.get<number>(`${key}:to`);
+    if (to === undefined) {
+      to = await revertPoint(branchId);
+      await this.ctx.storage.put(`${key}:to`, to);
+    }
+    await restoreProductionDatabase(to, storageSnapshotStore(this.ctx.storage, key));
+    await this.ctx.storage.delete(`${key}:to`);
+    return to;
   }
 
   /** A revert's outcome on its branch row: reverted, or failed with `error`. */

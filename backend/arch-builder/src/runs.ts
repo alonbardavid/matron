@@ -118,10 +118,6 @@ export async function revertRun(branch: BranchRow): Promise<RevertRun> {
   return {
     ...(await runCommon(branch.buildSessionId, branch, `Revert ${branch.name}`)),
     mode: "revert",
-    revert: {
-      commit: branch.baseCommit,
-      restoreTo: branch.createdAt.getTime(),
-    },
   };
 }
 

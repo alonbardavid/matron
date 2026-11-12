@@ -34,8 +34,11 @@ export interface PhaseContext {
   line(line: Line): void;
   /** What the run is up to, as its status line. */
   progress(phase: string, message?: string): void;
-  /** Restores the production database to `at` (ms), keeping the router's tables as they are. */
-  restoreDatabase(at: number): Promise<void>;
+  /**
+   * Restores the production database to when the run's branch was created,
+   * keeping the router's tables as they are; answers that moment, in ms.
+   */
+  restoreDatabase(): Promise<number>;
   /** The run is over with this status; nothing runs after it. */
   finish(status: TerminalStatus, detail?: BuilderStatusDetail): Promise<void>;
 }
@@ -188,10 +191,9 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
       return "continue";
     case "restore-database": {
       if (run.mode !== "revert") throw new Error("only a revert restores the database");
-      const to = new Date(run.revert.restoreTo).toISOString();
-      ctx.line({ text: `restoring the production database to ${to}`, kind: "step" });
+      ctx.line({ text: "restoring the production database", kind: "step" });
       // Right before the deploy: the code that runs meanwhile is the newer one.
-      await ctx.restoreDatabase(run.revert.restoreTo);
+      const to = new Date(await ctx.restoreDatabase()).toISOString();
       await ctx.say(
         `The production database is back to ${to}; users, sign-ins, build sessions, branches and settings were kept as they are. Deploying the reverted version.`,
       );

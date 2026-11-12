@@ -269,26 +269,25 @@ export class Steps {
   }
 
   /**
-   * Main goes back to the revert's commit, a point in its own history: the
-   * branch is moved to that commit and pushed with force, so every commit
-   * after it is gone from main. A revert started again finds main already
-   * there and pushes nothing.
+   * Main goes back to the commit the branch was cut from, a point in its own
+   * history: main is moved to that commit and pushed with force, so every
+   * commit after it is gone from main. A revert started again finds main
+   * already there and pushes nothing.
    */
   async revertMain(): Promise<RevertMainResult> {
-    const { revert } = this.run;
-    if (!revert) throw new BuilderError("revert-main needs the run's revert");
+    const commit = this.run.branch.baseCommit;
     const g = await this.clone();
     await git.checkout(g, "main");
     const head = await git.revParse(g);
-    if (head === revert.commit) {
+    if (head === commit) {
       progress("main is already at that commit");
       return { headCommit: head };
     }
-    progress(`moving main back to ${revert.commit.slice(0, 12)}`);
-    await git.revertTo(g, revert.commit);
+    progress(`moving main back to ${commit.slice(0, 12)}`);
+    await git.revertTo(g, commit);
     await git.pushRevert(g, "main", head);
     progress("main pushed");
-    return { headCommit: revert.commit };
+    return { headCommit: commit };
   }
 
   async deployProduction(): Promise<void> {

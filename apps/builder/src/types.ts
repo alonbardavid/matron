@@ -34,8 +34,6 @@ export type BuilderRun = {
   plan?: string;
   message?: string;
   files?: BuilderFile[];
-  /** A revert's target: main goes back to `commit`. */
-  revert?: { commit: string; restoreTo: number };
   builderImage?: string;
 };
 
