@@ -1,25 +1,106 @@
-import { and, eq, gte, inArray, lt, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
-import { calendarEvent, calendarEventShare } from "@backend/db-models/calendar";
+import {
+  calendar,
+  calendarEvent,
+  calendarEventException,
+  calendarEventShare,
+} from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
-import type {
-  CalendarEvent,
-  CalendarEventCreate,
-  CalendarEventUpdate,
-  Occurrence,
-  Recurrence,
+import {
+  CALENDAR_COLORS,
+  type CalendarEvent,
+  type CalendarEventCreate,
+  type CalendarEventUpdate,
+  type Occurrence,
+  type OccurrenceException,
+  type OccurrenceUpdate,
 } from "@shared/contract/app/calendar";
-import { dayBefore, expandSeries } from "./recurrence";
+import {
+  calendarsById,
+  sharedTargetOf,
+  viewedCalendarsOf,
+  writableCalendarOf,
+  type CalendarRow,
+  type ViewedCalendar,
+} from "./calendars";
+import {
+  canonicalRule,
+  dayBefore,
+  expandSeries,
+  InvalidRuleError,
+  isOccurrence,
+  ruleEndingOn,
+  type ExceptionInput,
+} from "./recurrence";
 import { eventPermissions } from "./permissions";
 
 const log = logger("calendar/service");
 
 type EventRow = typeof calendarEvent.$inferSelect;
 type ShareRow = typeof calendarEventShare.$inferSelect;
+
+/** What the caller's calendars are, for where and in what colour each event shows to them. */
+interface Viewer {
+  userId: string;
+  own: Map<string, CalendarRow>;
+  viewed: Map<string, ViewedCalendar>;
+  /** Where events shared with them show unless they placed one elsewhere. */
+  sharedTarget: CalendarRow;
+}
+
+interface Placement {
+  shownIn: string;
+  color: string;
+  access: "edit" | "read";
+}
+
+async function viewerOf(principal: Principal): Promise<Viewer> {
+  const sharedTarget = await sharedTargetOf(principal.userId);
+  const [own, viewed] = await Promise.all([
+    getDb().select().from(calendar).where(eq(calendar.ownerId, principal.userId)),
+    viewedCalendarsOf(principal.userId),
+  ]);
+  return {
+    userId: principal.userId,
+    own: new Map(own.map((row) => [row.id, row])),
+    viewed,
+    sharedTarget,
+  };
+}
+
+/**
+ * Where an event shows for the viewer: their own in its calendar; one shared
+ * with them in the calendar they placed it in, else their calendar for shared
+ * events; one they see through a shared calendar, read-only, in that calendar
+ * and the colour they gave it. Null when they may not see it at all.
+ */
+function placementOf(
+  viewer: Viewer,
+  row: EventRow,
+  mine: ShareRow | undefined,
+): Placement | null {
+  if (row.creatorId === viewer.userId) {
+    const own = viewer.own.get(row.calendarId);
+    return {
+      shownIn: row.calendarId,
+      color: own?.color ?? CALENDAR_COLORS[0],
+      access: "edit",
+    };
+  }
+  if (mine) {
+    const target =
+      (mine.calendarId && viewer.own.get(mine.calendarId)) || viewer.sharedTarget;
+    return { shownIn: target.id, color: target.color, access: "edit" };
+  }
+  const viewed = viewer.viewed.get(row.calendarId);
+  if (viewed) return { shownIn: row.calendarId, color: viewed.color, access: "read" };
+  return null;
+}
 
 /** Everything on the caller's calendar between two instants, series expanded. */
 export async function listOccurrences(
@@ -30,13 +111,16 @@ export async function listOccurrences(
   eventPermissions.require(principal, "view");
   if (to <= from) return [];
   const db = getDb();
+  const viewer = await viewerOf(principal);
   const mine = db
     .select({ eventId: calendarEventShare.eventId })
     .from(calendarEventShare)
     .where(eq(calendarEventShare.userId, principal.userId));
+  const viewedIds = [...viewer.viewed.keys()];
   const visible = or(
     eq(calendarEvent.creatorId, principal.userId),
     inArray(calendarEvent.id, mine),
+    ...(viewedIds.length ? [inArray(calendarEvent.calendarId, viewedIds)] : []),
   );
   const rows = await db
     .select()
@@ -50,34 +134,56 @@ export async function listOccurrences(
             lt(calendarEvent.startAt, new Date(to)),
             gte(calendarEvent.endAt, new Date(from)),
           ),
-          and(
-            lt(calendarEvent.startAt, new Date(to)),
-            inArray(calendarEvent.recurrenceFrequency, ["weekly", "monthly"]),
-          ),
+          and(lt(calendarEvent.startAt, new Date(to)), isNotNull(calendarEvent.rrule)),
         ),
       ),
     );
+  const [calendars, myShares] = await Promise.all([
+    calendarsById(rows.map((row) => row.calendarId)),
+    db
+      .select()
+      .from(calendarEventShare)
+      .where(eq(calendarEventShare.userId, principal.userId)),
+  ]);
+  const shareOf = new Map(myShares.map((share) => [share.eventId, share]));
+  const exceptions = await exceptionsOf(rows.filter((r) => r.rrule).map((r) => r.id));
   const out: Occurrence[] = [];
   for (const row of rows) {
-    const recurrence = toRecurrence(row);
-    if (!recurrence) {
+    const cal = calendars.get(row.calendarId);
+    const placement = placementOf(viewer, row, shareOf.get(row.id));
+    if (!placement) continue;
+    if (!row.rrule) {
       out.push(
-        toOccurrence(row, row.id, row.startAt.getTime(), row.endAt.getTime(), false),
+        toOccurrence(row, cal, placement, {
+          id: row.id,
+          originalStartAt: null,
+          title: row.title,
+          startAt: row.startAt.getTime(),
+          endAt: row.endAt.getTime(),
+          recurring: row.externalSeriesId !== null,
+          changed: false,
+        }),
       );
       continue;
     }
+    const own = exceptions.get(row.id) ?? [];
+    const titles = new Map(own.map((e) => [e.originalStartAt.getTime(), e.title]));
     for (const window of expandSeries(
-      {
-        startAt: row.startAt.getTime(),
-        endAt: row.endAt.getTime(),
-        timeZone: row.timeZone,
-        recurrence,
-      },
+      seriesOf(row),
+      own.map(toExceptionInput),
       from,
       to,
     )) {
       out.push(
-        toOccurrence(row, `${row.id}:${window.day}`, window.startAt, window.endAt, true),
+        toOccurrence(row, cal, placement, {
+          id: `${row.id}:${window.originalStartAt}`,
+          originalStartAt: window.originalStartAt,
+          title: titles.get(window.originalStartAt) ?? row.title,
+          startAt: window.startAt,
+          endAt: window.endAt,
+          recurring: true,
+          changed: window.changed,
+        }),
       );
     }
   }
@@ -86,7 +192,7 @@ export async function listOccurrences(
 
 /** An occurrence that is about to start, and who attends it. */
 export interface StartingOccurrence {
-  /** The occurrence's id: the event's own, or `<event id>:<day>` in a series. */
+  /** The occurrence's id: the event's own, or `<event id>:<when it was due>` in a series. */
   id: string;
   title: string;
   allDay: boolean;
@@ -111,34 +217,37 @@ export async function occurrencesStartingBetween(
     .where(
       and(
         lt(calendarEvent.startAt, new Date(to)),
-        or(
-          gte(calendarEvent.startAt, new Date(from)),
-          inArray(calendarEvent.recurrenceFrequency, ["weekly", "monthly"]),
-        ),
+        or(gte(calendarEvent.startAt, new Date(from)), isNotNull(calendarEvent.rrule)),
       ),
     );
-  const starting: { row: EventRow; id: string; startAt: number }[] = [];
+  const exceptions = await exceptionsOf(rows.filter((r) => r.rrule).map((r) => r.id));
+  const starting: { row: EventRow; id: string; title: string; startAt: number }[] = [];
   for (const row of rows) {
-    const recurrence = toRecurrence(row);
-    if (!recurrence) {
-      starting.push({ row, id: row.id, startAt: row.startAt.getTime() });
+    if (!row.rrule) {
+      starting.push({ row, id: row.id, title: row.title, startAt: row.startAt.getTime() });
       continue;
     }
-    const series = {
-      startAt: row.startAt.getTime(),
-      endAt: row.endAt.getTime(),
-      timeZone: row.timeZone,
-      recurrence,
-    };
-    for (const window of expandSeries(series, from, to)) {
+    const own = exceptions.get(row.id) ?? [];
+    const titles = new Map(own.map((e) => [e.originalStartAt.getTime(), e.title]));
+    for (const window of expandSeries(
+      seriesOf(row),
+      own.map(toExceptionInput),
+      from,
+      to,
+    )) {
       if (window.startAt < from) continue;
-      starting.push({ row, id: `${row.id}:${window.day}`, startAt: window.startAt });
+      starting.push({
+        row,
+        id: `${row.id}:${window.originalStartAt}`,
+        title: titles.get(window.originalStartAt) ?? row.title,
+        startAt: window.startAt,
+      });
     }
   }
   const shares = await sharesOf([...new Set(starting.map(({ row }) => row.id))]);
-  return starting.map(({ row, id, startAt }) => ({
+  return starting.map(({ row, id, title, startAt }) => ({
     id,
-    title: row.title,
+    title,
     allDay: row.allDay,
     startAt,
     timeZone: row.timeZone,
@@ -148,7 +257,7 @@ export async function occurrencesStartingBetween(
   }));
 }
 
-/** The event, when the caller created it or was given it. */
+/** The event, when the caller created it, was given it, or sees its calendar. */
 export async function getEvent(principal: Principal, id: string): Promise<CalendarEvent> {
   eventPermissions.require(principal, "view");
   const row = await getDb()
@@ -157,9 +266,44 @@ export async function getEvent(principal: Principal, id: string): Promise<Calend
     .where(eq(calendarEvent.id, id))
     .get();
   if (!row) throw new DomainError("NOT_FOUND", "Event not found");
-  const item = toEvent(row, (await sharesOf([id])).get(id) ?? []);
-  if (!canSee(principal, item)) throw new DomainError("NOT_FOUND", "Event not found");
-  return item;
+  return withShares(principal, row);
+}
+
+/** Shows an event shared with the caller in one of their Matron calendars, or (null) their calendar for shared events. */
+export async function placeEvent(
+  principal: Principal,
+  id: string,
+  calendarId: string | null,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "view");
+  const current = await getEvent(principal, id);
+  if (
+    current.creatorId === principal.userId ||
+    !current.sharedWith.includes(principal.userId)
+  ) {
+    throw new DomainError(
+      "BAD_REQUEST",
+      "Only an event someone shared with you is placed in your calendars",
+    );
+  }
+  const target = calendarId
+    ? (await writableCalendarOf(principal.userId, calendarId)).id
+    : null;
+  await getDb()
+    .update(calendarEventShare)
+    .set({ calendarId: target })
+    .where(
+      and(
+        eq(calendarEventShare.eventId, id),
+        eq(calendarEventShare.userId, principal.userId),
+      ),
+    );
+  log.info("shared event placed", {
+    eventId: id,
+    calendarId: target,
+    userId: principal.userId,
+  });
+  return getEvent(principal, id);
 }
 
 export async function createEvent(
@@ -168,6 +312,7 @@ export async function createEvent(
 ): Promise<CalendarEvent> {
   eventPermissions.require(principal, "create");
   checkTimes(input.startAt, input.endAt);
+  const target = await writableCalendarOf(principal.userId, input.calendarId);
   const id = newEntityId("CALENDAR_EVENT");
   const { sharedWith, attendees } = await resolvePeople(
     principal.userId,
@@ -185,12 +330,17 @@ export async function createEvent(
       startAt: new Date(input.startAt),
       endAt: new Date(input.endAt),
       timeZone: input.timeZone,
-      ...recurrenceColumns(input.recurrence ?? null),
+      calendarId: target.id,
+      rrule: storedRule(input.rrule ?? null, input.timeZone, input.allDay),
     })
     .returning();
   await writeShares(id, sharedWith, attendees);
-  log.info("event created", { eventId: id, userId: principal.userId });
-  return toEvent(row!, (await sharesOf([id])).get(id) ?? []);
+  log.info("event created", {
+    eventId: id,
+    calendarId: target.id,
+    userId: principal.userId,
+  });
+  return withShares(principal, row!);
 }
 
 export async function updateEvent(
@@ -202,11 +352,29 @@ export async function updateEvent(
   const sharing = Boolean(changes.sharedWith || changes.attendees);
   if (sharing) eventPermissions.require(principal, "share");
   const current = await getEvent(principal, id);
+  requireEditable(current);
   if (sharing && !canManage(principal, current)) {
     throw new DomainError(
       "FORBIDDEN",
       "Only the event's creator changes who it is shared with",
     );
+  }
+  if (current.source !== "matron") {
+    // An imported event is the source's: only who it is shared with is Matron's own.
+    const { sharedWith: _shared, attendees: _attending, ...rest } = changes;
+    if (Object.values(rest).some((value) => value !== undefined)) {
+      throw new DomainError(
+        "BAD_REQUEST",
+        "This event comes from Google Calendar; change it there",
+      );
+    }
+  }
+  let calendarId: string | undefined;
+  if (changes.calendarId !== undefined && changes.calendarId !== current.calendarId) {
+    if (!canManage(principal, current)) {
+      throw new DomainError("FORBIDDEN", "Only the event's creator moves it");
+    }
+    calendarId = (await writableCalendarOf(current.creatorId, changes.calendarId)).id;
   }
   const startAt = changes.startAt ?? current.startAt;
   const endAt = changes.endAt ?? current.endAt;
@@ -221,7 +389,14 @@ export async function updateEvent(
       startAt: new Date(startAt),
       endAt: new Date(endAt),
       ...(changes.timeZone !== undefined && { timeZone: changes.timeZone }),
-      ...(changes.recurrence !== undefined && recurrenceColumns(changes.recurrence)),
+      ...(calendarId !== undefined && { calendarId }),
+      ...(changes.rrule !== undefined && {
+        rrule: storedRule(
+          changes.rrule,
+          changes.timeZone ?? current.timeZone,
+          changes.allDay ?? current.allDay,
+        ),
+      }),
       updatedAt: new Date(),
     })
     .where(eq(calendarEvent.id, id))
@@ -232,11 +407,18 @@ export async function updateEvent(
       changes.sharedWith ?? current.sharedWith,
       changes.attendees ?? current.attendees,
     );
+    // Each remaining recipient keeps the calendar they placed it in.
+    const placed = new Map(
+      ((await sharesOf([id])).get(id) ?? []).map((share) => [
+        share.userId,
+        share.calendarId,
+      ]),
+    );
     await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
-    await writeShares(id, sharedWith, attendees);
+    await writeShares(id, sharedWith, attendees, placed);
   }
   log.info("event updated", { eventId: id, userId: principal.userId });
-  return toEvent(row!, (await sharesOf([id])).get(id) ?? []);
+  return withShares(principal, row!);
 }
 
 /** Ends a series before `from`: what happened before that day stays on the calendar. */
@@ -247,39 +429,186 @@ export async function stopRecurrence(
 ): Promise<CalendarEvent> {
   eventPermissions.require(principal, "update");
   const current = await getEvent(principal, id);
-  if (!current.recurrence)
-    throw new DomainError("CONFLICT", "This event does not repeat");
+  requireEditable(current);
+  refuseImported(current);
+  if (!current.rrule) throw new DomainError("CONFLICT", "This event does not repeat");
   const until = dayBefore(from);
   const [row] = await getDb()
     .update(calendarEvent)
-    .set({ recurrenceUntil: until, recurrenceCount: null, updatedAt: new Date() })
+    .set({
+      rrule: ruleEndingOn(current.rrule, until, current.timeZone, current.allDay),
+      updatedAt: new Date(),
+    })
     .where(eq(calendarEvent.id, id))
     .returning();
   log.info("recurrence stopped", { eventId: id, until, userId: principal.userId });
-  return toEvent(row!, (await sharesOf([id])).get(id) ?? []);
+  return withShares(principal, row!);
+}
+
+/** Changes one occurrence of a series: its title, description or times. */
+export async function editOccurrence(
+  principal: Principal,
+  id: string,
+  originalStartAt: number,
+  changes: OccurrenceUpdate,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "update");
+  const { current, existing } = await occurrenceOf(principal, id, originalStartAt);
+  const duration = current.endAt - current.startAt;
+  const startAt = changes.startAt ?? existing?.startAt?.getTime() ?? originalStartAt;
+  const endAt = changes.endAt ?? existing?.endAt?.getTime() ?? startAt + duration;
+  checkTimes(startAt, endAt);
+  const values = {
+    cancelled: false,
+    title: changes.title ?? existing?.title ?? null,
+    description: changes.description ?? existing?.description ?? null,
+    // Kept only when they differ from the series' own times.
+    startAt: startAt === originalStartAt ? null : new Date(startAt),
+    endAt: endAt === originalStartAt + duration ? null : new Date(endAt),
+    updatedAt: new Date(),
+  };
+  await writeException(id, originalStartAt, values);
+  log.info("occurrence changed", {
+    eventId: id,
+    originalStartAt,
+    userId: principal.userId,
+  });
+  return getEvent(principal, id);
+}
+
+/** Removes one occurrence of a series. */
+export async function cancelOccurrence(
+  principal: Principal,
+  id: string,
+  originalStartAt: number,
+): Promise<CalendarEvent> {
+  eventPermissions.require(principal, "update");
+  await occurrenceOf(principal, id, originalStartAt);
+  await writeException(id, originalStartAt, {
+    cancelled: true,
+    title: null,
+    description: null,
+    startAt: null,
+    endAt: null,
+    updatedAt: new Date(),
+  });
+  log.info("occurrence cancelled", {
+    eventId: id,
+    originalStartAt,
+    userId: principal.userId,
+  });
+  return getEvent(principal, id);
+}
+
+/** The series and the occurrence's exception so far, once the caller may change it and it is one. */
+async function occurrenceOf(principal: Principal, id: string, originalStartAt: number) {
+  const current = await getEvent(principal, id);
+  requireEditable(current);
+  refuseImported(current);
+  if (!current.rrule) throw new DomainError("CONFLICT", "This event does not repeat");
+  const series = {
+    startAt: current.startAt,
+    endAt: current.endAt,
+    timeZone: current.timeZone,
+    rule: current.rrule,
+  };
+  if (!isOccurrence(series, originalStartAt)) {
+    throw new DomainError("NOT_FOUND", "The event has no occurrence then");
+  }
+  const existing = await getDb()
+    .select()
+    .from(calendarEventException)
+    .where(
+      and(
+        eq(calendarEventException.eventId, id),
+        eq(calendarEventException.originalStartAt, new Date(originalStartAt)),
+      ),
+    )
+    .get();
+  return { current, existing };
+}
+
+async function writeException(
+  eventId: string,
+  originalStartAt: number,
+  values: Omit<
+    typeof calendarEventException.$inferInsert,
+    "id" | "eventId" | "originalStartAt"
+  >,
+): Promise<void> {
+  await getDb()
+    .insert(calendarEventException)
+    .values({
+      id: newEntityId("CALENDAR_EVENT_EXCEPTION"),
+      eventId,
+      originalStartAt: new Date(originalStartAt),
+      ...values,
+    })
+    .onConflictDoUpdate({
+      target: [calendarEventException.eventId, calendarEventException.originalStartAt],
+      set: values,
+    });
 }
 
 export async function removeEvent(principal: Principal, id: string): Promise<void> {
   eventPermissions.require(principal, "remove");
   const current = await getEvent(principal, id);
+  requireEditable(current);
+  refuseImported(current);
   if (!canManage(principal, current)) {
     throw new DomainError("FORBIDDEN", "Only the event's creator removes it");
   }
   const db = getDb();
-  await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
-  await db.delete(calendarEvent).where(eq(calendarEvent.id, id));
+  await db.batch([
+    db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
+    db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
+    db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
+  ]);
   log.info("event removed", { eventId: id, userId: principal.userId });
+}
+
+function refuseImported(item: CalendarEvent): void {
+  if (item.source !== "matron") {
+    throw new DomainError(
+      "BAD_REQUEST",
+      "This event comes from Google Calendar; change it there",
+    );
+  }
+}
+
+function requireEditable(item: CalendarEvent): void {
+  if (item.access !== "edit") {
+    throw new DomainError("FORBIDDEN", "This calendar is shared with you read-only");
+  }
+}
+
+/** The event as the caller sees it; NOT_FOUND when they may not see it. */
+async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
+  const [shares, calendars, viewer, exceptions] = await Promise.all([
+    sharesOf([row.id]),
+    calendarsById([row.calendarId]),
+    viewerOf(principal),
+    row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
+  ]);
+  const list = shares.get(row.id) ?? [];
+  const placement = placementOf(
+    viewer,
+    row,
+    list.find((share) => share.userId === principal.userId),
+  );
+  if (!placement) throw new DomainError("NOT_FOUND", "Event not found");
+  return toEvent(
+    row,
+    list,
+    calendars.get(row.calendarId),
+    placement,
+    exceptions.get(row.id) ?? [],
+  );
 }
 
 function checkTimes(startAt: number, endAt: number): void {
   if (endAt <= startAt)
     throw new DomainError("BAD_REQUEST", "An event must end after it starts");
-}
-
-function canSee(principal: Principal, item: CalendarEvent): boolean {
-  return (
-    item.creatorId === principal.userId || item.sharedWith.includes(principal.userId)
-  );
 }
 
 function canManage(principal: Principal, item: CalendarEvent): boolean {
@@ -310,6 +639,7 @@ async function writeShares(
   eventId: string,
   sharedWith: string[],
   attendees: string[],
+  placed: Map<string, string | null> = new Map(),
 ): Promise<void> {
   const people = new Set([...sharedWith, ...attendees]);
   if (people.size === 0) return;
@@ -321,6 +651,7 @@ async function writeShares(
         eventId,
         userId,
         attendee: attendees.includes(userId),
+        calendarId: placed.get(userId) ?? null,
       })),
     );
 }
@@ -340,34 +671,70 @@ async function sharesOf(eventIds: string[]): Promise<Map<string, ShareRow[]>> {
   return out;
 }
 
-function recurrenceColumns(recurrence: Recurrence | null) {
-  return {
-    recurrenceFrequency: recurrence?.frequency ?? null,
-    recurrenceDays: recurrence ? JSON.stringify(recurrence.days) : null,
-    recurrenceUntil: recurrence?.until ?? null,
-    recurrenceCount: recurrence?.count ?? null,
-  };
-}
-
-function toRecurrence(row: EventRow): Recurrence | null {
-  if (!row.recurrenceFrequency) return null;
-  let days: number[] = [];
+/** A rule as stored, checked and in the standard's form; a bad one is the caller's mistake. */
+function storedRule(
+  rule: string | null,
+  timeZone: string,
+  allDay: boolean,
+): string | null {
+  if (!rule) return null;
   try {
-    const parsed: unknown = JSON.parse(row.recurrenceDays ?? "[]");
-    if (Array.isArray(parsed))
-      days = parsed.filter((d): d is number => typeof d === "number");
-  } catch {
-    days = [];
+    return canonicalRule(rule, timeZone, allDay);
+  } catch (err) {
+    if (err instanceof InvalidRuleError)
+      throw new DomainError("BAD_REQUEST", err.message);
+    throw err;
   }
+}
+
+function seriesOf(row: EventRow) {
   return {
-    frequency: row.recurrenceFrequency,
-    days,
-    until: row.recurrenceUntil,
-    count: row.recurrenceCount,
+    startAt: row.startAt.getTime(),
+    endAt: row.endAt.getTime(),
+    timeZone: row.timeZone,
+    rule: row.rrule ?? "",
   };
 }
 
-function toEvent(row: EventRow, shares: ShareRow[]): CalendarEvent {
+type ExceptionRow = typeof calendarEventException.$inferSelect;
+
+/** The exceptions of these series, by event; ids go in chunks under D1's parameter limit. */
+async function exceptionsOf(eventIds: string[]): Promise<Map<string, ExceptionRow[]>> {
+  const out = new Map<string, ExceptionRow[]>();
+  for (let i = 0; i < eventIds.length; i += 90) {
+    const rows = await getDb()
+      .select()
+      .from(calendarEventException)
+      .where(inArray(calendarEventException.eventId, eventIds.slice(i, i + 90)));
+    for (const row of rows) out.set(row.eventId, [...(out.get(row.eventId) ?? []), row]);
+  }
+  return out;
+}
+
+function toExceptionInput(row: ExceptionRow): ExceptionInput {
+  return {
+    originalStartAt: row.originalStartAt.getTime(),
+    cancelled: row.cancelled,
+    startAt: row.startAt?.getTime() ?? null,
+    endAt: row.endAt?.getTime() ?? null,
+  };
+}
+
+function toException(row: ExceptionRow): OccurrenceException {
+  return {
+    ...toExceptionInput(row),
+    title: row.title,
+    description: row.description,
+  };
+}
+
+function toEvent(
+  row: EventRow,
+  shares: ShareRow[],
+  cal: CalendarRow | undefined,
+  placement: Placement,
+  exceptions: ExceptionRow[],
+): CalendarEvent {
   return {
     id: row.id,
     title: row.title,
@@ -377,29 +744,45 @@ function toEvent(row: EventRow, shares: ShareRow[]): CalendarEvent {
     startAt: row.startAt.getTime(),
     endAt: row.endAt.getTime(),
     timeZone: row.timeZone,
-    recurrence: toRecurrence(row),
+    rrule: row.rrule,
+    exceptions: exceptions.map(toException),
     sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
     attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
+    calendarId: row.calendarId,
+    shownIn: placement.shownIn,
+    access: placement.access,
+    source: cal?.source ?? "matron",
+    repeatsAtSource: row.externalSeriesId !== null,
+    externalUrl: row.externalUrl,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };
 }
 
+interface OccurrenceFields {
+  id: string;
+  originalStartAt: number | null;
+  title: string;
+  startAt: number;
+  endAt: number;
+  recurring: boolean;
+  changed: boolean;
+}
+
 function toOccurrence(
   row: EventRow,
-  id: string,
-  startAt: number,
-  endAt: number,
-  recurring: boolean,
+  cal: CalendarRow | undefined,
+  placement: Placement,
+  fields: OccurrenceFields,
 ): Occurrence {
   return {
-    id,
+    ...fields,
     eventId: row.id,
-    title: row.title,
     allDay: row.allDay,
-    startAt,
-    endAt,
-    recurring,
+    timeZone: row.timeZone,
     creatorId: row.creatorId,
+    calendarId: placement.shownIn,
+    color: placement.color,
+    source: cal?.source ?? "matron",
   };
 }

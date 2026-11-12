@@ -1,18 +1,18 @@
 import { readFileSync, rmSync } from "node:fs";
-import { combined, describeFailure, run, tail, type RunResult } from "./run.js";
-import { JobError, type BuilderJob } from "./types.js";
+import { combined, describeFailure, exec, tail, type ExecResult } from "./exec.js";
+import { BuilderError, type BuilderRun } from "./types.js";
 
 export type WranglerContext = {
-  job: BuilderJob;
+  run: BuilderRun;
   /** apps/backend in the clone. */
   cwd: string;
   onOutput?: (text: string) => void;
 };
 
-export function wranglerEnv(job: BuilderJob): NodeJS.ProcessEnv {
+export function wranglerEnv(run: BuilderRun): NodeJS.ProcessEnv {
   return {
-    CLOUDFLARE_API_TOKEN: job.cloudflare.apiToken,
-    CLOUDFLARE_ACCOUNT_ID: job.cloudflare.accountId,
+    CLOUDFLARE_API_TOKEN: run.cloudflare.apiToken,
+    CLOUDFLARE_ACCOUNT_ID: run.cloudflare.accountId,
     WRANGLER_SEND_METRICS: "false",
     CI: "true",
   };
@@ -28,25 +28,25 @@ export async function wrangler(
   ctx: WranglerContext,
   args: string[],
   options: WranglerOptions = {},
-): Promise<RunResult> {
-  return run("pnpm", ["exec", "wrangler", ...args], {
+): Promise<ExecResult> {
+  return exec("pnpm", ["exec", "wrangler", ...args], {
     cwd: options.cwd ?? ctx.cwd,
-    env: { ...wranglerEnv(ctx.job), ...options.env },
+    env: { ...wranglerEnv(ctx.run), ...options.env },
     timeoutMs: options.timeoutMs ?? 10 * 60 * 1000,
     onOutput: ctx.onOutput,
   });
 }
 
-/** Runs wrangler and throws a readable JobError (with the output tail) on failure. */
+/** Runs wrangler and throws a readable BuilderError (with the output tail) on failure. */
 export async function wranglerMust(
   ctx: WranglerContext,
   label: string,
   args: string[],
   options: WranglerOptions = {},
-): Promise<RunResult> {
+): Promise<ExecResult> {
   const result = await wrangler(ctx, args, options);
   if (result.code !== 0)
-    throw new JobError(describeFailure(label, result), tail(combined(result)));
+    throw new BuilderError(describeFailure(label, result), tail(combined(result)));
   return result;
 }
 
@@ -112,19 +112,35 @@ export async function d1Create(ctx: WranglerContext, name: string): Promise<void
   await wranglerMust(ctx, `wrangler d1 create ${name}`, ["d1", "create", name]);
 }
 
+/** Exports one half of a database: its tables and indexes, or the rows in them. */
 export async function d1Export(
   ctx: WranglerContext,
   name: string,
   output: string,
+  part: "schema" | "data",
 ): Promise<void> {
   await wranglerMust(
     ctx,
-    `wrangler d1 export ${name}`,
-    ["d1", "export", name, "--remote", "--output", output, "--skip-confirmation"],
+    `wrangler d1 export ${name} (${part})`,
+    [
+      "d1",
+      "export",
+      name,
+      "--remote",
+      "--output",
+      output,
+      "--skip-confirmation",
+      part === "schema" ? "--no-data" : "--no-schema",
+    ],
     {
       timeoutMs: 30 * 60 * 1000,
     },
   );
+}
+
+/** Deletes a database; best effort, for one that was only half made. */
+export async function d1Delete(ctx: WranglerContext, name: string): Promise<void> {
+  await wrangler(ctx, ["d1", "delete", name, "--skip-confirmation"]);
 }
 
 export async function d1ExecuteFile(
@@ -256,14 +272,14 @@ export function readOutputFile(file: string): string {
 const API = "https://api.cloudflare.com/client/v4";
 
 async function api(
-  job: BuilderJob,
+  run: BuilderRun,
   method: string,
   path: string,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`${API}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${job.cloudflare.apiToken}`,
+      Authorization: `Bearer ${run.cloudflare.apiToken}`,
       "Content-Type": "application/json",
     },
   });
@@ -277,13 +293,26 @@ async function api(
   return body;
 }
 
+/** Restores a D1 database in place to `at` with Time Travel: everything written to it since is gone. */
+export async function d1Restore(
+  run: BuilderRun,
+  db: D1Database,
+  at: Date,
+): Promise<void> {
+  await api(
+    run,
+    "POST",
+    `/accounts/${run.cloudflare.accountId}/d1/database/${db.uuid}/time_travel/restore?timestamp=${encodeURIComponent(at.toISOString())}`,
+  );
+}
+
 /** The account's workers.dev subdomain, to compose a preview URL when wrangler printed none. */
-export async function workersSubdomain(job: BuilderJob): Promise<string | null> {
+export async function workersSubdomain(run: BuilderRun): Promise<string | null> {
   try {
     const body = await api(
-      job,
+      run,
       "GET",
-      `/accounts/${job.cloudflare.accountId}/workers/subdomain`,
+      `/accounts/${run.cloudflare.accountId}/workers/subdomain`,
     );
     const result = body.result as Record<string, unknown> | undefined;
     return typeof result?.subdomain === "string" ? result.subdomain : null;
@@ -302,23 +331,23 @@ export function composePreviewUrl(
 
 /** Deletes every object under `prefix` in `bucket`. Returns how many were deleted. */
 export async function r2DeletePrefix(
-  job: BuilderJob,
+  run: BuilderRun,
   bucket: string,
   prefix: string,
 ): Promise<number> {
-  const base = `/accounts/${job.cloudflare.accountId}/r2/buckets/${encodeURIComponent(bucket)}/objects`;
+  const base = `/accounts/${run.cloudflare.accountId}/r2/buckets/${encodeURIComponent(bucket)}/objects`;
   let cursor: string | undefined;
   let deleted = 0;
   do {
     const query = new URLSearchParams({ prefix, per_page: "1000" });
     if (cursor) query.set("cursor", cursor);
-    const body = await api(job, "GET", `${base}?${query}`);
+    const body = await api(run, "GET", `${base}?${query}`);
     const objects = Array.isArray(body.result)
       ? (body.result as Record<string, unknown>[])
       : [];
     for (const object of objects) {
       if (typeof object.key !== "string") continue;
-      await api(job, "DELETE", `${base}/${encodeURIComponent(object.key)}`);
+      await api(run, "DELETE", `${base}/${encodeURIComponent(object.key)}`);
       deleted++;
     }
     const info = body.result_info as Record<string, unknown> | undefined;

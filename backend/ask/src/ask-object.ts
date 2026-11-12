@@ -5,13 +5,9 @@ import { getAskModel } from "@backend/arch-settings/service";
 import { logger } from "@backend/commons/logger";
 import { ROLES, type Principal, type Role } from "@backend/commons/principal";
 import { DEFAULT_ASK_MODEL } from "@shared/contract/arch/settings";
+import { fileNames } from "./attachments";
 import { touchConversation } from "./conversations";
-import {
-  gatewayModel,
-  gatewayOptions,
-  isWorkersAIModel,
-  type AskModelMetadata,
-} from "./models/gateway";
+import { gatewayModel, gatewayOptions, type AskModelMetadata } from "./models/gateway";
 import { askSystemPrompt } from "./prompt";
 import { householdTools } from "./tools";
 
@@ -40,6 +36,13 @@ export interface AskState {
  */
 export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
   initialState: AskState = { principal: null, branch: "main", timeZone: "UTC" };
+
+  /**
+   * An attachment is read by the turn it came with and the next one, then
+   * moved out of the transcript so no later turn pays for it again.
+   */
+  override mediaEviction = { keepRecentMessages: 2 };
+  override truncationStep = 2;
 
   override async onConnect(
     connection: Connection,
@@ -82,24 +85,20 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
   /**
    * An Anthropic slug goes to the gateway's Anthropic endpoint, authenticated
    * with the account token, where the household's stored provider key applies.
-   * A Workers AI slug goes through the AI binding. Nothing else is served.
+   * Any other slug is resolved the agent's own way, through the AI binding.
    */
   override resolveModel(model: string | LanguageModel = this.getModel()): LanguageModel {
-    if (typeof model !== "string" || isWorkersAIModel(model))
-      return super.resolveModel(model);
+    if (typeof model !== "string") return super.resolveModel(model);
     const { CLOUDFLARE_ACCOUNT_ID: accountId, CLOUDFLARE_API_TOKEN: token } = this.env;
     if (!accountId || !token) {
       throw new Error(
         "The assistant has no account token for the gateway: set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
       );
     }
-    const direct = gatewayModel(model, { accountId, token }, this.modelMetadata());
-    if (!direct) {
-      throw new Error(
-        `The assistant runs Anthropic models (anthropic/...) or Workers AI models (@cf/...), not "${model}"`,
-      );
-    }
-    return direct;
+    return (
+      gatewayModel(model, { accountId, token }, this.modelMetadata()) ??
+      super.resolveModel(model)
+    );
   }
 
   private modelMetadata(): AskModelMetadata {
@@ -135,11 +134,13 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
         : (last?.content ?? [])
             .map((part) => (part.type === "text" ? part.text : ""))
             .join("");
-    void touchConversation(this.name, text || undefined).catch((err: unknown) =>
-      log.warn("touch failed", { err }),
-    );
+    void touchConversation(
+      this.name,
+      text || fileNames(last).join(", ") || undefined,
+    ).catch((err: unknown) => log.warn("touch failed", { err }));
+    const model = await getAskModel().catch(() => DEFAULT_ASK_MODEL);
     return {
-      model: await getAskModel().catch(() => DEFAULT_ASK_MODEL),
+      model,
       system: this.getSystemPrompt(),
       activeTools: Object.keys(this.getTools()),
     };

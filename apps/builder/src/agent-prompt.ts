@@ -1,21 +1,5 @@
-import { loadPrompt, promptPath, renderTemplate } from "./prompts.js";
-import type { AgentPrompt, BuilderJob } from "./types.js";
-
-/** The structured output every agent turn must end with. */
-export const OUTCOME_SCHEMA = {
-  type: "object",
-  properties: {
-    status: { type: "string", enum: ["done", "question", "blocked"] },
-    summary: {
-      type: "string",
-      description: "One line describing the change, for a commit title",
-    },
-    reasoning: { type: "string", description: "Why the change was made this way" },
-    message: { type: "string", description: "What to show the user, in markdown" },
-  },
-  required: ["status", "summary", "reasoning", "message"],
-  additionalProperties: false,
-} as const;
+import { loadOutcomeSchema, loadPrompt, promptPath, renderTemplate } from "./prompts.js";
+import type { AgentPrompt, BuilderRun } from "./types.js";
 
 export const ALLOWED_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "Grep"];
 
@@ -28,21 +12,22 @@ export const CLAUDE_SETTINGS_FILE = "/app/claude-settings.json";
  * original build context first, since the agent has no memory of the branch.
  */
 export function renderPrompt(
-  job: BuilderJob,
+  run: BuilderRun,
   prompt: AgentPrompt,
   promptsDir: string,
   hasSession: boolean,
+  /** Where the files that came with the message were written, if any. */
+  attachments: string[] = [],
 ): string {
-  const buildContext = (plan: string) =>
-    renderTemplate(loadPrompt(promptsDir, "build"), {
-      request: job.request,
-      plan,
-      branch: job.branch.name,
-      extra: prompt.kind === "build" ? prompt.extra : "",
-    });
   switch (prompt.kind) {
     case "build":
-      return buildContext(job.plan ?? "(no plan was written; work from the request)");
+      return renderTemplate(loadPrompt(promptsDir, "build"), {
+        request: run.request,
+        plan: run.plan ?? "(no plan was written; work from the request)",
+        branch: run.branch.name,
+        extra: prompt.extra,
+        attachments: attachmentsNote(attachments),
+      });
     case "fix":
       return renderTemplate(loadPrompt(promptsDir, "fix"), {
         command: prompt.command,
@@ -52,15 +37,28 @@ export function renderPrompt(
       const text = renderTemplate(loadPrompt(promptsDir, "continue"), {
         message: prompt.message,
         sync: prompt.sync,
+        attachments: attachmentsNote(attachments),
       });
       if (hasSession) return text;
-      const context = buildContext(
-        job.plan ??
+      const context = renderTemplate(loadPrompt(promptsDir, "build"), {
+        request: run.request,
+        plan:
+          run.plan ??
           "(the plan is not available; the branch already contains the earlier work)",
-      );
+        branch: run.branch.name,
+        extra: "",
+        attachments: "",
+      });
       return `${context}\n\n---\n\n${text}`;
     }
   }
+}
+
+/** Where the files that came with the user's words were written, for the prompt. */
+function attachmentsNote(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const what = paths.length === 1 ? "a file" : "files";
+  return `The user attached ${what}, written for you to read (pictures and PDFs included) at:\n${paths.map((path) => `- ${path}`).join("\n")}`;
 }
 
 /**
@@ -87,7 +85,7 @@ export function agentArgv(
     "--append-system-prompt-file",
     promptPath(promptsDir, "system"),
     "--json-schema",
-    JSON.stringify(OUTCOME_SCHEMA),
+    loadOutcomeSchema(promptsDir),
     "--settings",
     CLAUDE_SETTINGS_FILE,
     "--model",

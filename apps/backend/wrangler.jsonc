@@ -56,6 +56,10 @@
     "APP_ORIGIN": "http://localhost:5173",
     "BETTER_AUTH_SECRET": "local-dev-secret-please-change-3f9a1c7d8e2b4506",
     "SIGNING_KEY": "local-dev-signing-key-please-change-91ab2c7d",
+    // A made-up Google OAuth app, so linking an account can be tried up to
+    // Google's own page. A deployment sets its real one in App settings.
+    "GOOGLE_CLIENT_ID": "1234-local.apps.googleusercontent.com",
+    "GOOGLE_CLIENT_SECRET": "local-dev-google-client-secret",
     "CLOUDFLARE_API_TOKEN": "",
     // Everything else (database, bucket, repository, image) is named after the Worker.
     "WORKER_NAME": "matron-local",

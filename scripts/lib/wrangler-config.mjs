@@ -3,12 +3,6 @@
 // (scripts/gen-wrangler-config.mjs) reads env and files. Unit tests live in
 // wrangler-config.test.ts.
 /* global structuredClone */
-import { deploymentNames } from "./names.mjs";
-
-/** The container application's name; the `exports` entry of BuilderObject points at it. */
-export const BUILDER_CONTAINER = "builder";
-/** The image name under `containers[].images`; read as `ctx.container.images.builder`. */
-export const BUILDER_IMAGE_NAME = "builder";
 
 export const REQUIRED_COMPAT_FLAGS = [
   "nodejs_compat",
@@ -17,10 +11,26 @@ export const REQUIRED_COMPAT_FLAGS = [
   "enable_ctx_exports",
 ];
 
+/**
+ * When production syncs every member's imported Google calendars in full, once
+ * a day (UTC). Google's own notices bring each change in between.
+ */
+export const GOOGLE_SYNC_CRON = "17 3 * * *";
+
+/**
+ * When production pushes the reminders that are due: hourly, on the hour. The
+ * Worker tells its crons apart by this text (`REMINDER_CRON` in
+ * backend/notifications/src/reminders.ts).
+ */
+export const REMINDER_CRON = "0 * * * *";
+
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
 export const SECRET_VARS = [
   "BETTER_AUTH_SECRET",
   "SIGNING_KEY",
+  // Set from App settings, through Cloudflare's API.
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
   "CLOUDFLARE_API_TOKEN",
   "VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
@@ -49,7 +59,6 @@ export const SECRET_VARS = [
 export function generateWranglerConfig(emitted, options) {
   const config = structuredClone(emitted);
   const isProduction = options.target === "production";
-  const names = deploymentNames(options.workerName);
 
   config.name = options.workerName;
   delete config.env;
@@ -70,8 +79,8 @@ export function generateWranglerConfig(emitted, options) {
         migrations_dir: options.migrationsDir,
       },
     ],
-    r2_buckets: [{ binding: "FILES", bucket_name: names.bucket }],
-    artifacts: [{ binding: "ARTIFACTS", namespace: names.namespace }],
+    r2_buckets: [{ binding: "FILES", bucket_name: options.workerName }],
+    artifacts: [{ binding: "ARTIFACTS", namespace: options.workerName }],
     images: { binding: "IMAGES" },
     // Workers AI and the AI Gateway behind it; a Preview reaches models only this way.
     ai: { binding: "AI" },
@@ -100,8 +109,12 @@ export function generateWranglerConfig(emitted, options) {
 
   delete config.containers;
   delete config.previews;
+  delete config.triggers;
 
   if (isProduction) {
+    // The daily sync of members' imported Google calendars, and the hourly
+    // reminder sweep. A Preview has neither: its database is a copy of production's.
+    config.triggers = { crons: [GOOGLE_SYNC_CRON, REMINDER_CRON] };
     if (options.appOrigin.endsWith(".workers.dev")) config.workers_dev = true;
     // Previews are reached by URL from the router, so they need their URLs on.
     config.preview_urls = true;
@@ -110,11 +123,11 @@ export function generateWranglerConfig(emitted, options) {
       // `ctx.container.images.builder` and picks the instance size then.
       config.containers = [
         {
-          name: BUILDER_CONTAINER,
+          name: options.workerName,
           class_name: "BuilderObject",
           scheduling_policy: "durable_object",
           images: {
-            [BUILDER_IMAGE_NAME]: options.builderImage
+            builder: options.builderImage
               ? { image: options.builderImage }
               : { dockerfile: options.dockerfilePath },
           },
@@ -122,12 +135,13 @@ export function generateWranglerConfig(emitted, options) {
       ];
       config.exports = {
         ...config.exports,
-        BuilderObject: { ...config.exports?.BuilderObject, container: BUILDER_CONTAINER },
+        BuilderObject: {
+          ...config.exports?.BuilderObject,
+          container: options.workerName,
+        },
       };
     }
   } else {
-    // A Preview sends no reminders: its database is a copy of production's.
-    delete config.triggers;
     // A Preview inherits nothing from the Worker: repeat everything it binds.
     // No containers here, so `wrangler preview` never needs Docker.
     config.previews = {

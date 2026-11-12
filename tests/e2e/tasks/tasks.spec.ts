@@ -10,6 +10,10 @@ test.describe("tasks", () => {
 
     await page.getByRole("button", { name: "New task" }).click();
     const dialog = page.getByRole("dialog");
+    // The title has focus, and Tab walks on to the next field.
+    await expect(dialog.getByLabel("Title")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByLabel("Description")).toBeFocused();
     await dialog.getByLabel("Title").fill("Buy milk");
     await dialog.getByRole("button", { name: "Add task" }).click();
     const checkbox = page.getByRole("checkbox", { name: "Buy milk" });
@@ -27,16 +31,21 @@ test.describe("tasks", () => {
 
     await page.getByRole("button", { name: "Buy milk" }).click();
     await dialog.getByLabel("Title").fill("Buy oat milk");
-    await dialog.getByRole("button", { name: "Save" }).click();
+    // Enter in a field submits the form.
+    await dialog.getByLabel("Title").press("Enter");
     await expect(page.getByRole("checkbox", { name: "Buy oat milk" })).toBeVisible();
 
     await page.getByRole("button", { name: "Buy oat milk" }).click();
-    await dialog.getByRole("button", { name: "Remove" }).click();
-    await page
-      .getByRole("dialog")
-      .filter({ hasText: "Remove this task?" })
-      .getByRole("button", { name: "Remove" })
-      .click();
+    const remove = dialog.getByRole("button", { name: "Remove" });
+    const confirm = page.getByRole("dialog").filter({ hasText: "Remove this task?" });
+    // The confirmation takes focus; Escape closes it and gives focus back.
+    await remove.click();
+    await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(confirm).toHaveCount(0);
+    await expect(remove).toBeFocused();
+    await remove.click();
+    await confirm.getByRole("button", { name: "Remove" }).click();
     await expect(page.getByRole("checkbox", { name: "Buy oat milk" })).toHaveCount(0);
   });
 

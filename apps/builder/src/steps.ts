@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { r2DeletePrefix, wranglerTolerant } from "./cloudflare.js";
+import { runCleanupSteps } from "./cleanup-steps.js";
+import { d1Find, d1Restore } from "./cloudflare.js";
 import {
   deployPreview,
   deployProduction,
@@ -11,7 +12,7 @@ import {
 } from "./deploy.js";
 import { log, progress } from "./emit.js";
 import * as git from "./git.js";
-import { combined, describeFailure, run, tail } from "./run.js";
+import { combined, describeFailure, exec, tail } from "./exec.js";
 import {
   readGitAuth,
   readInstalled,
@@ -20,12 +21,13 @@ import {
   type Paths,
 } from "./state.js";
 import {
-  JobError,
-  type BuilderJob,
+  BuilderError,
+  type BuilderRun,
   type CommitPushResult,
   type DeployResult,
   type MergeMainResult,
   type PrepareContinueResult,
+  type StepInput,
   type VerifyResult,
 } from "./types.js";
 
@@ -83,19 +85,19 @@ const VERIFICATION: { label: string; args: string[] }[] = [
 
 /**
  * The steps the BuilderObject runs, one harness turn each, in the order it
- * decides. Every step gets the job on stdin and reports through stdout
+ * decides. Every step gets the run on stdin and reports through stdout
  * lines; what the next step needs is left in /work/state.
  */
 export class Steps {
   constructor(
-    private readonly job: BuilderJob,
+    private readonly run: BuilderRun,
     private readonly paths: Paths,
   ) {}
 
   private gitContext(): git.GitContext {
     return {
       repo: this.paths.repo,
-      token: this.job.repository.token,
+      token: this.run.repository.token,
       scheme: readGitAuth(this.paths),
       onOutput: log,
     };
@@ -103,7 +105,7 @@ export class Steps {
 
   private deployContext(): DeployContext {
     return {
-      job: this.job,
+      run: this.run,
       paths: this.paths,
       gitScheme: readGitAuth(this.paths),
       log: progress,
@@ -115,7 +117,7 @@ export class Steps {
   private async clone(): Promise<git.GitContext> {
     const g = this.gitContext();
     progress(`cloning into ${this.paths.repo}`);
-    await git.clone(g, this.job.repository.remote, dirname(this.paths.repo));
+    await git.clone(g, this.run.repository.remote, dirname(this.paths.repo));
     if (g.scheme) writeGitAuth(this.paths, g.scheme);
     return g;
   }
@@ -123,7 +125,7 @@ export class Steps {
   /** A build: a fresh clone with the branch cut from main. */
   async prepareBuild(): Promise<void> {
     const g = await this.clone();
-    await git.checkoutNewBranch(g, this.job.branch.name, this.job.branch.baseCommit);
+    await git.checkoutNewBranch(g, this.run.branch.name, this.run.branch.baseCommit);
   }
 
   /**
@@ -138,7 +140,7 @@ export class Steps {
       log(`restored checkout:\n${tail(await git.status(g), 20)}`);
     } else {
       g = await this.clone();
-      await git.checkoutRemoteBranch(g, this.job.branch.name);
+      await git.checkoutRemoteBranch(g, this.run.branch.name);
     }
     progress("fetching main");
     const { behind } = await git.fetchMain(g);
@@ -171,12 +173,15 @@ export class Steps {
       onOutput: log,
       env: { CI: "true" },
     };
-    const frozen = await run("pnpm", ["install", "--frozen-lockfile"], options);
+    const frozen = await exec("pnpm", ["install", "--frozen-lockfile"], options);
     if (frozen.code !== 0) {
       progress("frozen install failed; retrying without --frozen-lockfile");
-      const loose = await run("pnpm", ["install"], options);
+      const loose = await exec("pnpm", ["install"], options);
       if (loose.code !== 0)
-        throw new JobError(describeFailure("pnpm install", loose), tail(combined(loose)));
+        throw new BuilderError(
+          describeFailure("pnpm install", loose),
+          tail(combined(loose)),
+        );
     }
     writeInstalled(this.paths, lockfileHash(this.paths.repo));
   }
@@ -205,7 +210,7 @@ export class Steps {
       while (!(await responds(server.url))) {
         if (Date.now() > deadline) {
           const file = join(logs, `${server.name}.log`);
-          throw new JobError(
+          throw new BuilderError(
             `The ${server.name} dev server did not start.`,
             existsSync(file) ? tail(readFileSync(file, "utf8"), 40) : undefined,
           );
@@ -220,7 +225,7 @@ export class Steps {
     await this.warmServers();
     for (const step of VERIFICATION) {
       progress(`running ${step.label}`);
-      const result = await run("pnpm", step.args, {
+      const result = await exec("pnpm", step.args, {
         cwd: this.paths.repo,
         timeoutMs: 20 * 60 * 1000,
         onOutput: log,
@@ -233,11 +238,7 @@ export class Steps {
     return { failure: null };
   }
 
-  async commitPush(input: {
-    summary: string;
-    reasoning: string;
-    request: string;
-  }): Promise<CommitPushResult> {
+  async commitPush(input: StepInput): Promise<CommitPushResult> {
     const g = this.gitContext();
     const message = git.formatCommitMessage(
       input.summary,
@@ -246,7 +247,7 @@ export class Steps {
     );
     const committed = await git.commitAll(g, message);
     progress(committed ? "committed" : "no file changes to commit");
-    await git.push(g, this.job.branch.name);
+    await git.push(g, this.run.branch.name);
     return { committed };
   }
 
@@ -258,9 +259,9 @@ export class Steps {
   async mergeMain(): Promise<MergeMainResult> {
     const g = await this.clone();
     await git.checkout(g, "main");
-    await git.fetch(g, this.job.branch.name);
-    if (!(await git.mergeFastForward(g, `origin/${this.job.branch.name}`))) {
-      throw new JobError("main has diverged");
+    await git.fetch(g, this.run.branch.name);
+    if (!(await git.mergeFastForward(g, `origin/${this.run.branch.name}`))) {
+      throw new BuilderError("main has diverged");
     }
     await git.push(g, "main");
     progress("main pushed");
@@ -271,51 +272,46 @@ export class Steps {
     await deployProduction(this.deployContext());
   }
 
-  /** Removes the Preview, the branch D1, the remote branch and the R2 prefix. Each step tolerates failure. */
+  /**
+   * Takes production back to where the branch was cut. Main is moved to
+   * `branch.baseCommit` and that version installed; only then is the
+   * production database restored to when the branch was created, main pushed
+   * with force, and production deployed. Everything after that point goes:
+   * later commits, and every row written since, the router's included.
+   */
+  async revert(): Promise<void> {
+    const { branch, cloudflare } = this.run;
+    const g = await this.clone();
+    await git.checkout(g, "main");
+    const head = await git.revParse(g);
+    progress(`moving main back to ${branch.baseCommit.slice(0, 12)}`);
+    await git.revertTo(g, branch.baseCommit);
+    await this.install();
+    const database = await d1Find(
+      wranglerContext(this.deployContext()),
+      cloudflare.productionDatabaseName,
+    );
+    if (!database) {
+      throw new BuilderError(
+        `The production database ${cloudflare.productionDatabaseName} was not found.`,
+      );
+    }
+    const at = new Date(branch.createdAt);
+    progress(`restoring the production database to ${at.toISOString()}`);
+    await d1Restore(this.run, database, at);
+    await git.pushRevert(g, "main", head);
+    progress("main pushed");
+    await this.deployProduction();
+  }
+
+  /** Removes what the branch leaves behind (`cleanup-steps.ts` lists the cleanup steps); each tolerates failure. */
   async cleanup(): Promise<void> {
-    const { job } = this;
-    const w = wranglerContext(this.deployContext());
-    progress(`deleting preview ${job.branch.previewName}`);
-    await wranglerTolerant(
-      w,
-      "wrangler preview delete",
-      [
-        "preview",
-        "delete",
-        "--name",
-        job.branch.previewName,
-        "--worker-name",
-        job.cloudflare.workerName,
-        "--skip-confirmation",
-      ],
+    await runCleanupSteps({
+      run: this.run,
+      wrangler: wranglerContext(this.deployContext()),
+      git: this.gitContext(),
       progress,
-    );
-    progress(`deleting D1 ${job.branch.databaseName}`);
-    await wranglerTolerant(
-      w,
-      "wrangler d1 delete",
-      ["d1", "delete", job.branch.databaseName, "--skip-confirmation"],
-      progress,
-    );
-    progress(`deleting remote branch ${job.branch.name}`);
-    try {
-      await git.deleteRemoteBranch(this.gitContext(), job.branch.name);
-    } catch (error) {
-      progress(
-        `deleting the remote branch failed: ${error instanceof Error ? error.message : String(error)} (ignored)`,
-      );
-    }
-    const bucket = job.cloudflare.productionDatabaseName;
-    const prefix = `${job.branch.id}/`;
-    progress(`deleting R2 objects under ${bucket}/${prefix}`);
-    try {
-      const deleted = await r2DeletePrefix(job, bucket, prefix);
-      progress(`deleted ${deleted} R2 objects`);
-    } catch (error) {
-      progress(
-        `R2 cleanup failed: ${error instanceof Error ? error.message : String(error)} (ignored)`,
-      );
-    }
+    });
   }
 }
 

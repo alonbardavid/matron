@@ -10,6 +10,9 @@ import { notifications } from "@mantine/notifications";
 import { z } from "zod";
 import { authClient, unwrapAuth } from "@frontend/api/auth-client";
 import { useMe } from "@frontend/auth/useMe";
+import { AvatarEditor } from "@frontend/auth/widgets/AvatarEditor";
+import { CalendarsCard } from "@frontend/calendar/widgets/CalendarsCard";
+import { GoogleCalendarCard } from "@frontend/calendar/widgets/GoogleCalendarCard";
 import { Card } from "@frontend/ds/Card";
 import { useForm } from "@frontend/ds/forms/context";
 import { FormGeneralErrors } from "@frontend/ds/forms/FormGeneralErrors";
@@ -42,7 +45,7 @@ const SCHEMES = [
   { value: "auto", label: "System" },
 ];
 
-/** Your own account: name, password, appearance and reminders. The email is fixed. */
+/** Your own account: name, password, calendars, appearance and reminders. The email is fixed. */
 export function SettingsScreen() {
   const { me } = useMe();
   const queryClient = useQueryClient();
@@ -80,6 +83,7 @@ export function SettingsScreen() {
       <Card>
         <Stack gap="sm">
           <Text fw={600}>Profile</Text>
+          <AvatarEditor />
           <TextInput label="Email" value={me?.email ?? ""} readOnly disabled />
           <StandardForm form={profile} onSubmit={saveProfile}>
             <FormTextInput name="name" label="Name" autoComplete="name" />
@@ -112,6 +116,8 @@ export function SettingsScreen() {
           </StandardForm>
         </Stack>
       </Card>
+      <CalendarsCard />
+      <GoogleCalendarCard />
       <Card>
         <Stack gap="sm">
           <Text fw={600}>Appearance</Text>

@@ -1,15 +1,21 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { onError } from "@orpc/server";
+import { ResponseHeadersPlugin } from "@orpc/server/plugins";
 import { logUnexpectedError, type ApiContext } from "@backend/commons/api";
 import { conversations } from "./routes/conversations";
 import { calendar } from "./routes/calendar";
+import { files } from "./routes/files";
 import { notifications } from "./routes/notifications";
 import { tasks } from "./routes/tasks";
 import { users } from "./routes/users";
 
 const handler = new OpenAPIHandler(
-  { calendar, conversations, notifications, tasks, users },
-  { interceptors: [onError(logUnexpectedError)] },
+  { calendar, conversations, files, notifications, tasks, users },
+  {
+    interceptors: [onError(logUnexpectedError)],
+    // A file procedure sets its response's headers through the context.
+    plugins: [new ResponseHeadersPlugin()],
+  },
 );
 
 /** Answers a request under /api/app/* from the application's procedures, or null when none claims it. */

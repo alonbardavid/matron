@@ -5,14 +5,23 @@
  * allow-list for the user's role. Nothing fancy; the prompt says the same.
  */
 
-/** The application's tables, readable by every member. */
+/**
+ * The application's tables, readable by every member. `google_calendar_connection`
+ * and `google_calendar_watch` are left off on purpose: no role reads them.
+ */
 export const APP_TABLES = [
   "task",
   "task_share",
+  "calendar",
+  "calendar_share",
   "calendar_event",
   "calendar_event_share",
+  "calendar_event_exception",
   "ask_session",
 ] as const;
+
+/** The uploaded files' table, readable by owners only. */
+export const FILE_TABLE = "file";
 
 /** The router's tables, readable by owners and admins only; `user` is open to everyone. */
 export const ARCH_TABLES = [
@@ -32,12 +41,15 @@ const FORBIDDEN =
 export interface GuardOptions {
   /** Whether the router's tables may be read too (the database.read_router permission). */
   routerTables: boolean;
+  /** Whether the files' table may be read (the database.read_files permission). */
+  fileTable: boolean;
 }
 
 /** The tables a role may read. */
 export function allowedTables(options: GuardOptions): Set<string> {
   const tables = new Set<string>([...APP_TABLES, "user"]);
   if (options.routerTables) for (const table of ARCH_TABLES) tables.add(table);
+  if (options.fileTable) tables.add(FILE_TABLE);
   return tables;
 }
 

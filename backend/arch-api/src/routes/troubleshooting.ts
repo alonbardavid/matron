@@ -1,8 +1,10 @@
 import {
   clearContainers,
+  listAllBranches,
   listContainers,
   listDatabases,
   removeDatabase,
+  revertBranch,
   stopContainer,
 } from "@backend/arch-troubleshooting/service";
 import { arch } from "../implementer";
@@ -16,6 +18,15 @@ export const troubleshooting = arch.troubleshooting.router({
     ),
     remove: arch.troubleshooting.databases.remove.handler(async ({ context, input }) => {
       await removeDatabase(context.principal, input.id);
+      return done;
+    }),
+  },
+  branches: {
+    list: arch.troubleshooting.branches.list.handler(({ context }) =>
+      listAllBranches(context.principal),
+    ),
+    revert: arch.troubleshooting.branches.revert.handler(async ({ context, input }) => {
+      await revertBranch(context.principal, input.id);
       return done;
     }),
   },

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@backend/arch-branches": "workspace:*",
+    "@backend/arch-review": "workspace:*",
     "@backend/arch-troubleshooting": "workspace:*",
     "@backend/household": "workspace:*",
     "@frontend/api": "workspace:*",
@@ -16,6 +17,7 @@
     "@mantine/form": "9.7.4",
     "@mantine/hooks": "9.7.4",
     "@mantine/notifications": "9.7.4",
+    "@shared/contract": "workspace:*",
     "@tanstack/react-query": "^5.96.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

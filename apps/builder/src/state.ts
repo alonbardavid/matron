@@ -15,6 +15,8 @@ export type Paths = {
   installedFile: string;
   claudeConfig: string;
   prompts: string;
+  /** Where files attached to the user's messages are written for the agent, outside the checkout. */
+  attachments: string;
 };
 
 export function paths(work = process.env.MATRON_WORK_DIR ?? "/work"): Paths {
@@ -27,6 +29,7 @@ export function paths(work = process.env.MATRON_WORK_DIR ?? "/work"): Paths {
     installedFile: join(state, "installed-lockfile"),
     claudeConfig: join(work, "claude"),
     prompts: process.env.MATRON_PROMPTS_DIR ?? "/app/prompts",
+    attachments: join(work, "attachments"),
   };
 }
 

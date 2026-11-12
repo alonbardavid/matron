@@ -165,7 +165,7 @@ export function ContainersTab() {
               size="xs"
               variant="subtle"
               color="red"
-              message="Stop this container? Its workspace is snapshotted first, and a running job parks until the next message."
+              message="Stop this container? Its workspace is snapshotted first, and a run in progress parks until the next message."
               confirmLabel="Stop"
               disabled={pending.has(row.original.name)}
               onConfirm={() => {
@@ -211,7 +211,7 @@ export function ContainersTab() {
           <ConfirmButton
             size="xs"
             variant="default"
-            message="Stop every running container? Each workspace is snapshotted first, and running jobs park until their next message."
+            message="Stop every running container? Each workspace is snapshotted first, and runs in progress park until their next message."
             confirmLabel="Stop all"
             onConfirm={() => {
               pending.mark(

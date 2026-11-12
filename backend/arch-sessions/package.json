@@ -11,10 +11,13 @@
     "@backend/arch-builder": "workspace:*",
     "@backend/arch-planner": "workspace:*",
     "@backend/arch-repository": "workspace:*",
+    "@backend/arch-settings": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
+    "@cloudflare/think": "0.23.0",
     "@shared/contract": "workspace:*",
     "agents": "0.32.0",
+    "ai": "^7.0.0",
     "drizzle-orm": "^0.45.1",
     "zod": "^4.1.0"
   },

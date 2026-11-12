@@ -3,14 +3,15 @@ import { Group, Stack, Text } from "@mantine/core";
 import { notifyError } from "@frontend/api/errors";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { SidePanel } from "@frontend/ds/SidePanel";
-import { useAskChat } from "../AskChatContext";
+import { useAskChat, type AskInput } from "../AskChatContext";
 import {
   onThisBranch,
   useConversationActions,
   useConversations,
 } from "../useConversations";
 import { AskComposer } from "./AskComposer";
-import { AskConversation, Thinking } from "./AskConversation";
+import { AskConversation } from "./AskConversation";
+import { Thinking } from "@frontend/ds/chat/Thinking";
 import { AskMessage } from "./AskMessage";
 
 /**
@@ -25,13 +26,14 @@ export function AskChat() {
   const session = sessions.data?.find((item) => item.id === sessionId) ?? null;
   const draft = sessionId === null;
   // The first message, shown while its conversation is being created.
-  const [starting, setStarting] = useState<string | null>(null);
+  const [starting, setStarting] = useState<AskInput | null>(null);
 
-  const startConversation = (text: string): boolean => {
-    setStarting(text);
+  const startConversation = (text: string, files: AskInput["files"]): boolean => {
+    const input = { text, files };
+    setStarting(input);
     create
       .mutateAsync(undefined)
-      .then((created) => openWithMessage(created.id, text))
+      .then((created) => openWithMessage(created.id, input))
       .catch((err: unknown) => notifyError(err, "Could not start the conversation"))
       .finally(() => setStarting(null));
     return true;
@@ -57,7 +59,7 @@ export function AskChat() {
                 message={{
                   id: "draft",
                   role: "user",
-                  parts: [{ type: "text", text: starting }],
+                  parts: [...starting.files, { type: "text", text: starting.text }],
                 }}
               />
               <Thinking />
@@ -95,7 +97,7 @@ export function AskChat() {
             // A title is given by the first message, so a titled conversation has some.
             hasHistory={session?.title != null}
             readOnly={session?.archivedAt != null}
-            pending={pending?.sessionId === sessionId ? pending.text : null}
+            pending={pending?.sessionId === sessionId ? pending : null}
             onPendingSent={clearPending}
             onNew={openNew}
           />

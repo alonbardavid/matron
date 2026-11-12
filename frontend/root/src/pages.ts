@@ -3,7 +3,7 @@ export const PAGE_TITLES: Record<string, string> = {
   "/": "Calendar",
   "/tasks": "Tasks",
   "/conversations": "Conversations",
-  "/branches": "Branches",
+  "/builds": "Builds",
   "/users": "Users",
   "/app-settings": "App settings",
   "/troubleshooting": "Troubleshooting",

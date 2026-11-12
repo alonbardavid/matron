@@ -15,6 +15,12 @@ import { sendPush, type PushMessage } from "./web-push";
 
 const log = logger("notifications/reminders");
 
+/**
+ * The cron the sweep runs on, as the deployment's config declares it
+ * (`REMINDER_CRON` in scripts/lib/wrangler-config.mjs): hourly, on the hour.
+ */
+export const REMINDER_CRON = "0 * * * *";
+
 const DAY_MS = 86_400_000;
 /**
  * How far ahead a sweep looks. The sweep runs hourly, on the hour, so a

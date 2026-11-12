@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import {
   claudeCodeCli,
   cliAdapter,
@@ -9,7 +10,7 @@ import {
 } from "agents/harness/container/runtime";
 import { agentArgv, renderPrompt } from "./agent-prompt.js";
 import { paths } from "./state.js";
-import type { StepLine, TurnRequest } from "./types.js";
+import type { BuilderFile, StepLine, TurnRequest } from "./types.js";
 
 /**
  * The image's entrypoint: the container harness's daemon, with an adapter
@@ -43,9 +44,16 @@ function agentCommand(
   turn: CliTurn,
 ): CliCommand {
   const sessionId = turn.state.sessionId;
+  const files = request.prompt.kind === "fix" ? [] : (request.prompt.files ?? []);
   return {
     argv: agentArgv(p.repo, p.prompts, request.model, sessionId),
-    stdin: renderPrompt(request.job, request.prompt, p.prompts, !!sessionId),
+    stdin: renderPrompt(
+      request.run,
+      request.prompt,
+      p.prompts,
+      !!sessionId,
+      writeAttachments(files),
+    ),
     env: {
       CLAUDE_CONFIG_DIR: p.claudeConfig,
       DISABLE_AUTOUPDATER: "1",
@@ -55,6 +63,23 @@ function agentCommand(
       BASH_MAX_TIMEOUT_MS: "1200000",
     },
   };
+}
+
+/**
+ * Writes the files that came with the user's message where the agent can
+ * read them: a directory of their own under the attachments folder, outside the checkout,
+ * so nothing of them is ever committed. Returns their paths.
+ */
+function writeAttachments(files: BuilderFile[]): string[] {
+  if (files.length === 0) return [];
+  const dir = join(p.attachments, String(Date.now()));
+  mkdirSync(dir, { recursive: true });
+  return files.map((file, index) => {
+    const name = basename(file.name).replace(/[^A-Za-z0-9._-]+/g, "_") || `file-${index}`;
+    const path = join(dir, `${index + 1}-${name}`);
+    writeFileSync(path, Buffer.from(file.data, "base64"));
+    return path;
+  });
 }
 
 /** A step's lines become `raw` events; its last line is the outcome. */

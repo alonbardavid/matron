@@ -6,22 +6,28 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { FileUIPart } from "ai";
 
-interface PendingMessage {
-  sessionId: string;
+/** What is said to the session, with the files that go with it. */
+export interface BuildInput {
   text: string;
+  files: FileUIPart[];
+}
+
+interface PendingMessage extends BuildInput {
+  sessionId: string;
 }
 
 interface BuildChatContextValue {
   opened: boolean;
   /** Null while the chat is a draft: no session exists until the first message. */
   sessionId: string | null;
-  /** A message to send as soon as the socket for its session is open. */
+  /** A message to send as soon as its session is connected. */
   pending: PendingMessage | null;
   open: (sessionId: string) => void;
   /** Opens an empty chat; the session is created when something is sent. */
   openNew: () => void;
-  openWithMessage: (sessionId: string, text: string) => void;
+  openWithMessage: (sessionId: string, input: BuildInput) => void;
   close: () => void;
   clearPending: () => void;
 }
@@ -42,8 +48,8 @@ export function BuildChatProvider({ children }: { children: ReactNode }) {
     setSessionId(null);
     setOpened(true);
   }, []);
-  const openWithMessage = useCallback((id: string, text: string) => {
-    setPending({ sessionId: id, text });
+  const openWithMessage = useCallback((id: string, input: BuildInput) => {
+    setPending({ sessionId: id, ...input });
     setSessionId(id);
     setOpened(true);
   }, []);

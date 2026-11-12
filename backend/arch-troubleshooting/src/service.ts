@@ -2,12 +2,16 @@ import { inArray } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
+import { branchForSession, listBranches } from "@backend/arch-branches/service";
+import { startRevert } from "@backend/arch-builder/runs";
+import { mainHead } from "@backend/arch-repository/service";
 import { branches } from "@backend/db-models/arch-branches";
 import { user } from "@backend/db-models/arch-auth";
 import { buildSessions } from "@backend/db-models/arch-sessions";
 import { getDb } from "@backend/db-models/db";
 import type {
   ApiProblem,
+  TroubleshootingBranch,
   TroubleshootingContainer,
   TroubleshootingDatabase,
 } from "@shared/contract/arch/troubleshooting";
@@ -98,6 +102,39 @@ async function databaseRows(worker: string): Promise<D1Row[]> {
   return result.filter((row) => row.name === worker || row.name.startsWith(`${worker}-`));
 }
 
+// ── Branches ──────────────────────────────────────────────────────────────────
+
+/** Every branch, archived ones included, with who made it and the session behind it. */
+export async function listAllBranches(
+  principal: Principal,
+): Promise<Listing<TroubleshootingBranch>> {
+  troubleshootingPermissions.require(principal, "manage");
+  const head = await mainHead().catch(() => null);
+  const rows = await listBranches(principal, head);
+  const people = await sessionPeople(rows.map((row) => row.buildSessionId));
+  const items = rows.map((row): TroubleshootingBranch => ({
+    ...row,
+    sessionTitle: people.get(row.buildSessionId)?.title ?? null,
+  }));
+  return { items, problem: null };
+}
+
+/**
+ * Takes production back to where a merged branch was cut, on the builder.
+ * Nothing records it: the database restore takes the branch rows back in time
+ * with everything else.
+ */
+export async function revertBranch(principal: Principal, id: string): Promise<void> {
+  troubleshootingPermissions.require(principal, "manage");
+  const merged = (await listBranches(principal, null)).find(
+    (branch) => branch.id === id && branch.status === "merged",
+  );
+  const branch = merged ? await branchForSession(merged.buildSessionId) : null;
+  if (!branch) throw new DomainError("NOT_FOUND", "Merged branch not found");
+  await startRevert(branch);
+  log.info("revert requested", { branchId: id, userId: principal.userId });
+}
+
 // ── Containers ────────────────────────────────────────────────────────────────
 
 interface NamespaceRow {
@@ -170,7 +207,7 @@ export async function listContainers(
   }
 }
 
-/** Stops a running instance through its builder: the workspace is snapshotted, a running job parks. */
+/** Stops a running instance through its builder: the workspace is snapshotted, a run in progress parks. */
 export async function stopContainer(principal: Principal, name: string): Promise<void> {
   troubleshootingPermissions.require(principal, "manage");
   await troubleshootingEnv().BUILDERS.getByName(name).stopContainer();
@@ -284,11 +321,10 @@ async function mustCall<T>(call: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof CloudflareError) {
       throw new DomainError(
-        err.problem.kind === "error" ? "UNAVAILABLE" : "FORBIDDEN",
+        err.problem.kind === "error" ? "SERVICE_UNAVAILABLE" : "FORBIDDEN",
         err.message,
       );
     }
     throw err;
   }
 }
-
