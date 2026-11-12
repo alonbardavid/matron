@@ -60,6 +60,8 @@
  * the next turn.
  */
 
+import type { ReviewReport } from "@shared/contract/arch/review";
+
 export type RunMode = "build" | "continue" | "merge" | "abandon" | "revert";
 
 export type BuilderStatus =
@@ -210,6 +212,8 @@ export interface AgentOutcome {
   summary: string;
   reasoning: string;
   message: string;
+  /** The whole branch's summary and brackets, with `done`; absent when the agent gave none. */
+  reviewReport?: ReviewReport;
 }
 
 export interface PrepareContinueResult {
@@ -241,6 +245,8 @@ export interface BuilderStatusDetail {
   databaseId?: string;
   headCommit?: string;
   baseCommit?: string;
+  /** With `deployed`: what the agent prepared for the review of the branch as deployed. */
+  reviewReport?: ReviewReport;
   error?: string;
 }
 
