@@ -89,32 +89,3 @@ export function useCalendarActions() {
 export function useGoogleStatus() {
   return useQuery(orpc.calendar.google.status.queryOptions({ staleTime: 30_000 }));
 }
-
-/** The household's event labels. */
-export function useLabels() {
-  return useQuery(orpc.calendar.labels.list.queryOptions({ staleTime: 30_000 }));
-}
-
-export function useLabelActions() {
-  const queryClient = useQueryClient();
-  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.calendar.key() });
-  const create = useMutation(
-    orpc.calendar.labels.create.mutationOptions({
-      onSuccess: refresh,
-      onError: (err) => notifyError(err, "Could not add the label"),
-    }),
-  );
-  const update = useMutation(
-    orpc.calendar.labels.update.mutationOptions({
-      onSuccess: refresh,
-      onError: (err) => notifyError(err, "Could not change the label"),
-    }),
-  );
-  const remove = useMutation(
-    orpc.calendar.labels.remove.mutationOptions({
-      onSuccess: refresh,
-      onError: (err) => notifyError(err, "Could not remove the label"),
-    }),
-  );
-  return { create, update, remove };
-}

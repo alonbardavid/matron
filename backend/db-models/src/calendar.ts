@@ -144,36 +144,6 @@ export const calendarEventException = sqliteTable(
 );
 
 /**
- * A label the household tags events with, such as "School" or "Medical": a
- * name and a colour, shared by every member. An event shows its labels as
- * coloured bars along its side.
- */
-export const calendarLabel = sqliteTable("calendar_label", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  /** A CSS hex colour, `#rrggbb`. */
-  color: text("color").notNull(),
-  creatorId: text("creator_id").notNull(),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
-
-/** A label on an event: on every occurrence of a series. */
-export const calendarEventLabel = sqliteTable(
-  "calendar_event_label",
-  {
-    id: text("id").primaryKey(),
-    eventId: text("event_id").notNull(),
-    labelId: text("label_id").notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    uniqueIndex("calendar_event_label_event_label").on(table.eventId, table.labelId),
-    index("calendar_event_label_label_idx").on(table.labelId),
-  ],
-);
-
-/**
  * An event a member hid from their own calendar: every occurrence of it, for
  * them alone. Others still see it; they can show hidden events and unhide it.
  */

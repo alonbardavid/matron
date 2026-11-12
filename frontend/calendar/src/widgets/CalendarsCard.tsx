@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
+  ColorSwatch,
   Group,
   Loader,
   Menu,
   Popover,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -24,12 +26,68 @@ import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
 import { StandardForm } from "@frontend/ds/forms/StandardForm";
 import { IconChevronDown, IconTrash } from "@frontend/ds/icons";
 import { useCalendarActions, useCalendars } from "../useCalendar";
-import { ColorPicker } from "./ColorPicker";
 
 const newCalendarSchema = z.object({
   name: z.string().trim().min(1, "Give the calendar a name").max(80),
 });
 type NewCalendarValues = z.infer<typeof newCalendarSchema>;
+
+/** A swatch that opens Matron's colours to pick from. */
+function ColorPicker({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+  label: string;
+}) {
+  const [opened, setOpened] = useState(false);
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-start"
+      shadow="md"
+      trapFocus
+      returnFocus
+    >
+      <Popover.Target>
+        <ColorSwatch
+          component="button"
+          type="button"
+          color={value}
+          size={22}
+          aria-label={label}
+          onClick={() => setOpened((open) => !open)}
+          style={{ cursor: "pointer", flexShrink: 0 }}
+        />
+      </Popover.Target>
+      <Popover.Dropdown p="xs">
+        <SimpleGrid cols={4} spacing={6}>
+          {CALENDAR_COLORS.map((color) => (
+            <ColorSwatch
+              key={color}
+              component="button"
+              type="button"
+              color={color}
+              size={24}
+              aria-label={color}
+              onClick={() => {
+                onChange(color);
+                setOpened(false);
+              }}
+              style={{
+                cursor: "pointer",
+                outline: color === value ? "2px solid" : undefined,
+              }}
+            />
+          ))}
+        </SimpleGrid>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
 
 /** Who an own calendar is shared with, read-only, picked in a popover. */
 function ShareButton({ calendar }: { calendar: Calendar }) {

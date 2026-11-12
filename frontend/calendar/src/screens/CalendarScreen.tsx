@@ -19,7 +19,7 @@ import {
   type WeekViewProps,
 } from "@mantine/schedule";
 import dayjs from "dayjs";
-import type { Label, Occurrence } from "@shared/contract/app/calendar";
+import type { Occurrence } from "@shared/contract/app/calendar";
 import type { Task } from "@shared/contract/app/tasks";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
 import { useTaskActions, useTasks } from "@frontend/tasks/useTasks";
@@ -33,15 +33,9 @@ import {
   localTimeZone,
   toDayString,
 } from "../times";
-import {
-  useCalendars,
-  useEvent,
-  useEventActions,
-  useLabels,
-  useOccurrences,
-} from "../useCalendar";
+import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import { CalendarItem } from "../widgets/CalendarItem";
 import { FiltersButton } from "../widgets/FiltersButton";
-import { InlineLabelBars, LabelledEvent, labelsOf } from "../widgets/LabelBars";
 import {
   EventModal,
   type EventSubmit,
@@ -94,7 +88,6 @@ type ItemPayload =
       kind: "event";
       eventId: string;
       occurrence: OpenedOccurrence | null;
-      labels: Label[];
       hidden: boolean;
     }
   | { kind: "task"; task: Task };
@@ -104,15 +97,14 @@ function payloadOf(item: ScheduleEventData): ItemPayload | undefined {
 }
 
 /**
- * An item drawn with its labels as bars down its side, in every view: a hidden
- * event faded, a completed task crossed out.
+ * An item as the schedule draws it, in every view: a hidden event faded, a
+ * completed task crossed out.
  */
-const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
+const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
   const payload = payloadOf(item);
   return (
-    <LabelledEvent
+    <CalendarItem
       {...props}
-      labels={payload?.kind === "event" ? payload.labels : []}
       muted={payload?.kind === "event" && payload.hidden}
       struck={payload?.kind === "task" && payload.task.completedAt !== null}
     />
@@ -134,7 +126,6 @@ export function CalendarScreen() {
   const { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide } =
     useEventActions();
   const calendars = useCalendars();
-  const labels = useLabels();
   const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
   const tasks = useTasks();
   const taskActions = useTaskActions();
@@ -144,9 +135,7 @@ export function CalendarScreen() {
   const shown = (occurrences.data ?? []).filter(
     (item) =>
       (filters.showHidden || !item.hidden) &&
-      !filters.hiddenCalendars.includes(item.calendarId) &&
-      (filters.labels.length === 0 ||
-        item.labelIds.some((id) => filters.labels.includes(id))),
+      !filters.hiddenCalendars.includes(item.calendarId),
   );
   // The day and the week draw a block over whole quarters of an hour.
   const timeGrid = shownView === "day" || shownView === "week";
@@ -165,7 +154,6 @@ export function CalendarScreen() {
     payload: {
       kind: "event",
       eventId: item.eventId,
-      labels: labelsOf(item.labelIds, labels.data ?? []),
       hidden: item.hidden,
       occurrence:
         item.originalStartAt === null
@@ -219,7 +207,6 @@ export function CalendarScreen() {
         id: opening.eventId,
         sharedWith: values.sharedWith,
         attendees: values.attendees,
-        labelIds: values.labelIds,
       });
       return;
     }
@@ -235,7 +222,6 @@ export function CalendarScreen() {
       onChange={setFilters}
       onReset={resetFilters}
       calendars={calendars.data ?? []}
-      labels={labels.data ?? []}
     />
   );
 
@@ -324,9 +310,6 @@ export function CalendarScreen() {
                 }}
               >
                 {children}
-                <InlineLabelBars
-                  labels={payload?.kind === "event" ? payload.labels : []}
-                />
               </UnstyledButton>
             );
           }}
@@ -373,10 +356,10 @@ export function CalendarScreen() {
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
-            renderEvent: renderLabelledEvent,
+            renderEvent: renderItem,
           }}
           weekViewProps={{
-            renderEvent: renderLabelledEvent,
+            renderEvent: renderItem,
             classNames: classes,
             startTime: "06:00",
             endTime: "23:00",
@@ -386,7 +369,7 @@ export function CalendarScreen() {
             // The bubble with the time would cover a phone's narrow label column.
             withCurrentTimeBubble: !narrow,
           }}
-          monthViewProps={{ withHeader: !narrow, renderEvent: renderLabelledEvent }}
+          monthViewProps={{ withHeader: !narrow, renderEvent: renderItem }}
         />
       )}
       <EventModal

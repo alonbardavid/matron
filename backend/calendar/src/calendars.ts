@@ -7,7 +7,6 @@ import {
   calendar,
   calendarEvent,
   calendarEventHidden,
-  calendarEventLabel,
   calendarEventShare,
   calendarShare,
 } from "@backend/db-models/calendar";
@@ -328,7 +327,6 @@ export async function deleteCalendars(ids: string[]): Promise<void> {
     .where(inArray(calendarEvent.calendarId, ids));
   await db.batch([
     db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, events)),
-    db.delete(calendarEventLabel).where(inArray(calendarEventLabel.eventId, events)),
     db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, events)),
     db
       .update(calendarEventShare)
