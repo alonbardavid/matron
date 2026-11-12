@@ -64,7 +64,7 @@ export type AgentPrompt =
   | { kind: "continue"; message: string; sync: string; files?: BuilderFile[] }
   | { kind: "fix"; command: string; output: string };
 
-/** Mirrors BRACKET_KINDS in `shared/contract/src/arch/review.ts`. */
+/** Mirrors BRACKET_KINDS in `shared/contract/src/arch/review.ts`, as does `prompts/outcome-schema.json`. */
 export const BRACKET_KINDS = [
   "flow",
   "schema",

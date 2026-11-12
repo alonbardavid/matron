@@ -24,3 +24,13 @@ export function loadPrompt(dir: string, name: PromptName): string {
 export function promptPath(dir: string, name: PromptName): string {
   return join(dir, `${name}.md`);
 }
+
+/**
+ * The structured output every agent turn must end with, as one line of JSON:
+ * `outcome-schema.json` beside the prompts, `preparingReview` included.
+ */
+export function loadOutcomeSchema(dir: string): string {
+  return JSON.stringify(
+    JSON.parse(readFileSync(join(dir, "outcome-schema.json"), "utf8")),
+  );
+}
