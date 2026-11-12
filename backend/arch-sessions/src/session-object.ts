@@ -1,3 +1,4 @@
+import type { BranchType } from "@backend/db-models/arch-branches";
 import { Think, type TurnConfig, type TurnContext } from "@cloudflare/think";
 import type {
   AgentToolLifecycleResult,
@@ -38,6 +39,7 @@ import {
   type BuildMessageMetadata,
   type BuildPhase,
 } from "@shared/contract/arch/sessions";
+import type { ReviewReport } from "@shared/contract/arch/review";
 import { DEFAULT_BUILDER_MODEL } from "@shared/contract/arch/settings";
 import {
   BUILD_FAILED_MESSAGE,
@@ -75,6 +77,7 @@ const KEYS = {
   request: "request",
   title: "title",
   deployedOnce: "deployedOnce",
+  reviewReport: "review-report",
 } as const;
 
 /**
@@ -208,8 +211,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
             .describe("The plan, markdown, as the coding agent will read it"),
         }),
         execute: async ({ name, plan }) => {
-          await this.ctx.storage.put(KEYS.plan, plan);
-          await this.ctx.storage.put(KEYS.branchName, name.trim());
+          await this.recordPlan(name, plan);
           return "The plan is recorded. Show it to the member and ask them to confirm it.";
         },
       }),
@@ -218,10 +220,9 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
           "Hands the recorded plan to the builder, which starts on a new branch. Call it only once the member has agreed to the plan.",
         inputSchema: z.object({}),
         execute: async (_input, { toolCallId }) => {
-          const plan = await this.ctx.storage.get<string>(KEYS.plan);
-          if (!plan)
+          if (!(await this.ctx.storage.get<string>(KEYS.plan)))
             return "No plan is recorded yet: propose one first and have the member confirm it.";
-          await this.startBuild(plan, toolCallId);
+          await this.startBuild({}, toolCallId);
           return "The build has started. Tell the member in one short sentence.";
         },
       }),
@@ -241,24 +242,76 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
 
   // ── Builds ────────────────────────────────────────────────────────────────
 
-  private async startBuild(plan: string, toolCallId: string): Promise<void> {
+  /** The plan the builder will work from, and the change's short name, which becomes the branch name. */
+  async recordPlan(name: string, plan: string): Promise<void> {
+    await this.ctx.storage.put(KEYS.plan, plan);
+    await this.ctx.storage.put(KEYS.branchName, name.trim());
+  }
+
+  /**
+   * A request and its plan that come written, in the chat as the member's
+   * message and the reply to it: what a planner turn leaves behind, without
+   * the turn. Only a session nobody has written in takes one.
+   */
+  async proposePlan(
+    who: Principal,
+    input: { request: string; name: string; plan: string },
+  ): Promise<void> {
+    if (this.messages.length > 0) throw new Error("This session has already started");
+    this.setState({ ...this.state, principal: who });
+    await this.addMessages([
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        parts: [{ type: "text", text: input.request }],
+      },
+    ]);
+    await this.noteUserMessage();
+    await this.recordPlan(input.name, input.plan);
+    await this.addMessages([
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [{ type: "text", text: input.plan }],
+      },
+    ]);
+  }
+
+  /**
+   * Hands the recorded plan to the builder on a new branch. `branchType` says
+   * what the branch is for, when it is not a member's request.
+   */
+  async startBuild(
+    options: { branchType?: BranchType } = {},
+    toolCallId?: string,
+  ): Promise<{ branchId: string }> {
     const who = this.state.principal;
     if (!who) throw new Error("No member is connected to start the build for");
+    const plan = await this.ctx.storage.get<string>(KEYS.plan);
+    if (!plan) throw new Error("No plan is recorded to build");
     const title = (await this.ctx.storage.get<string>(KEYS.title)) ?? "Untitled change";
     const request = (await this.ctx.storage.get<string>(KEYS.request)) ?? title;
     const branch = await createBranch(who, {
       buildSessionId: this.name,
       name: (await this.ctx.storage.get<string>(KEYS.branchName)) ?? title,
       baseCommit: await mainHead(),
+      type: options.branchType,
     });
     await this.ctx.storage.put(KEYS.branchId, branch.id);
     this.setPhase("building");
     await setSessionStatus(this.name, "building");
     // Whatever the member attached while the plan was made goes with it.
     const files = this.memberMessages().flatMap(filesOf);
-    const run = await buildRun({ sessionId: this.name, branch, request, plan, files });
+    const run = await buildRun({
+      sessionId: this.name,
+      branch,
+      request,
+      plan,
+      files,
+    });
     await this.runBuilder(run, toolCallId);
     log.info("build started", { sessionId: this.name, branchId: branch.id });
+    return { branchId: branch.id };
   }
 
   /** The member's words, and the files of their latest message, to the builder; a new run when it is idle. */
@@ -416,6 +469,9 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       headCommit: detail.headCommit ?? "",
       baseCommit: detail.baseCommit,
     });
+    // A deploy without one keeps the last: it still groups most of the branch.
+    if (detail.reviewReport)
+      await this.ctx.storage.put(KEYS.reviewReport, detail.reviewReport);
     this.setPhase("deployed");
     await setSessionStatus(sessionId, "deployed");
     // The branch link is explained once; later deploys speak through the builder's own message.
@@ -423,6 +479,13 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
     await this.ctx.storage.put(KEYS.deployedOnce, true);
     const url = `${this.env.APP_ORIGIN}/?branch=${encodeURIComponent(branchId)}`;
     await this.post(DEPLOYED_MESSAGE.replace("{url}", url));
+  }
+
+  // ── RPC from the review ───────────────────────────────────────────────────
+
+  /** What the builder prepared for the review with the newest deploy, or null before one did. */
+  async reviewReport(): Promise<ReviewReport | null> {
+    return (await this.ctx.storage.get<ReviewReport>(KEYS.reviewReport)) ?? null;
   }
 
   // ── Archiving ─────────────────────────────────────────────────────────────

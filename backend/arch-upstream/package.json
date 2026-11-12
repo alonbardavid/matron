@@ -1,0 +1,19 @@
+{
+  "name": "@backend/arch-upstream",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@backend/arch-branches": "workspace:*",
+    "@backend/arch-repository": "workspace:*",
+    "@backend/arch-sessions": "workspace:*",
+    "@backend/commons": "workspace:*",
+    "@shared/contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1"
+  }
+}

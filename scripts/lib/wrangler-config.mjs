@@ -3,12 +3,6 @@
 // (scripts/gen-wrangler-config.mjs) reads env and files. Unit tests live in
 // wrangler-config.test.ts.
 /* global structuredClone */
-import { deploymentNames } from "./names.mjs";
-
-/** The container application's name; the `exports` entry of BuilderObject points at it. */
-export const BUILDER_CONTAINER = "builder";
-/** The image name under `containers[].images`; read as `ctx.container.images.builder`. */
-export const BUILDER_IMAGE_NAME = "builder";
 
 export const REQUIRED_COMPAT_FLAGS = [
   "nodejs_compat",
@@ -56,7 +50,6 @@ export const SECRET_VARS = [
 export function generateWranglerConfig(emitted, options) {
   const config = structuredClone(emitted);
   const isProduction = options.target === "production";
-  const names = deploymentNames(options.workerName);
 
   config.name = options.workerName;
   delete config.env;
@@ -77,8 +70,8 @@ export function generateWranglerConfig(emitted, options) {
         migrations_dir: options.migrationsDir,
       },
     ],
-    r2_buckets: [{ binding: "FILES", bucket_name: names.bucket }],
-    artifacts: [{ binding: "ARTIFACTS", namespace: names.namespace }],
+    r2_buckets: [{ binding: "FILES", bucket_name: options.workerName }],
+    artifacts: [{ binding: "ARTIFACTS", namespace: options.workerName }],
     images: { binding: "IMAGES" },
     // Workers AI and the AI Gateway behind it; a Preview reaches models only this way.
     ai: { binding: "AI" },
@@ -120,11 +113,11 @@ export function generateWranglerConfig(emitted, options) {
       // `ctx.container.images.builder` and picks the instance size then.
       config.containers = [
         {
-          name: BUILDER_CONTAINER,
+          name: options.workerName,
           class_name: "BuilderObject",
           scheduling_policy: "durable_object",
           images: {
-            [BUILDER_IMAGE_NAME]: options.builderImage
+            builder: options.builderImage
               ? { image: options.builderImage }
               : { dockerfile: options.dockerfilePath },
           },
@@ -132,7 +125,10 @@ export function generateWranglerConfig(emitted, options) {
       ];
       config.exports = {
         ...config.exports,
-        BuilderObject: { ...config.exports?.BuilderObject, container: BUILDER_CONTAINER },
+        BuilderObject: {
+          ...config.exports?.BuilderObject,
+          container: options.workerName,
+        },
       };
     }
   } else {

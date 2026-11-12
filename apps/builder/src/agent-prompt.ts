@@ -1,21 +1,5 @@
-import { loadPrompt, promptPath, renderTemplate } from "./prompts.js";
+import { loadOutcomeSchema, loadPrompt, promptPath, renderTemplate } from "./prompts.js";
 import type { AgentPrompt, BuilderRun } from "./types.js";
-
-/** The structured output every agent turn must end with. */
-export const OUTCOME_SCHEMA = {
-  type: "object",
-  properties: {
-    status: { type: "string", enum: ["done", "question", "blocked"] },
-    summary: {
-      type: "string",
-      description: "One line describing the change, for a commit title",
-    },
-    reasoning: { type: "string", description: "Why the change was made this way" },
-    message: { type: "string", description: "What to show the user, in markdown" },
-  },
-  required: ["status", "summary", "reasoning", "message"],
-  additionalProperties: false,
-} as const;
 
 export const ALLOWED_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "Grep"];
 
@@ -35,20 +19,15 @@ export function renderPrompt(
   /** Where the files that came with the message were written, if any. */
   attachments: string[] = [],
 ): string {
-  const buildContext = (plan: string, files: string[]) =>
-    renderTemplate(loadPrompt(promptsDir, "build"), {
-      request: run.request,
-      plan,
-      branch: run.branch.name,
-      extra: prompt.kind === "build" ? prompt.extra : "",
-      attachments: attachmentsNote(files),
-    });
   switch (prompt.kind) {
     case "build":
-      return buildContext(
-        run.plan ?? "(no plan was written; work from the request)",
-        attachments,
-      );
+      return renderTemplate(loadPrompt(promptsDir, "build"), {
+        request: run.request,
+        plan: run.plan ?? "(no plan was written; work from the request)",
+        branch: run.branch.name,
+        extra: prompt.extra,
+        attachments: attachmentsNote(attachments),
+      });
     case "fix":
       return renderTemplate(loadPrompt(promptsDir, "fix"), {
         command: prompt.command,
@@ -61,11 +40,15 @@ export function renderPrompt(
         attachments: attachmentsNote(attachments),
       });
       if (hasSession) return text;
-      const context = buildContext(
-        run.plan ??
+      const context = renderTemplate(loadPrompt(promptsDir, "build"), {
+        request: run.request,
+        plan:
+          run.plan ??
           "(the plan is not available; the branch already contains the earlier work)",
-        [],
-      );
+        branch: run.branch.name,
+        extra: "",
+        attachments: "",
+      });
       return `${context}\n\n---\n\n${text}`;
     }
   }
@@ -102,7 +85,7 @@ export function agentArgv(
     "--append-system-prompt-file",
     promptPath(promptsDir, "system"),
     "--json-schema",
-    JSON.stringify(OUTCOME_SCHEMA),
+    loadOutcomeSchema(promptsDir),
     "--settings",
     CLAUDE_SETTINGS_FILE,
     "--model",

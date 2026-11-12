@@ -1,6 +1,6 @@
 import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
 import { DomainError } from "@backend/commons/errors";
-import { AI_GATEWAY, deploymentNames } from "@backend/commons/names";
+import { AI_GATEWAY } from "@backend/commons/names";
 import { logger } from "@backend/commons/logger";
 import type {
   AbandonRun,
@@ -42,7 +42,7 @@ async function runCommon(
       accountId: env.CLOUDFLARE_ACCOUNT_ID ?? "",
       apiToken: env.CLOUDFLARE_API_TOKEN,
       workerName: env.WORKER_NAME,
-      productionDatabaseName: deploymentNames(env.WORKER_NAME).database,
+      productionDatabaseName: env.WORKER_NAME,
       appOrigin: env.APP_ORIGIN,
       aiGateway: AI_GATEWAY,
     },

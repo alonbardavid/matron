@@ -9,8 +9,8 @@ test.describe("build chat", () => {
     await signIn(page, OWNER);
     const response = await page.request.post("/api/arch/sessions", { data: {} });
     expect(response.ok()).toBeTruthy();
-    await page.goto("/conversations");
-    await page.getByRole("button", { name: "Open" }).click();
+    await page.goto("/builds");
+    await page.getByRole("button", { name: "Chat" }).click();
     await expect(page.getByText("What would you like to change?")).toBeVisible();
     const composer = page.getByPlaceholder("Describe the change you want");
     await expect(composer).toBeEnabled();
@@ -23,7 +23,7 @@ test.describe("build chat", () => {
     await expect(chat.getByText("The planner could not answer")).toBeVisible();
     // A reload replays it from the session.
     await page.reload();
-    await page.getByRole("button", { name: "Open" }).click();
+    await page.getByRole("button", { name: "Chat" }).click();
     await expect(chat.getByText("Add a shopping list", { exact: true })).toBeVisible();
   });
 

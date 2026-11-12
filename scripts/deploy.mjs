@@ -15,7 +15,6 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createUserSql } from "./lib/owner-sql.mjs";
-import { deploymentNames } from "./lib/names.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backendDir = join(root, "apps/backend");
@@ -246,13 +245,6 @@ if (flags.help) {
 }
 
 const workerName = flags.name;
-const {
-  database: dbName,
-  bucket: bucketName,
-  namespace: artifactsNamespace,
-  repository: repositoryName,
-  image: imageName,
-} = deploymentNames(workerName);
 const DIGEST_IMAGE =
   /^registry\.cloudflare\.com\/[a-f0-9]{32}\/[a-z0-9._-]+@sha256:[a-f0-9]{64}$/;
 
@@ -340,34 +332,35 @@ console.log(`  worker ${workerName} → ${origin}`);
 
 // ---------------------------------------------------------------- 2. D1
 
-step(`D1 database "${dbName}"`);
+step(`D1 database "${workerName}"`);
 function findDatabase() {
   const list = parseJsonOutput(
     wrangler(["d1", "list", "--json"], { capture: true }).stdout,
   );
-  return list.find((db) => db.name === dbName);
+  return list.find((db) => db.name === workerName);
 }
 let database = findDatabase();
 if (database) {
   console.log(`  exists (${database.uuid})`);
 } else {
-  wrangler(["d1", "create", dbName]);
+  wrangler(["d1", "create", workerName]);
   database = findDatabase();
-  if (!database) fail(`created D1 "${dbName}" but cannot find it in wrangler d1 list`);
+  if (!database)
+    fail(`created D1 "${workerName}" but cannot find it in wrangler d1 list`);
   console.log(`  created (${database.uuid})`);
 }
 const dbId = database.uuid;
 
 // ---------------------------------------------------------------- 3. R2
 
-step(`R2 bucket "${bucketName}"`);
+step(`R2 bucket "${workerName}"`);
 {
   const list = wrangler(["r2", "bucket", "list"], { capture: true }).stdout;
   const names = [...list.matchAll(/^name:\s+(\S+)/gm)].map((m) => m[1]);
-  if (names.includes(bucketName)) {
+  if (names.includes(workerName)) {
     console.log("  exists");
   } else {
-    const created = wrangler(["r2", "bucket", "create", bucketName], {
+    const created = wrangler(["r2", "bucket", "create", workerName], {
       capture: true,
       allowFailure: true,
     });
@@ -376,7 +369,7 @@ step(`R2 bucket "${bucketName}"`);
       !/already exists/i.test(created.stderr + created.stdout)
     ) {
       process.stderr.write(created.stderr);
-      fail(`could not create R2 bucket "${bucketName}"`);
+      fail(`could not create R2 bucket "${workerName}"`);
     }
     console.log(created.status === 0 ? "  created" : "  exists");
   }
@@ -384,18 +377,18 @@ step(`R2 bucket "${bucketName}"`);
 
 // ---------------------------------------------------------------- 4. AI Gateway + Artifacts namespace
 
-step(`Artifacts namespace "${artifactsNamespace}"`);
+step(`Artifacts namespace "${workerName}"`);
 {
   // wrangler has no "namespaces create"; the REST API does.
   const existing = await cfApi(
-    `/accounts/${accountId}/artifacts/namespaces/${artifactsNamespace}`,
+    `/accounts/${accountId}/artifacts/namespaces/${workerName}`,
   );
   if (existing.ok) {
     console.log("  exists");
   } else {
     const created = await cfApi(`/accounts/${accountId}/artifacts/namespaces`, {
       method: "POST",
-      body: { namespace: artifactsNamespace },
+      body: { namespace: workerName },
     });
     if (created.ok) console.log("  created");
     else if (created.status === 409) console.log("  exists");
@@ -426,7 +419,7 @@ if (flags["no-container"]) {
     fail(
       "Docker is not available, and the builder image is built locally.\n" +
         "Install and start Docker, or deploy with an image that is already in the registry:\n" +
-        `  BUILDER_IMAGE=registry.cloudflare.com/${accountId}/${imageName}@sha256:<digest> pnpm run deploy --skip-image`,
+        `  BUILDER_IMAGE=registry.cloudflare.com/${accountId}/${workerName}@sha256:<digest> pnpm run deploy --skip-image`,
     );
   }
   const tag =
@@ -441,7 +434,7 @@ if (flags["no-container"]) {
       "build",
       join(root, "apps/builder"),
       "-t",
-      `${imageName}:${tag}`,
+      `${workerName}:${tag}`,
       "--push",
     ],
     { capture: true },
@@ -451,7 +444,7 @@ if (flags["no-container"]) {
   if (!digest) {
     // A tag that is already in the registry is not pushed again, and then
     // nothing prints its digest: the registry is asked for it instead.
-    const ref = `registry.cloudflare.com/${accountId}/${imageName}:${tag}`;
+    const ref = `registry.cloudflare.com/${accountId}/${workerName}:${tag}`;
     const inspected = run(
       "docker",
       ["buildx", "imagetools", "inspect", ref, "--format", "{{.Manifest.Digest}}"],
@@ -460,7 +453,7 @@ if (flags["no-container"]) {
     digest = /sha256:[a-f0-9]{64}/.exec(inspected.stdout)?.[0];
   }
   if (!digest) fail("the image was pushed but no digest appeared in wrangler's output");
-  builderImage = `registry.cloudflare.com/${accountId}/${imageName}@${digest}`;
+  builderImage = `registry.cloudflare.com/${accountId}/${workerName}@${digest}`;
   console.log(`  pushed ${builderImage}`);
 }
 
@@ -472,7 +465,7 @@ run("node", [join(root, "scripts/gen-wrangler-config.mjs")], {
   env: {
     TARGET: "production",
     WORKER_NAME: workerName,
-    DB_NAME: dbName,
+    DB_NAME: workerName,
     DB_ID: dbId,
     APP_ORIGIN: origin,
     ACCOUNT_ID: accountId,
@@ -591,13 +584,13 @@ try {
 
 // ---------------------------------------------------------------- 10. repository
 
-step(`Artifacts repository "${artifactsNamespace}/${repositoryName}"`);
+step(`Artifacts repository "${workerName}/${workerName}"`);
 if (flags["skip-repo"]) {
   console.log("  skipped");
 } else {
-  const nsArgs = ["--namespace", artifactsNamespace, "--json"];
+  const nsArgs = ["--namespace", workerName, "--json"];
   let repo;
-  const got = wrangler(["artifacts", "repos", "get", repositoryName, ...nsArgs], {
+  const got = wrangler(["artifacts", "repos", "get", workerName, ...nsArgs], {
     capture: true,
     allowFailure: true,
   });
@@ -606,15 +599,7 @@ if (flags["skip-repo"]) {
     console.log(`  exists (${repo.remote})`);
   } else {
     const created = wrangler(
-      [
-        "artifacts",
-        "repos",
-        "create",
-        repositoryName,
-        ...nsArgs,
-        "--default-branch",
-        "main",
-      ],
+      ["artifacts", "repos", "create", workerName, ...nsArgs, "--default-branch", "main"],
       { capture: true },
     );
     repo = parseJsonOutput(created.stdout);
@@ -627,7 +612,7 @@ if (flags["skip-repo"]) {
         "artifacts",
         "repos",
         "issue-token",
-        repositoryName,
+        workerName,
         ...nsArgs,
         "--scope",
         "write",
@@ -651,6 +636,24 @@ if (flags["skip-repo"]) {
   run("git", ["push", "--all", repo.remote], { capture: false, env: gitEnv });
   console.log(`  $ git push --tags ${repo.remote}`);
   run("git", ["push", "--tags", repo.remote], { capture: false, env: gitEnv });
+  // The upstream/main branch starts where main does; checking for updates moves it from then on.
+  const upstream = run(
+    "git",
+    ["ls-remote", "--heads", repo.remote, "refs/heads/upstream/main"],
+    {
+      capture: true,
+      env: gitEnv,
+    },
+  );
+  if (upstream.stdout.trim()) {
+    console.log("  upstream/main branch exists");
+  } else {
+    console.log(`  $ git push ${repo.remote} main:refs/heads/upstream/main`);
+    run("git", ["push", repo.remote, "main:refs/heads/upstream/main"], {
+      capture: false,
+      env: gitEnv,
+    });
+  }
 }
 
 // ---------------------------------------------------------------- 11. owner

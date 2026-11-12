@@ -11,7 +11,7 @@ const TAB_PARAM = "tab";
 const PAGE_PARAM = "page";
 const SORT_PARAM = "sort";
 /** The parameters that describe one tab's view, dropped when the tab changes. */
-const VIEW_PARAMS = [PAGE_PARAM, SORT_PARAM, "stopped"];
+const VIEW_PARAMS = [PAGE_PARAM, SORT_PARAM, "stopped", "archived"];
 
 type Changes = Record<string, string | null>;
 

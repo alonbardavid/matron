@@ -26,6 +26,7 @@ import {
   type DeployResult,
   type MergeMainResult,
   type PrepareContinueResult,
+  type StepInput,
   type VerifyResult,
 } from "./types.js";
 
@@ -236,11 +237,7 @@ export class Steps {
     return { failure: null };
   }
 
-  async commitPush(input: {
-    summary: string;
-    reasoning: string;
-    request: string;
-  }): Promise<CommitPushResult> {
+  async commitPush(input: StepInput): Promise<CommitPushResult> {
     const g = this.gitContext();
     const message = git.formatCommitMessage(
       input.summary,

@@ -9,8 +9,10 @@ import type { Principal } from "@backend/commons/principal";
 import { getDb } from "@backend/db-models/db";
 import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-sessions";
 import { canArchiveSession, canClearSession } from "./archive";
+import type { ReviewReport } from "@shared/contract/arch/review";
 import type { BuildSession } from "@shared/contract/arch/sessions";
 import { sessionsEnv } from "./env";
+import type { BuildSessionObject } from "./session-object";
 
 const log = logger("arch-sessions/service");
 
@@ -123,6 +125,22 @@ export async function createSession(principal: Principal): Promise<BuildSession>
 }
 
 /**
+ * The session's Durable Object, for a caller that may use the session: its
+ * member, or the owner. What it can do is the object's own methods.
+ */
+export async function getSession(
+  principal: Principal,
+  sessionId: string,
+): Promise<DurableObjectStub<BuildSessionObject>> {
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
+  }
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
+}
+
+/**
  * Upgrades the request to a WebSocket served by the session's Durable Object,
  * which replays the transcript on it and then streams every new frame. The
  * identity travels in headers the Durable Object trusts: only the router can
@@ -151,6 +169,11 @@ export async function openSessionSocket(
   log.info("build session socket opened", { sessionId, userId: principal.userId });
   const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
   return buildSession.fetch(new Request(request, { headers }));
+}
+
+/** What the builder prepared for the review of the session's branch with its newest deploy, or null. */
+export async function getReviewReport(sessionId: string): Promise<ReviewReport | null> {
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId).reviewReport();
 }
 
 export async function getSessionRow(sessionId: string): Promise<SessionRow> {
