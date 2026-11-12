@@ -124,6 +124,8 @@ export const calendarEventSchema = z.object({
   access: z.enum(["edit", "read"]),
   /** Ids of the household labels on it, on every occurrence of a series. */
   labelIds: z.array(z.string()),
+  /** Whether the caller hid it from their own calendar. */
+  hidden: z.boolean(),
   /** The calendar's source. An imported event is changed there; in Matron only who it is shared with and its labels change. */
   source: calendarSourceSchema,
   /** An imported occurrence of an event that repeats at its source. */
@@ -159,6 +161,8 @@ export const occurrenceSchema = z.object({
   source: calendarSourceSchema,
   /** Ids of the event's labels. */
   labelIds: z.array(z.string()),
+  /** Whether the caller hid the event; listed all the same, for the calendar to show or leave out. */
+  hidden: z.boolean(),
 });
 export type Occurrence = z.infer<typeof occurrenceSchema>;
 
@@ -363,6 +367,11 @@ export const calendarContract = {
     .route({ method: "DELETE", path: "/api/app/calendar/events/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
+  /** Hides the event (every occurrence) from the caller's own calendar, or shows it again. */
+  hide: oc
+    .route({ method: "PUT", path: "/api/app/calendar/events/{id}/hidden" })
+    .input(z.object({ id: z.string(), hidden: z.boolean() }))
+    .output(calendarEventSchema),
   /** Shows an event someone shared with the caller in one of the caller's Matron calendars; null for their calendar for shared events. */
   place: oc
     .route({ method: "PUT", path: "/api/app/calendar/events/{id}/placement" })
