@@ -22,6 +22,7 @@ import type {
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { Form } from "@frontend/ds/forms/Form";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { EventView } from "./EventView";
 import { LabelPicker } from "./LabelPicker";
@@ -302,7 +303,7 @@ export function EventModal({
           onClose={onClose}
         />
       ) : (
-        <Stack gap="sm">
+        <Form onSubmit={() => void save()}>
           {imported && (
             <Text size="sm" c="dimmed">
               {draft.title}: it changes in Google Calendar. Here you choose who sees it.
@@ -484,11 +485,11 @@ export function EventModal({
                 </ConfirmButton>
               )}
             </Group>
-            <Button loading={saving} onClick={() => void save()}>
+            <Button type="submit" loading={saving}>
               {event ? "Save" : "Add event"}
             </Button>
           </Group>
-        </Stack>
+        </Form>
       )}
     </Modal>
   );

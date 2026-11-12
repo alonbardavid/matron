@@ -249,6 +249,8 @@ export function CalendarScreen() {
             onChange={setPickingDate}
             position="bottom-start"
             shadow="md"
+            trapFocus
+            returnFocus
           >
             <Popover.Target>
               <UnstyledButton
