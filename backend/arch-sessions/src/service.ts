@@ -12,6 +12,7 @@ import { canArchiveSession, canClearSession } from "./archive";
 import type { ReviewReport } from "@shared/contract/arch/review";
 import type { BuildSession } from "@shared/contract/arch/sessions";
 import { sessionsEnv } from "./env";
+import type { BuildSessionObject } from "./session-object";
 
 const log = logger("arch-sessions/service");
 
@@ -121,6 +122,22 @@ export async function createSession(principal: Principal): Promise<BuildSession>
     .returning();
   log.info("build session created", { sessionId: row!.id, userId: principal.userId });
   return toSession(row!, null);
+}
+
+/**
+ * The session's Durable Object, for a caller that may use the session: its
+ * member, or the owner. What it can do is the object's own methods.
+ */
+export async function getSession(
+  principal: Principal,
+  sessionId: string,
+): Promise<DurableObjectStub<BuildSessionObject>> {
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
+  }
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
 }
 
 /**

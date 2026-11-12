@@ -6,9 +6,10 @@ import { review } from "./routes/review";
 import { sessions } from "./routes/sessions";
 import { settings } from "./routes/settings";
 import { troubleshooting } from "./routes/troubleshooting";
+import { upstream } from "./routes/upstream";
 
 const handler = new OpenAPIHandler(
-  { branches, review, sessions, settings, troubleshooting },
+  { branches, review, sessions, settings, troubleshooting, upstream },
   { interceptors: [onError(logUnexpectedError)] },
 );
 

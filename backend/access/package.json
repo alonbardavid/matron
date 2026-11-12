@@ -10,6 +10,7 @@
     "@backend/arch-branches": "workspace:*",
     "@backend/arch-review": "workspace:*",
     "@backend/arch-troubleshooting": "workspace:*",
+    "@backend/arch-upstream": "workspace:*",
     "@backend/ask": "workspace:*",
     "@backend/calendar": "workspace:*",
     "@backend/commons": "workspace:*",
