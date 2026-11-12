@@ -61,7 +61,7 @@ export function BranchSwitcher() {
               <Text size="sm" truncate>
                 {branch.name}
               </Text>
-              <BranchStatusBadge status={branch.status} />
+              <BranchStatusBadge branch={branch} />
             </Group>
           </Menu.Item>
         ))}

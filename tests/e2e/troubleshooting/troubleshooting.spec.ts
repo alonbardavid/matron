@@ -74,6 +74,30 @@ test.describe("troubleshooting", () => {
     await expect(recentRow.getByText("failed")).toBeVisible();
   });
 
+  test("a reverted branch stays in the branch list, marked reverted", async ({
+    page,
+  }) => {
+    const suffix = Date.now().toString(36);
+    const kept = `shelf-${suffix}`;
+    const gone = `ladder-${suffix}`;
+    executeSql([
+      mergedBranchSql({ ownerEmail: OWNER.email, name: kept, createdDaysAgo: 5 }),
+      mergedBranchSql({
+        ownerEmail: OWNER.email,
+        name: gone,
+        createdDaysAgo: 3,
+        reverted: true,
+      }),
+    ]);
+    await signIn(page, OWNER);
+    await page.goto("/troubleshooting?tab=branches&archived=1");
+    const keptRow = page.getByRole("row").filter({ hasText: kept });
+    const goneRow = page.getByRole("row").filter({ hasText: gone });
+    await expect(keptRow.getByText("merged", { exact: true })).toBeVisible();
+    await expect(goneRow.getByText("reverted", { exact: true })).toBeVisible();
+    await expect(goneRow.getByText("merged", { exact: true })).toHaveCount(0);
+  });
+
   test("a member has no troubleshooting page", async ({ page }) => {
     await signIn(page, MEMBER);
     await expect(navLink(page, "Troubleshooting")).toHaveCount(0);

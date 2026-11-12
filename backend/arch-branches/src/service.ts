@@ -430,6 +430,8 @@ function toBranch(
     userName,
     status: row.status,
     archivedAt: row.archivedAt?.getTime() ?? null,
+    revertedAt:
+      row.revertStatus === "reverted" ? (row.revertedAt?.getTime() ?? null) : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };

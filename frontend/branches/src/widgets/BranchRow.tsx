@@ -20,13 +20,15 @@ interface BranchRowProps {
   children?: ReactNode;
 }
 
-/** Who made the branch and when, and when it was archived. */
+/** Who made the branch and when, when it was archived, and when a revert took it back out. */
 function BranchMeta({ branch }: { branch: Branch }) {
   return (
     <Text size="xs" c="dimmed">
       {branch.userName} · {new Date(branch.createdAt).toLocaleString()}
       {branch.archivedAt !== null &&
         ` · archived ${new Date(branch.archivedAt).toLocaleString()}`}
+      {branch.revertedAt !== null &&
+        ` · reverted ${new Date(branch.revertedAt).toLocaleString()}`}
     </Text>
   );
 }
@@ -147,7 +149,7 @@ export function BranchRow(props: BranchRowProps) {
           <Text size="sm" fw={500} truncate>
             {branch.name}
           </Text>
-          <BranchStatusBadge status={branch.status} />
+          <BranchStatusBadge branch={branch} />
         </Group>
         {title && (
           <Text size="xs" truncate>

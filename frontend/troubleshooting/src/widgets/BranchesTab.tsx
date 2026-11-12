@@ -74,7 +74,7 @@ export function BranchesTab() {
         header: "Status",
         cell: ({ row }) => (
           <Group gap={4} wrap="nowrap">
-            <BranchStatusBadge status={row.original.status} />
+            <BranchStatusBadge branch={row.original} />
             {row.original.behindMain && (
               <Badge size="xs" variant="light" color="yellow">
                 behind main
@@ -94,11 +94,16 @@ export function BranchesTab() {
       column.accessor("updatedAt", {
         header: "Last change",
         cell: ({ row }) => {
-          const at = row.original.archivedAt ?? row.original.updatedAt;
+          const { revertedAt, archivedAt, updatedAt } = row.original;
+          const at = revertedAt ?? archivedAt ?? updatedAt;
           return (
             <Tooltip label={formatWhen(at)}>
               <Text size="sm">
-                {row.original.archivedAt !== null ? "archived " : ""}
+                {revertedAt !== null
+                  ? "reverted "
+                  : archivedAt !== null
+                    ? "archived "
+                    : ""}
                 {formatAgo(at, now)}
               </Text>
             </Tooltip>
