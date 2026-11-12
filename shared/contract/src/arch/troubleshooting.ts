@@ -75,6 +75,16 @@ export const troubleshootingContract = {
     list: oc
       .route({ method: "GET", path: "/api/arch/troubleshooting/branches" })
       .output(listOf(troubleshootingBranchSchema)),
+    /**
+     * Takes production back to where a merged branch was cut: main returns to
+     * the commit the branch started from, the production database to when the
+     * branch was created, and production is deployed again. Answers once the
+     * builder has it; the progress is in the branch's build chat.
+     */
+    revert: oc
+      .route({ method: "POST", path: "/api/arch/troubleshooting/branches/{id}/revert" })
+      .input(z.object({ id: z.string() }))
+      .output(doneSchema),
   },
   containers: {
     list: oc

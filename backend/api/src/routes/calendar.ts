@@ -20,12 +20,6 @@ import {
   updateCalendar,
 } from "@backend/calendar/calendars";
 import {
-  createLabel,
-  listLabels,
-  removeLabel,
-  updateLabel,
-} from "@backend/calendar/labels";
-import {
   disconnectGoogle,
   getGoogleStatus,
   listGoogleCalendars,
@@ -95,21 +89,6 @@ export const calendar = app.calendar.router({
     ),
     remove: app.calendar.calendars.remove.handler(async ({ context, input }) => {
       await removeCalendar(context.principal, input.id);
-      return { ok: true as const };
-    }),
-  }),
-  labels: app.calendar.labels.router({
-    list: app.calendar.labels.list.handler(({ context }) =>
-      listLabels(context.principal),
-    ),
-    create: app.calendar.labels.create.handler(({ context, input }) =>
-      createLabel(context.principal, input),
-    ),
-    update: app.calendar.labels.update.handler(({ context, input: { id, ...changes } }) =>
-      updateLabel(context.principal, id, changes),
-    ),
-    remove: app.calendar.labels.remove.handler(async ({ context, input }) => {
-      await removeLabel(context.principal, input.id);
       return { ok: true as const };
     }),
   }),

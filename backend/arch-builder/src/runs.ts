@@ -10,6 +10,7 @@ import type {
   BuilderRun,
   ContinueRun,
   MergeRun,
+  RevertRun,
 } from "./protocol";
 import { builderEnv } from "./env";
 import { writeToken } from "@backend/arch-repository/service";
@@ -58,6 +59,7 @@ function toBuilderBranch(branch: BranchRow): BuilderBranch {
     previewName: branch.previewName,
     databaseName: branch.databaseName ?? "",
     baseCommit: branch.baseCommit,
+    createdAt: branch.createdAt.getTime(),
   };
 }
 
@@ -118,5 +120,19 @@ export async function startMerge(branch: BranchRow): Promise<void> {
 export async function startAbandon(branch: BranchRow): Promise<void> {
   const run = await abandonRun(branch);
   log.info("abandon sent", { branchId: branch.id, sessionId: branch.buildSessionId });
+  await builderEnv().BUILD_SESSIONS.getByName(branch.buildSessionId).startRun(run);
+}
+
+export async function revertRun(branch: BranchRow): Promise<RevertRun> {
+  return {
+    ...(await runCommon(branch.buildSessionId, branch, `Revert ${branch.name}`)),
+    mode: "revert",
+  };
+}
+
+/** Hands a revert to the merged branch's session, which runs it on the builder. */
+export async function startRevert(branch: BranchRow): Promise<void> {
+  const run = await revertRun(branch);
+  log.info("revert sent", { branchId: branch.id, sessionId: branch.buildSessionId });
   await builderEnv().BUILD_SESSIONS.getByName(branch.buildSessionId).startRun(run);
 }

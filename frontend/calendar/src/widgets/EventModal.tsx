@@ -23,6 +23,7 @@ import type {
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { Form } from "@frontend/ds/forms/Form";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { EventView } from "./EventView";
 import { IconMapPin } from "@frontend/ds/icons";
@@ -33,7 +34,6 @@ import {
   type AttachmentItem,
   type LinkDraft,
 } from "./AttachmentsField";
-import { LabelPicker } from "./LabelPicker";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -50,7 +50,6 @@ export interface EventDraft {
   attendees: string[];
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
-  labelIds: string[];
   location: string;
 }
 
@@ -66,7 +65,6 @@ export interface EventSubmit {
   sharedWith?: string[];
   attendees?: string[];
   calendarId?: string;
-  labelIds: string[];
   /** For a new event: files and links to attach once it is saved. */
   pendingFiles: File[];
   pendingLinks: LinkDraft[];
@@ -140,7 +138,6 @@ function draftOf(
     sharedWith: event?.sharedWith ?? [],
     attendees: event?.attendees ?? [],
     calendarId: event?.calendarId ?? null,
-    labelIds: event?.labelIds ?? [],
   };
 }
 
@@ -268,7 +265,6 @@ export function EventModal({
         rrule: draft.rrule,
         ...(mine && { sharedWith: draft.sharedWith, attendees: draft.attendees }),
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
-        labelIds: draft.labelIds,
         pendingFiles: pending.flatMap((item) =>
           item.state === "pending-file" ? [item.file] : [],
         ),
@@ -382,7 +378,7 @@ export function EventModal({
           onClose={onClose}
         />
       ) : (
-        <Stack gap="sm">
+        <Form onSubmit={() => void save()}>
           {imported && (
             <Text size="sm" c="dimmed">
               {draft.title}: it changes in Google Calendar. Here you choose who sees it.
@@ -496,19 +492,13 @@ export function EventModal({
             </Stack>
           )}
           {!one && changeable && (
-            <Stack gap="sm">
-              <AttachmentsField
-                items={attachmentItems}
-                canEdit
-                onAddFiles={addFiles}
-                onAddLink={addLink}
-                onRemove={removeAttachment}
-              />
-              <LabelPicker
-                value={draft.labelIds}
-                onChange={(ids) => set("labelIds", ids)}
-              />
-            </Stack>
+            <AttachmentsField
+              items={attachmentItems}
+              canEdit
+              onAddFiles={addFiles}
+              onAddLink={addLink}
+              onRemove={removeAttachment}
+            />
           )}
           {!one && mine && (
             <Stack gap="sm">
@@ -593,11 +583,11 @@ export function EventModal({
                 </ConfirmButton>
               )}
             </Group>
-            <Button loading={saving} onClick={() => void save()}>
+            <Button type="submit" loading={saving}>
               {event ? "Save" : "Add event"}
             </Button>
           </Group>
-        </Stack>
+        </Form>
       )}
     </Modal>
   );

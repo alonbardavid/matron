@@ -2,7 +2,8 @@ import { inArray } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
-import { listBranches } from "@backend/arch-branches/service";
+import { branchForSession, listBranches } from "@backend/arch-branches/service";
+import { startRevert } from "@backend/arch-builder/runs";
 import { mainHead } from "@backend/arch-repository/service";
 import { branches } from "@backend/db-models/arch-branches";
 import { user } from "@backend/db-models/arch-auth";
@@ -116,6 +117,22 @@ export async function listAllBranches(
     sessionTitle: people.get(row.buildSessionId)?.title ?? null,
   }));
   return { items, problem: null };
+}
+
+/**
+ * Takes production back to where a merged branch was cut, on the builder.
+ * Nothing records it: the database restore takes the branch rows back in time
+ * with everything else.
+ */
+export async function revertBranch(principal: Principal, id: string): Promise<void> {
+  troubleshootingPermissions.require(principal, "manage");
+  const merged = (await listBranches(principal, null)).find(
+    (branch) => branch.id === id && branch.status === "merged",
+  );
+  const branch = merged ? await branchForSession(merged.buildSessionId) : null;
+  if (!branch) throw new DomainError("NOT_FOUND", "Merged branch not found");
+  await startRevert(branch);
+  log.info("revert requested", { branchId: id, userId: principal.userId });
 }
 
 // ── Containers ────────────────────────────────────────────────────────────────

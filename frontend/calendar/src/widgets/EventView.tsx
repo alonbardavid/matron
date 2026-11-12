@@ -6,7 +6,6 @@ import {
   Badge,
   Box,
   Button,
-  ColorSwatch,
   Group,
   Select,
   Stack,
@@ -27,14 +26,11 @@ import {
   IconNotes,
   IconPencil,
   IconRepeat,
-  IconTag,
   IconUsers,
   IconX,
 } from "@frontend/ds/icons";
 import { isLink, mapsUrl } from "../places";
 import { describeRule } from "../rrule";
-import { useLabels } from "../useCalendar";
-import { labelsOf } from "./LabelBars";
 
 interface EventViewProps {
   event: CalendarEvent;
@@ -97,7 +93,6 @@ export function EventView({
   onClose,
 }: EventViewProps) {
   const { nameOf, avatarUrlOf } = useHouseholdMembers();
-  const labels = labelsOf(event.labelIds, useLabels().data ?? []);
   const repeats = event.rrule
     ? describeRule(event.rrule)
     : event.repeatsAtSource
@@ -171,25 +166,6 @@ export function EventView({
         </Title>
         <Text size="sm">{describeWhen(event.allDay, startAt, endAt)}</Text>
       </Row>
-      {labels.length > 0 && (
-        <Row icon={<IconTag size={18} />}>
-          <Group gap={6}>
-            {labels.map((label) => (
-              <Badge
-                key={label.id}
-                variant="light"
-                color={label.color}
-                leftSection={
-                  <ColorSwatch color={label.color} size={8} withShadow={false} />
-                }
-                styles={{ root: { textTransform: "none" } }}
-              >
-                {label.name}
-              </Badge>
-            ))}
-          </Group>
-        </Row>
-      )}
       {event.location && (
         <Row icon={<IconMapPin size={18} />}>
           <Text size="sm" style={{ overflowWrap: "anywhere" }}>

@@ -82,22 +82,6 @@ export type Calendar = z.infer<typeof calendarSchema>;
 const calendarName = z.string().trim().min(1, "Give the calendar a name").max(80);
 
 /**
- * A label the household tags events with, such as "School" or "Medical",
- * shared by every member. An event shows its labels as coloured bars along
- * its side.
- */
-export const labelSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  color: z.string(),
-  creatorId: z.string(),
-});
-export type Label = z.infer<typeof labelSchema>;
-
-const labelName = z.string().trim().min(1, "Give the label a name").max(40);
-const labelIds = z.array(z.string()).max(20);
-
-/**
  * Something attached to an event: a file uploaded here (its `url` serves it)
  * or a link. Ones imported from Google are links with the source `google`,
  * changed there; those added here are removed by whoever may edit the event.
@@ -162,11 +146,9 @@ export const calendarEventSchema = z.object({
   shownIn: z.string(),
   /** `read` when the caller sees it only through a calendar shared with them. */
   access: z.enum(["edit", "read"]),
-  /** Ids of the household labels on it, on every occurrence of a series. */
-  labelIds: z.array(z.string()),
   /** Whether the caller hid it from their own calendar. */
   hidden: z.boolean(),
-  /** The calendar's source. An imported event is changed there; in Matron only who it is shared with and its labels change. */
+  /** The calendar's source. An imported event is changed there; in Matron only who it is shared with changes. */
   source: calendarSourceSchema,
   /** An imported occurrence of an event that repeats at its source. */
   repeatsAtSource: z.boolean(),
@@ -201,8 +183,6 @@ export const occurrenceSchema = z.object({
   /** The caller's colour for that calendar. */
   color: z.string(),
   source: calendarSourceSchema,
-  /** Ids of the event's labels. */
-  labelIds: z.array(z.string()),
   /** Whether the caller hid the event; listed all the same, for the calendar to show or leave out. */
   hidden: z.boolean(),
 });
@@ -226,8 +206,6 @@ export const calendarEventCreateSchema = z.object({
   rrule: rruleString.nullable().optional(),
   sharedWith: userIds.optional(),
   attendees: userIds.optional(),
-  /** Household labels to tag it with. */
-  labelIds: labelIds.optional(),
 });
 export type CalendarEventCreate = z.infer<typeof calendarEventCreateSchema>;
 
@@ -338,32 +316,6 @@ export const calendarsContract = {
     .output(z.object({ ok: z.literal(true) })),
 };
 
-/** The household's labels: every member sees and uses them; whoever made one, or an owner, changes it. */
-export const labelsContract = {
-  list: oc
-    .route({ method: "GET", path: "/api/app/calendar/labels" })
-    .output(z.array(labelSchema)),
-  create: oc
-    .route({ method: "POST", path: "/api/app/calendar/labels" })
-    .input(z.object({ name: labelName, color: colorString }))
-    .output(labelSchema),
-  update: oc
-    .route({ method: "PUT", path: "/api/app/calendar/labels/{id}" })
-    .input(
-      z.object({
-        id: z.string(),
-        name: labelName.optional(),
-        color: colorString.optional(),
-      }),
-    )
-    .output(labelSchema),
-  /** Removes the label from the household and from every event it was on. */
-  remove: oc
-    .route({ method: "DELETE", path: "/api/app/calendar/labels/{id}" })
-    .input(z.object({ id: z.string() }))
-    .output(z.object({ ok: z.literal(true) })),
-};
-
 export const calendarContract = {
   /** What is on the calendar between two instants, series expanded into occurrences. */
   occurrences: oc
@@ -455,6 +407,5 @@ export const calendarContract = {
     .input(z.object({ id: z.string(), calendarId: z.string().nullable() }))
     .output(calendarEventSchema),
   calendars: calendarsContract,
-  labels: labelsContract,
   google: googleCalendarContract,
 };

@@ -26,6 +26,7 @@ import {
 } from "@frontend/upstream/widgets/UpstreamUpdates";
 import { ProblemNotice } from "./ProblemNotice";
 import { RefreshButton } from "./RefreshButton";
+import { RevertButton } from "./RevertButton";
 import { TableLoading } from "./TableLoading";
 
 const column = createColumnHelper<TroubleshootingBranch>();
@@ -119,6 +120,7 @@ export function BranchesTab() {
                 Open
               </Anchor>
             )}
+            {row.original.status === "merged" && <RevertButton branch={row.original} />}
             {row.original.sessionViewable ? (
               <Button
                 size="xs"
