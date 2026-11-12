@@ -9,7 +9,7 @@ import type { Principal } from "@backend/commons/principal";
 import { getDb } from "@backend/db-models/db";
 import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-sessions";
 import { canArchiveSession, canClearSession } from "./archive";
-import type { PreparingReview } from "@shared/contract/arch/review";
+import type { ReviewReport } from "@shared/contract/arch/review";
 import type { BuildSession } from "@shared/contract/arch/sessions";
 import { sessionsEnv } from "./env";
 
@@ -155,8 +155,8 @@ export async function openSessionSocket(
 }
 
 /** What the builder prepared for the review of the session's branch with its newest deploy, or null. */
-export async function getPreparingReview(sessionId: string): Promise<PreparingReview | null> {
-  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId).preparingReview();
+export async function getReviewReport(sessionId: string): Promise<ReviewReport | null> {
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId).reviewReport();
 }
 
 export async function getSessionRow(sessionId: string): Promise<SessionRow> {

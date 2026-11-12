@@ -7,7 +7,7 @@ import {
   withRepository,
   type ChangedFile,
 } from "@backend/arch-repository/service";
-import { getPreparingReview } from "@backend/arch-sessions/service";
+import { getReviewReport } from "@backend/arch-sessions/service";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
@@ -15,7 +15,7 @@ import type { Branch } from "@shared/contract/arch/branches";
 import type {
   BranchReview,
   ReviewFile,
-  PreparingReview,
+  ReviewReport,
   ReviewMessage,
 } from "@shared/contract/arch/review";
 import { branchCommits } from "./commits";
@@ -42,7 +42,7 @@ export interface BranchState {
   headCommit: string;
   commits: ReturnType<typeof branchCommits>;
   /** What the builder prepared for the review with the branch's newest deploy. */
-  review: PreparingReview;
+  review: ReviewReport;
   changes: ChangedFile[];
 }
 
@@ -63,17 +63,17 @@ async function loadState(
   repo: ArtifactsRepo,
   { row, branch }: { row: BranchRow; branch: Branch },
 ): Promise<BranchState> {
-  const [branchLog, mainLog, preparingReview] = await Promise.all([
+  const [branchLog, mainLog, reviewReport] = await Promise.all([
     firstParentLog(repo, row.name, BRANCH_LOG_DEPTH),
     firstParentLog(repo, MAIN_BRANCH, MAIN_LOG_DEPTH),
-    getPreparingReview(row.buildSessionId),
+    getReviewReport(row.buildSessionId),
   ]);
   const headCommit = branchLog[0]?.hash;
   if (!headCommit) {
     throw new DomainError("CONFLICT", "The branch has no commits yet");
   }
   const commits = branchCommits(branchLog, mainLog, row.baseCommit);
-  const review = preparingReview ?? { summary: "", brackets: [] };
+  const review = reviewReport ?? { summary: "", brackets: [] };
   const changes = await changedFiles(repo, row.baseCommit, headCommit);
   return { branch, baseCommit: row.baseCommit, headCommit, commits, review, changes };
 }

@@ -17,7 +17,7 @@
       "type": "string",
       "description": "What to show the user, in markdown"
     },
-    "preparingReview": {
+    "reviewReport": {
       "type": "object",
       "properties": {
         "summary": {
@@ -87,6 +87,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["status", "summary", "reasoning", "message", "preparingReview"],
+  "required": ["status", "summary", "reasoning", "message", "reviewReport"],
   "additionalProperties": false
 }

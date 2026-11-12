@@ -27,7 +27,7 @@ export function promptPath(dir: string, name: PromptName): string {
 
 /**
  * The structured output every agent turn must end with, as one line of JSON:
- * `outcome-schema.json` beside the prompts, `preparingReview` included.
+ * `outcome-schema.json` beside the prompts, `reviewReport` included.
  */
 export function loadOutcomeSchema(dir: string): string {
   return JSON.stringify(

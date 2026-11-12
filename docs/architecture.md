@@ -78,7 +78,7 @@ A Preview holds the token too, so its assistant takes the same route.
 - The review (`backend/arch-review`, `frontend/review`) reads a live branch's diff against
   its `base_commit`, the builder's commit messages (`commits.ts`), and the summary and
   brackets the builder agent gave with the newest deploy, which the build session object
-  keeps (`preparingReview`). The browser diffs each file
+  keeps (`reviewReport`). The browser diffs each file
   itself (`frontend/review/src/diff.ts`) and keeps viewed marks in `localStorage`. Questions
   go to the planner's model call with the branch's tools (`reviewer.ts`); the client sends the
   whole conversation each time and nothing is stored.

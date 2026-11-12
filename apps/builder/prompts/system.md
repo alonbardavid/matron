@@ -52,7 +52,7 @@ Every turn ends with the structured result the runner expects:
 - `message`: what the user sees in the chat, in markdown. Write for a household member,
   not an engineer: what changed, where to find it, anything they should know. Keep it
   short.
-- `preparingReview`: prepares the owner's review of the code before merging. It is kept
+- `reviewReport`: your report for the owner, who reviews the code before merging. It is kept
   with the build session and describes the **whole branch** as it stands after this turn,
   not only this turn's work. With `status: done` fill it in; otherwise leave `summary` empty and
   `brackets` empty.

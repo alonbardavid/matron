@@ -78,10 +78,10 @@ export const BRACKET_KINDS = [
 
 /**
  * What the agent gives to prepare the owner's review of the whole branch,
- * which the Worker keeps on the build session; mirrors `preparingReviewSchema`
+ * which the Worker keeps on the build session; mirrors `reviewReportSchema`
  * on the Worker side.
  */
-export type PreparingReview = {
+export type ReviewReport = {
   summary: string;
   brackets: {
     title: string;
@@ -116,7 +116,7 @@ export type AgentOutcome = {
   summary: string;
   reasoning: string;
   message: string;
-  preparingReview?: PreparingReview;
+  reviewReport?: ReviewReport;
 };
 
 export type PrepareContinueResult = { sync: string };
