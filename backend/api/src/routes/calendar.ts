@@ -1,5 +1,8 @@
 import {
+  attachFileToEvent,
+  attachLinkToEvent,
   cancelOccurrence,
+  detachFromEvent,
   createEvent,
   editOccurrence,
   getEvent,
@@ -48,7 +51,7 @@ export const calendar = app.calendar.router({
     stopRecurrence(context.principal, input.id, input.from),
   ),
   remove: app.calendar.remove.handler(async ({ context, input }) => {
-    await removeEvent(context.principal, input.id);
+    await removeEvent(context.principal, input.id, context.branch);
     return { ok: true as const };
   }),
   editOccurrence: app.calendar.editOccurrence.handler(
@@ -57,6 +60,21 @@ export const calendar = app.calendar.router({
   ),
   cancelOccurrence: app.calendar.cancelOccurrence.handler(({ context, input }) =>
     cancelOccurrence(context.principal, input.id, input.originalStartAt),
+  ),
+  attachFile: app.calendar.attachFile.handler(async ({ context, input }) => {
+    // The contract's File is the browser's; the Worker's has the same shape.
+    const file = input.file as unknown as Blob & { name: string; type: string };
+    return attachFileToEvent(context.principal, context.branch, input.id, {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      name: file.name,
+      mimeType: file.type,
+    });
+  }),
+  attachLink: app.calendar.attachLink.handler(({ context, input }) =>
+    attachLinkToEvent(context.principal, input.id, input.url, input.title),
+  ),
+  detach: app.calendar.detach.handler(({ context, input }) =>
+    detachFromEvent(context.principal, context.branch, input.id, input.attachmentId),
   ),
   hide: app.calendar.hide.handler(({ context, input }) =>
     hideEvent(context.principal, input.id, input.hidden),

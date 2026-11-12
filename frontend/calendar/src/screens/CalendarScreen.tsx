@@ -96,6 +96,7 @@ type ItemPayload =
       occurrence: OpenedOccurrence | null;
       labels: Label[];
       hidden: boolean;
+      location: string;
     }
   | { kind: "task"; task: Task };
 
@@ -112,6 +113,12 @@ const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, pr
   return (
     <LabelledEvent
       {...props}
+      // The tooltip names the place too.
+      title={
+        payload?.kind === "event" && payload.location
+          ? `${item.title} · ${payload.location}`
+          : props.title
+      }
       labels={payload?.kind === "event" ? payload.labels : []}
       muted={payload?.kind === "event" && payload.hidden}
       struck={payload?.kind === "task" && payload.task.completedAt !== null}
@@ -131,8 +138,19 @@ export function CalendarScreen() {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
-  const { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide } =
-    useEventActions();
+  const {
+    create,
+    update,
+    stop,
+    remove,
+    place,
+    editOccurrence,
+    cancelOccurrence,
+    hide,
+    attachFile,
+    attachLink,
+    detach,
+  } = useEventActions();
   const calendars = useCalendars();
   const labels = useLabels();
   const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
@@ -167,6 +185,7 @@ export function CalendarScreen() {
       eventId: item.eventId,
       labels: labelsOf(item.labelIds, labels.data ?? []),
       hidden: item.hidden,
+      location: item.location,
       occurrence:
         item.originalStartAt === null
           ? null
@@ -212,7 +231,7 @@ export function CalendarScreen() {
       endAt: dayjs().add(2, "hour").startOf("hour").valueOf(),
     });
 
-  const save = async (values: EventSubmit) => {
+  const save = async ({ pendingFiles, pendingLinks, ...values }: EventSubmit) => {
     if (opening?.eventId && event.data?.source === "google") {
       // An imported event is Google's; only who it is shared with is Matron's.
       await update.mutateAsync({
@@ -224,8 +243,15 @@ export function CalendarScreen() {
       return;
     }
     const input = { ...values, timeZone: localTimeZone() };
-    if (opening?.eventId) await update.mutateAsync({ id: opening.eventId, ...input });
-    else await create.mutateAsync(input);
+    if (opening?.eventId) {
+      await update.mutateAsync({ id: opening.eventId, ...input });
+      return;
+    }
+    const made = await create.mutateAsync(input);
+    // What was attached before the event existed goes on now.
+    for (const file of pendingFiles) await attachFile.mutateAsync({ id: made.id, file });
+    for (const link of pendingLinks)
+      await attachLink.mutateAsync({ id: made.id, url: link.url, title: link.title });
   };
 
   const filtersButton = (compact: boolean) => (
@@ -435,6 +461,32 @@ export function CalendarScreen() {
           opening?.eventId
             ? async (fromDay) => {
                 await stop.mutateAsync({ id: opening.eventId!, from: fromDay });
+              }
+            : undefined
+        }
+        onAttachFiles={
+          opening?.eventId
+            ? async (files) => {
+                for (const file of files)
+                  await attachFile.mutateAsync({ id: opening.eventId!, file });
+              }
+            : undefined
+        }
+        onAttachLink={
+          opening?.eventId
+            ? async (link) => {
+                await attachLink.mutateAsync({
+                  id: opening.eventId!,
+                  url: link.url,
+                  title: link.title,
+                });
+              }
+            : undefined
+        }
+        onDetach={
+          opening?.eventId
+            ? async (attachmentId) => {
+                await detach.mutateAsync({ id: opening.eventId!, attachmentId });
               }
             : undefined
         }

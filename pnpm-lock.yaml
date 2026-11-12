@@ -687,6 +687,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/files':
+        specifier: workspace:*
+        version: link:../files
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract

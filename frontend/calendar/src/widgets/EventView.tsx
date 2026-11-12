@@ -20,6 +20,10 @@ import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 import {
   IconCalendar,
   IconEyeOff,
+  IconFile,
+  IconLink,
+  IconMapPin,
+  IconPaperclip,
   IconNotes,
   IconPencil,
   IconRepeat,
@@ -27,6 +31,7 @@ import {
   IconUsers,
   IconX,
 } from "@frontend/ds/icons";
+import { isLink, mapsUrl } from "../places";
 import { describeRule } from "../rrule";
 import { useLabels } from "../useCalendar";
 import { labelsOf } from "./LabelBars";
@@ -185,6 +190,21 @@ export function EventView({
           </Group>
         </Row>
       )}
+      {event.location && (
+        <Row icon={<IconMapPin size={18} />}>
+          <Text size="sm" style={{ overflowWrap: "anywhere" }}>
+            {event.location}
+          </Text>
+          <Anchor
+            href={mapsUrl(event.location)}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="xs"
+          >
+            {isLink(event.location) ? "Open link" : "Open in Maps"}
+          </Anchor>
+        </Row>
+      )}
       {repeats && (
         <Row icon={<IconRepeat size={18} />}>
           <Text size="sm">{repeats}</Text>
@@ -195,6 +215,36 @@ export function EventView({
           <Text size="sm" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
             {description}
           </Text>
+        </Row>
+      )}
+      {event.attachments.length > 0 && (
+        <Row icon={<IconPaperclip size={18} />}>
+          <Stack gap={4}>
+            {event.attachments.map((attachment) => (
+              <Group key={attachment.id} gap="xs" wrap="nowrap">
+                {attachment.kind === "file" ? (
+                  <IconFile size={14} />
+                ) : (
+                  <IconLink size={14} />
+                )}
+                <Anchor
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                  truncate
+                  style={{ minWidth: 0 }}
+                >
+                  {attachment.title}
+                </Anchor>
+                {attachment.source === "google" && (
+                  <Badge variant="light" color="gray" size="xs">
+                    Google
+                  </Badge>
+                )}
+              </Group>
+            ))}
+          </Stack>
         </Row>
       )}
       {(event.attendees.length > 0 || alsoSharedWith.length > 0) && (
