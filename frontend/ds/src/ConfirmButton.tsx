@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { Button, Group, Popover, Stack, Text, type ButtonProps } from "@mantine/core";
 
+/** Escape on these closes only the confirmation, not a modal it sits in. */
+const KEEP_ESCAPE = { "data-mantine-stop-propagation": true };
+
 interface ConfirmButtonProps extends ButtonProps {
   children: ReactNode;
   onConfirm: () => unknown;
@@ -36,6 +39,7 @@ export function ConfirmButton({
       withArrow
       shadow="md"
       trapFocus
+      returnFocus
     >
       <Popover.Target>
         <Button
@@ -55,10 +59,17 @@ export function ConfirmButton({
               variant="default"
               onClick={() => setOpened(false)}
               disabled={busy}
+              {...KEEP_ESCAPE}
             >
               Cancel
             </Button>
-            <Button size="xs" color="red" onClick={confirm} loading={busy}>
+            <Button
+              size="xs"
+              color="red"
+              onClick={confirm}
+              loading={busy}
+              {...KEEP_ESCAPE}
+            >
               {confirmLabel}
             </Button>
           </Group>

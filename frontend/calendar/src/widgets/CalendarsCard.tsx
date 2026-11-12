@@ -50,6 +50,7 @@ function ColorPicker({
       position="bottom-start"
       shadow="md"
       trapFocus
+      returnFocus
     >
       <Popover.Target>
         <ColorSwatch
@@ -102,6 +103,7 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
       shadow="md"
       width={300}
       trapFocus
+      returnFocus
     >
       <Popover.Target>
         <Button

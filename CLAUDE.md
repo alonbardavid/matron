@@ -55,8 +55,8 @@ in place, never append history.
   form is a real `<form>`: `StandardForm`, or `Form` when its state lives outside
   `@mantine/form`. Enter submits it, so the save button is `type="submit"`, never an `onClick`
   save. Tab reaches every field and button in visual order: no `tabIndex` above 0, no
-  clickable `div`s, and a popover with controls in it sets `trapFocus`. Controls that act at
-  once (a filter, a toggle) are not forms.
+  clickable `div`s, and a popover with controls in it sets `trapFocus` and `returnFocus`.
+  Controls that act at once (a filter, a toggle) are not forms.
 - Use `pnpm` (and `pnpx`), never `npm`/`npx`.
 
 ## Traps

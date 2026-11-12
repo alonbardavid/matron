@@ -162,6 +162,7 @@ export function CalendarScreen() {
             position="bottom-start"
             shadow="md"
             trapFocus
+            returnFocus
           >
             <Popover.Target>
               <UnstyledButton
