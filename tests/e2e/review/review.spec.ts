@@ -108,27 +108,27 @@ test.describe("branch review", () => {
       diff.locator(".hljs-string", { hasText: '"view"' }).first(),
     ).toBeVisible();
 
-    // Unified: the replaced signature and its replacement are separate rows.
+    // A changed file opens split: the line before sits beside the line that
+    // replaced it, still one change.
     const replaced = diff
       .getByRole("row")
       .filter({ hasText: "listTasks(principal: Principal) {" })
       .filter({ hasText: "list?: string" });
-    await expect(replaced).toHaveCount(0);
-
-    const layoutSwitch = page.getByRole("radiogroup", { name: "Diff layout" });
-    // Split: the line before sits beside the line that replaced it, still one change.
-    await layoutSwitch.getByText("Split", { exact: true }).click();
     await expect(replaced).toHaveCount(1);
     await replaced.getByRole("checkbox", { name: /^Mark line 6 viewed/ }).click();
     await expect(
       replaced.getByRole("checkbox", { name: /^Unmark line 6 viewed/ }),
     ).toBeChecked();
 
-    // The layout is remembered in this browser.
-    await page.reload();
-    await expect(replaced).toHaveCount(1);
+    // Unified: the replaced signature and its replacement are separate rows.
+    const layoutSwitch = page.getByRole("radiogroup", { name: "Diff layout" });
     await layoutSwitch.getByText("Unified", { exact: true }).click();
     await expect(replaced).toHaveCount(0);
+
+    // A new file opens unified.
+    await page.goto(`${REVIEW_PATH}?tab=files&file=migrations%2F0007_task_lists.sql`);
+    await expect(diff).toContainText("ALTER TABLE");
+    await expect(layoutSwitch.getByRole("radio", { name: "Unified" })).toBeChecked();
   });
 
   test("each range of a bracket keeps its own layout", async ({ page }) => {
@@ -142,19 +142,22 @@ test.describe("branch review", () => {
     await expect(
       page.getByRole("heading", { name: "Clearing bought items" }),
     ).toBeVisible();
-    // One switch per range: setting the first leaves the second alone.
+    // One switch per range, both in changed files so split; setting the
+    // first leaves the second alone.
     await expect(switches).toHaveCount(2);
-    await switches.first().getByText("Split", { exact: true }).click();
     await expect(switches.first().getByRole("radio", { name: "Split" })).toBeChecked();
-    await expect(switches.last().getByRole("radio", { name: "Unified" })).toBeChecked();
+    await switches.first().getByText("Unified", { exact: true }).click();
+    await expect(switches.first().getByRole("radio", { name: "Unified" })).toBeChecked();
+    await expect(switches.last().getByRole("radio", { name: "Split" })).toBeChecked();
 
-    // Back from another bracket, the range still has its layout.
+    // The other bracket's range is in a new file, so unified; back from it,
+    // the first range still has its layout.
     await brackets.getByRole("button", { name: /The list column/ }).click();
     await expect(switches).toHaveCount(1);
     await expect(switches.getByRole("radio", { name: "Unified" })).toBeChecked();
     await brackets.getByRole("button", { name: /Clearing bought items/ }).click();
-    await expect(switches.first().getByRole("radio", { name: "Split" })).toBeChecked();
-    await expect(switches.last().getByRole("radio", { name: "Unified" })).toBeChecked();
+    await expect(switches.first().getByRole("radio", { name: "Unified" })).toBeChecked();
+    await expect(switches.last().getByRole("radio", { name: "Split" })).toBeChecked();
   });
 
   test("a branch the repository does not know answers not found", async ({ page }) => {

@@ -120,7 +120,7 @@ export function FilesTab({ model, viewed, layouts, selected, onSelect }: FilesTa
             </Group>
             <Group gap="sm">
               <LayoutSwitch
-                layout={layouts.layoutOf(`file:${path}`)}
+                layout={layouts.layoutOf(`file:${path}`, file.file.status)}
                 onChange={(layout) => layouts.setLayout(`file:${path}`, layout)}
               />
               <Text size="xs" c="dimmed">
@@ -140,7 +140,7 @@ export function FilesTab({ model, viewed, layouts, selected, onSelect }: FilesTa
               key={path}
               model={file}
               viewed={viewed}
-              layout={layouts.layoutOf(`file:${path}`)}
+              layout={layouts.layoutOf(`file:${path}`, file.file.status)}
             />
           </Box>
         </Paper>

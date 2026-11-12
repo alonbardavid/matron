@@ -118,7 +118,7 @@ export function BracketsTab({
             : [];
           const done = viewed.count(keys);
           const layoutKey = `range:${range.path}:${range.start}-${range.end}`;
-          const layout = layouts.layoutOf(layoutKey);
+          const layout = file ? layouts.layoutOf(layoutKey, file.file.status) : "unified";
           return (
             <Group
               key={`${range.path}:${range.start}-${range.end}`}
