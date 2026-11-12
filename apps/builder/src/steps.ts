@@ -243,7 +243,6 @@ export class Steps {
       input.summary,
       input.request,
       input.reasoning,
-      input.review,
     );
     const committed = await git.commitAll(g, message);
     progress(committed ? "committed" : "no file changes to commit");

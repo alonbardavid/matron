@@ -486,6 +486,9 @@ importers:
       '@backend/arch-repository':
         specifier: workspace:*
         version: link:../arch-repository
+      '@backend/arch-sessions':
+        specifier: workspace:*
+        version: link:../arch-sessions
       '@backend/arch-settings':
         specifier: workspace:*
         version: link:../arch-settings

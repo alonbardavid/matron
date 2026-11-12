@@ -35,15 +35,15 @@ export const bracketSchema = z.object({
 export type Bracket = z.infer<typeof bracketSchema>;
 
 /**
- * What the builder agent writes into the `Matron-Review` commit trailer: a
- * summary of the branch for its reviewer and the whole branch split into
- * brackets. Each commit carries the grouping of the branch as of that commit.
+ * What the builder agent prepares for the owner's review of its branch: a
+ * summary and the whole branch split into brackets. The branch's build
+ * session keeps the one from the newest deploy.
  */
-export const reviewTrailerSchema = z.object({
+export const preparingReviewSchema = z.object({
   summary: z.string().max(20_000).default(""),
   brackets: z.array(bracketSchema).max(50).default([]),
 });
-export type ReviewTrailer = z.infer<typeof reviewTrailerSchema>;
+export type PreparingReview = z.infer<typeof preparingReviewSchema>;
 
 /** One of the branch's own commits, as the builder described it. */
 export const reviewCommitSchema = z.object({
@@ -78,7 +78,7 @@ export const branchReviewSchema = z.object({
   branch: branchSchema,
   baseCommit: z.string(),
   headCommit: z.string(),
-  /** From the newest commit that carries a review trailer; empty when none does. */
+  /** What the builder prepared for the review with the newest deploy; empty before one did. */
   summary: z.string(),
   brackets: z.array(bracketSchema),
   /** Newest first. */

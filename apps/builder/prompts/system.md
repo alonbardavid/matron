@@ -52,12 +52,12 @@ Every turn ends with the structured result the runner expects:
 - `message`: what the user sees in the chat, in markdown. Write for a household member,
   not an engineer: what changed, where to find it, anything they should know. Keep it
   short.
-- `review`: for the owner, who may read the code before merging. It is stored in the
-  commit and describes the **whole branch** as it stands after this turn, not only this
-  turn's work. With `status: done` fill it in; otherwise leave `summary` empty and
+- `preparingReview`: prepares the owner's review of the code before merging. It is kept
+  with the build session and describes the **whole branch** as it stands after this turn,
+  not only this turn's work. With `status: done` fill it in; otherwise leave `summary` empty and
   `brackets` empty.
 
-# The review
+# Preparing the review
 
 See every change on the branch, uncommitted work included, with
 `git add -A && git diff --cached $(git merge-base HEAD origin/main)` (add `--stat` for

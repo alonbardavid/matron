@@ -2,10 +2,10 @@ import { loadPrompt, promptPath, renderTemplate } from "./prompts.js";
 import { BRACKET_KINDS, type AgentPrompt, type BuilderRun } from "./types.js";
 
 /**
- * The branch's review, written into the commit trailer: a summary for the
- * owner who reviews the branch, and every change on it split into brackets.
+ * What the agent gives to prepare the owner's review of the branch, kept on
+ * the build session: a summary, and every change on it split into brackets.
  */
-const REVIEW_SCHEMA = {
+const PREPARING_REVIEW_SCHEMA = {
   type: "object",
   properties: {
     summary: {
@@ -67,9 +67,9 @@ export const OUTCOME_SCHEMA = {
     },
     reasoning: { type: "string", description: "Why the change was made this way" },
     message: { type: "string", description: "What to show the user, in markdown" },
-    review: REVIEW_SCHEMA,
+    preparingReview: PREPARING_REVIEW_SCHEMA,
   },
-  required: ["status", "summary", "reasoning", "message", "review"],
+  required: ["status", "summary", "reasoning", "message", "preparingReview"],
   additionalProperties: false,
 } as const;
 

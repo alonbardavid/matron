@@ -121,7 +121,7 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
             summary: at.outcome.summary || outcome.summary,
             reasoning: at.outcome.reasoning || outcome.reasoning,
             // A fix turn regroups the branch with its new line numbers.
-            review: outcome.review ?? at.outcome.review,
+            preparingReview: outcome.preparingReview ?? at.outcome.preparingReview,
           }
         : outcome;
       at.phase = "verify";
@@ -155,7 +155,6 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
         summary: outcome.summary,
         reasoning: outcome.reasoning,
         request: run.mode === "continue" ? run.message : run.request,
-        review: outcome.review,
       });
       await ctx.status("deploying");
       at.phase = "deploy-preview";
@@ -166,7 +165,7 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
       // The Preview URL is not for people: the session posts the branch link once
       // the deploy is recorded. Only the agent's own words go here.
       await ctx.say(at.outcome?.message.trim() || "The change is ready.");
-      await ctx.finish("deployed", result);
+      await ctx.finish("deployed", { ...result, preparingReview: at.outcome?.preparingReview });
       return "end";
     }
     case "deploy-production":

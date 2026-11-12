@@ -77,10 +77,11 @@ export const BRACKET_KINDS = [
 ] as const;
 
 /**
- * The agent's review of the whole branch, stored in the commit's
- * `Matron-Review` trailer; mirrors `reviewTrailerSchema` on the Worker side.
+ * What the agent gives to prepare the owner's review of the whole branch,
+ * which the Worker keeps on the build session; mirrors `preparingReviewSchema`
+ * on the Worker side.
  */
-export type ReviewTrailer = {
+export type PreparingReview = {
   summary: string;
   brackets: {
     title: string;
@@ -95,7 +96,6 @@ export type StepInput = {
   summary: string;
   reasoning: string;
   request: string;
-  review?: ReviewTrailer;
 };
 
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
@@ -116,7 +116,7 @@ export type AgentOutcome = {
   summary: string;
   reasoning: string;
   message: string;
-  review?: ReviewTrailer;
+  preparingReview?: PreparingReview;
 };
 
 export type PrepareContinueResult = { sync: string };

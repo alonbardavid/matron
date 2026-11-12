@@ -9,6 +9,7 @@ import type { Principal } from "@backend/commons/principal";
 import { getDb } from "@backend/db-models/db";
 import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-sessions";
 import { canArchiveSession, canClearSession } from "./archive";
+import type { PreparingReview } from "@shared/contract/arch/review";
 import type { BuildSession } from "@shared/contract/arch/sessions";
 import { sessionsEnv } from "./env";
 
@@ -151,6 +152,11 @@ export async function openSessionSocket(
   log.info("build session socket opened", { sessionId, userId: principal.userId });
   const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
   return buildSession.fetch(new Request(request, { headers }));
+}
+
+/** What the builder prepared for the review of the session's branch with its newest deploy, or null. */
+export async function getPreparingReview(sessionId: string): Promise<PreparingReview | null> {
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId).preparingReview();
 }
 
 export async function getSessionRow(sessionId: string): Promise<SessionRow> {
