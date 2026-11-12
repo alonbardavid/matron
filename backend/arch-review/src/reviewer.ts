@@ -6,7 +6,11 @@ import { readFile, withRepository } from "@backend/arch-repository/service";
 import { getBuilderModel } from "@backend/arch-settings/service";
 import { gatewayModel } from "@backend/commons/gateway-model";
 import { logger } from "@backend/commons/logger";
+import { renderTemplate } from "@backend/commons/template";
 import type { ReviewMessage } from "@shared/contract/arch/review";
+import branchTemplate from "../prompts/branch.md?raw";
+import commitTemplate from "../prompts/commit.md?raw";
+import systemTemplate from "../prompts/system.md?raw";
 import { reviewEnv } from "./env";
 import type { BranchState } from "./service";
 
@@ -17,12 +21,8 @@ const MAX_NOTE_CHARS = 4_000;
 const MAX_OUTPUT_TOKENS = 16_000;
 /** Model calls one answer may take, tool rounds included, before it must answer. */
 const MAX_STEPS = 16;
-
-const REVIEWER_ROLE = `You are the reviewer's assistant in Matron, a self-releasing household organizer. Its owner is reading the code of a branch before merging it into main, and asks you about it. The branch was written by Matron's builder, a coding agent, from a household member's request; every commit it made records the request it worked on and the reasoning behind its decisions, and the newest one carries its summary of the branch and its brackets (the groups of changed lines it suggests reading together).
-
-You are talking to the owner, an engineer. Be direct and concrete: name files, functions and lines, and quote code when it helps. Use markdown. Answer what was asked; when the code does not settle a question, say so rather than guess.
-
-You can read the code with tools: list_files, read_file and search_files see the branch as it is now, read_main_file sees the file on main as the branch started from, and file_diff shows one file's change. The builder's notes below say why it did things; the code says what it did. When they disagree, trust the code and point out the difference.`;
+/** What a section of the prompt says when the branch has nothing for it. */
+const NONE = "(none)";
 
 /** The reviewer's next answer: the branch's state and notes in the instructions, the conversation after it. */
 export async function askReviewer(
@@ -53,7 +53,7 @@ export async function askReviewer(
   }));
   const result = await generateText({
     model,
-    instructions: `${REVIEWER_ROLE}\n\n${describeBranch(state)}`,
+    instructions: renderTemplate(systemTemplate, { branch: describeBranch(state) }).trim(),
     messages,
     tools: {
       ...repositoryTools(state.headCommit),
@@ -111,44 +111,39 @@ export async function askReviewer(
 
 /** The branch as the reviewer starts from it: its changed files and the builder's notes. */
 export function describeBranch(state: BranchState): string {
-  const parts = [
-    `## The branch under review: ${state.branch.name}`,
-    `Compared with main at ${state.baseCommit.slice(0, 10)}; the branch is at ${state.headCommit.slice(0, 10)}.`,
-    `### Changed files\n${state.changes.map((change) => `- ${change.status}: ${change.path}`).join("\n") || "(none)"}`,
-  ];
-  if (state.review.summary)
-    parts.push(`### The builder's summary\n${state.review.summary}`);
-  if (state.review.brackets.length) {
-    parts.push(
-      `### The builder's brackets\n${state.review.brackets
+  const changes = state.changes.map((change) => `- ${change.status}: ${change.path}`);
+  const brackets = state.review.brackets.map(
+    (bracket, i) =>
+      `${i + 1}. [${bracket.kind}] ${bracket.title}: ${bracket.description}\n${bracket.ranges
         .map(
-          (bracket, i) =>
-            `${i + 1}. [${bracket.kind}] ${bracket.title}: ${bracket.description}\n${bracket.ranges
-              .map(
-                (range) =>
-                  `   - ${range.path}:${range.start}-${range.end}${range.note ? ` (${range.note})` : ""}`,
-              )
-              .join("\n")}`,
+          (range) =>
+            `   - ${range.path}:${range.start}-${range.end}${range.note ? ` (${range.note})` : ""}`,
         )
         .join("\n")}`,
-    );
-  }
-  const commits = state.commits.filter((commit) => !commit.merge);
-  parts.push(
-    `### The builder's commits, newest first\n${
-      commits
-        .map(
-          (commit) =>
-            `#### ${commit.title} (${commit.hash.slice(0, 10)})\nRequest:\n${clip(commit.request)}\n\nReasoning:\n${clip(commit.reasoning)}`,
-        )
-        .join("\n\n") || "(none recorded)"
-    }`,
   );
-  return parts.join("\n\n");
+  const commits = state.commits
+    .filter((commit) => !commit.merge)
+    .map((commit) =>
+      renderTemplate(commitTemplate, {
+        title: commit.title,
+        hash: commit.hash.slice(0, 10),
+        request: clip(commit.request),
+        reasoning: clip(commit.reasoning),
+      }).trim(),
+    );
+  return renderTemplate(branchTemplate, {
+    name: state.branch.name,
+    baseCommit: state.baseCommit.slice(0, 10),
+    headCommit: state.headCommit.slice(0, 10),
+    changes: changes.join("\n") || NONE,
+    summary: state.review.summary || NONE,
+    brackets: brackets.join("\n") || NONE,
+    commits: commits.join("\n\n") || NONE,
+  }).trim();
 }
 
 function clip(text: string): string {
-  if (!text) return "(none)";
+  if (!text) return NONE;
   return text.length > MAX_NOTE_CHARS ? `${text.slice(0, MAX_NOTE_CHARS)}…` : text;
 }
 
