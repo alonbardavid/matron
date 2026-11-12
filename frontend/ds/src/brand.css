@@ -39,6 +39,7 @@
 [data-mantine-color-scheme="dark"] {
   --matron-bg: var(--mantine-color-dark-7);
   --matron-surface: var(--mantine-color-dark-6);
+  --matron-surface-muted: var(--mantine-color-dark-6);
   --matron-chat-bg: var(--mantine-color-dark-7);
   --matron-chat-user-bg: #1b3358;
   --matron-on-chat-user: #d6e6ff;

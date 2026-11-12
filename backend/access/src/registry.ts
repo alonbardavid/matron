@@ -1,6 +1,7 @@
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements, userAc } from "better-auth/plugins/admin/access";
 import { branchPermissions } from "@backend/arch-branches/permissions";
+import { reviewPermissions } from "@backend/arch-review/permissions";
 import { troubleshootingPermissions } from "@backend/arch-troubleshooting/permissions";
 import { upstreamPermissions } from "@backend/arch-upstream/permissions";
 import { conversationPermissions, databasePermissions } from "@backend/ask/permissions";
@@ -26,6 +27,7 @@ const features: Permissions<string, string>[] = [
   conversationPermissions,
   databasePermissions,
   troubleshootingPermissions,
+  reviewPermissions,
   upstreamPermissions,
 ];
 
