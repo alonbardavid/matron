@@ -12,9 +12,14 @@ import {
 } from "@mantine/core";
 import { DatePicker } from "@mantine/dates";
 import { useMediaQuery } from "@mantine/hooks";
-import { MobileMonthView, Schedule, type ScheduleEventData } from "@mantine/schedule";
+import {
+  MobileMonthView,
+  Schedule,
+  type ScheduleEventData,
+  type WeekViewProps,
+} from "@mantine/schedule";
 import dayjs from "dayjs";
-import type { Occurrence } from "@shared/contract/app/calendar";
+import type { Label, Occurrence } from "@shared/contract/app/calendar";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
 import {
   allDayBlock,
@@ -24,7 +29,14 @@ import {
   localTimeZone,
   toDayString,
 } from "../times";
-import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import {
+  useCalendars,
+  useEvent,
+  useEventActions,
+  useLabels,
+  useOccurrences,
+} from "../useCalendar";
+import { InlineLabelBars, LabelledEvent, labelsOf } from "../widgets/LabelBars";
 import {
   EventModal,
   type EventSubmit,
@@ -71,6 +83,16 @@ interface Opening {
   initial: { allDay: boolean; startAt: number; endAt: number } | null;
 }
 
+/** The labels an event on the calendar carries, from what the screen put in its payload. */
+function labelsOfPayload(item: ScheduleEventData): Label[] {
+  return (item.payload as { labels?: Label[] } | undefined)?.labels ?? [];
+}
+
+/** An event drawn with its labels as bars down its side, in every view. */
+const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => (
+  <LabelledEvent {...props} labels={labelsOfPayload(item)} />
+);
+
 /** Day, week and month views of the household's calendar. */
 export function CalendarScreen() {
   const narrow = useMediaQuery("(max-width: 48em)");
@@ -86,6 +108,7 @@ export function CalendarScreen() {
   const { create, update, stop, remove, place, editOccurrence, cancelOccurrence } =
     useEventActions();
   const calendars = useCalendars();
+  const labels = useLabels();
 
   // The day and the week draw a block over whole quarters of an hour.
   const timeGrid = shownView === "day" || shownView === "week";
@@ -104,6 +127,7 @@ export function CalendarScreen() {
       variant: "filled",
       payload: {
         eventId: item.eventId,
+        labels: labelsOf(item.labelIds, labels.data ?? []),
         occurrence:
           item.originalStartAt === null
             ? null
@@ -143,6 +167,7 @@ export function CalendarScreen() {
         id: opening.eventId,
         sharedWith: values.sharedWith,
         attendees: values.attendees,
+        labelIds: values.labelIds,
       });
       return;
     }
@@ -219,6 +244,12 @@ export function CalendarScreen() {
           defaultSelectedDate={date}
           renderHeader={() => null}
           onEventClick={openEvent}
+          renderEvent={(item, { children, ...props }) => (
+            <UnstyledButton {...props}>
+              {children}
+              <InlineLabelBars labels={labelsOfPayload(item)} />
+            </UnstyledButton>
+          )}
         />
       ) : (
         <Schedule
@@ -262,8 +293,10 @@ export function CalendarScreen() {
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
+            renderEvent: renderLabelledEvent,
           }}
           weekViewProps={{
+            renderEvent: renderLabelledEvent,
             classNames: classes,
             startTime: "06:00",
             endTime: "23:00",
@@ -273,7 +306,7 @@ export function CalendarScreen() {
             // The bubble with the time would cover a phone's narrow label column.
             withCurrentTimeBubble: !narrow,
           }}
-          monthViewProps={{ withHeader: !narrow }}
+          monthViewProps={{ withHeader: !narrow, renderEvent: renderLabelledEvent }}
         />
       )}
       <EventModal

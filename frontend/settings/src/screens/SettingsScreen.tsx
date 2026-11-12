@@ -13,6 +13,7 @@ import { useMe } from "@frontend/auth/useMe";
 import { AvatarEditor } from "@frontend/auth/widgets/AvatarEditor";
 import { CalendarsCard } from "@frontend/calendar/widgets/CalendarsCard";
 import { GoogleCalendarCard } from "@frontend/calendar/widgets/GoogleCalendarCard";
+import { LabelsCard } from "@frontend/calendar/widgets/LabelsCard";
 import { Card } from "@frontend/ds/Card";
 import { useForm } from "@frontend/ds/forms/context";
 import { FormGeneralErrors } from "@frontend/ds/forms/FormGeneralErrors";
@@ -116,6 +117,7 @@ export function SettingsScreen() {
         </Stack>
       </Card>
       <CalendarsCard />
+      <LabelsCard />
       <GoogleCalendarCard />
       <Card>
         <Stack gap="sm">

@@ -10,6 +10,7 @@ import {
   stopRecurrence,
   updateEvent,
 } from "@backend/calendar/service";
+import { listLabels } from "@backend/calendar/labels";
 import type { Principal } from "@backend/commons/principal";
 import { listHouseholdUsers } from "@backend/household/users";
 import { createTask, listTasks, removeTask, updateTask } from "@backend/tasks/service";
@@ -80,6 +81,12 @@ export function householdTools(ctx: ToolContext): ToolSet {
         "What is on the user's calendar between two instants (milliseconds since the epoch), repeating events expanded into occurrences. Each names its calendar and source; source \"google\" is imported from the user's Google Calendar and is read-only here.",
       inputSchema: z.object({ from: z.number(), to: z.number() }),
       execute: ({ from, to }) => listOccurrences(principal, from, to),
+    }),
+    list_labels: tool({
+      description:
+        "The household's event labels (ids, names, colours); events take them as labelIds.",
+      inputSchema: z.object({}),
+      execute: () => listLabels(principal),
     }),
     get_event: tool({
       description:

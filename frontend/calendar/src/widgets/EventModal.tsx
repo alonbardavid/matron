@@ -24,6 +24,7 @@ import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { EventView } from "./EventView";
+import { LabelPicker } from "./LabelPicker";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -40,6 +41,7 @@ export interface EventDraft {
   attendees: string[];
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
+  labelIds: string[];
 }
 
 export interface EventSubmit {
@@ -53,6 +55,7 @@ export interface EventSubmit {
   sharedWith?: string[];
   attendees?: string[];
   calendarId?: string;
+  labelIds: string[];
 }
 
 /** The occurrence of a series that was opened. */
@@ -116,6 +119,7 @@ function draftOf(
     sharedWith: event?.sharedWith ?? [],
     attendees: event?.attendees ?? [],
     calendarId: event?.calendarId ?? null,
+    labelIds: event?.labelIds ?? [],
   };
 }
 
@@ -234,6 +238,7 @@ export function EventModal({
         rrule: draft.rrule,
         ...(mine && { sharedWith: draft.sharedWith, attendees: draft.attendees }),
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
+        labelIds: draft.labelIds,
       });
       onClose();
     } catch (err) {
@@ -379,6 +384,12 @@ export function EventModal({
                 />
               )}
             </Stack>
+          )}
+          {!one && changeable && (
+            <LabelPicker
+              value={draft.labelIds}
+              onChange={(ids) => set("labelIds", ids)}
+            />
           )}
           {!one && mine && (
             <Stack gap="sm">

@@ -4,7 +4,11 @@ import { branchPermissions } from "@backend/arch-branches/permissions";
 import { troubleshootingPermissions } from "@backend/arch-troubleshooting/permissions";
 import { upstreamPermissions } from "@backend/arch-upstream/permissions";
 import { conversationPermissions, databasePermissions } from "@backend/ask/permissions";
-import { calendarPermissions, eventPermissions } from "@backend/calendar/permissions";
+import {
+  calendarPermissions,
+  eventPermissions,
+  labelPermissions,
+} from "@backend/calendar/permissions";
 import type { Role } from "@backend/commons/principal";
 import { householdPermissions, memberPermissions } from "@backend/household/permissions";
 import { taskPermissions } from "@backend/tasks/permissions";
@@ -23,6 +27,7 @@ const features: Permissions<string, string>[] = [
   taskPermissions,
   eventPermissions,
   calendarPermissions,
+  labelPermissions,
   conversationPermissions,
   databasePermissions,
   troubleshootingPermissions,

@@ -27,3 +27,15 @@ export const calendarPermissions = definePermissions({
   actions: CALENDAR_ACTIONS,
   grants: { owner: CALENDAR_ACTIONS, admin: CALENDAR_ACTIONS, member: CALENDAR_ACTIONS },
 });
+
+const LABEL_ACTIONS = ["view", "create", "update", "remove"] as const;
+
+/**
+ * The household's event labels: every role sees, uses and makes them; the
+ * object's rule (whoever made one, or an owner) decides who changes one.
+ */
+export const labelPermissions = definePermissions({
+  resource: "label",
+  actions: LABEL_ACTIONS,
+  grants: { owner: LABEL_ACTIONS, admin: LABEL_ACTIONS, member: LABEL_ACTIONS },
+});
