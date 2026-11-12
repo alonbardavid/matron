@@ -1,5 +1,6 @@
 import { ORPCError, os } from "@orpc/server";
 import { DomainError } from "./errors";
+import { fileHeaders, fileStreamMeta } from "./file-stream";
 import { logger } from "./logger";
 import type { Principal } from "./principal";
 
@@ -10,6 +11,8 @@ export interface ApiContext {
   principal: Principal | null;
   /** "main" or a branch id. */
   branch: string;
+  /** The response's headers, from the handler's ResponseHeadersPlugin. */
+  resHeaders?: Headers;
 }
 
 /** Refuses a signed-out request and narrows the context to a present principal. */
@@ -33,6 +36,26 @@ export const domainErrors = os.middleware(async ({ next }) => {
     throw err;
   }
 });
+
+/**
+ * Answers a procedure whose output is a tagged file stream (see `fileStream`)
+ * with the file's headers; any other output passes through. Runs on the
+ * implementer, outside output validation, which sees the stream the contract declares.
+ */
+export const fileResponses = os
+  .$context<ApiContext>()
+  .middleware(async ({ context, next }) => {
+    const result = await next();
+    const meta = fileStreamMeta(result.output);
+    if (meta) {
+      if (!context.resHeaders)
+        throw new Error("Serving a file needs the ResponseHeadersPlugin");
+      for (const [name, value] of Object.entries(fileHeaders(meta))) {
+        context.resHeaders.set(name, value);
+      }
+    }
+    return result;
+  });
 
 /** For a handler's `onError`: an ORPCError is an answer the handler meant to give; anything else is a bug. */
 export function logUnexpectedError(error: unknown): void {

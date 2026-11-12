@@ -144,10 +144,7 @@ export function DatabasesTab() {
 
   return (
     <Stack gap="sm">
-      <Group justify="space-between">
-        <Text size="sm" c="dimmed">
-          Every D1 database named after this deployment.
-        </Text>
+      <Group justify="flex-end">
         <RefreshButton
           label="Refresh databases"
           fetching={query.isFetching}

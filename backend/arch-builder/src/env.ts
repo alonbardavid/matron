@@ -7,7 +7,6 @@ export interface BuilderEnv {
   BUILDERS: DurableObjectNamespace<BuilderObject>;
   BUILD_SESSIONS: DurableObjectNamespace<BuildSessionLink>;
   APP_ORIGIN: string;
-  SIGNING_KEY: string;
   CLOUDFLARE_API_TOKEN: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   WORKER_NAME: string;

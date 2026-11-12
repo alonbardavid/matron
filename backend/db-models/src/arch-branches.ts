@@ -12,6 +12,10 @@ export const BRANCH_STATUSES = [
 ] as const;
 export type BranchStatus = (typeof BRANCH_STATUSES)[number];
 
+/** What a branch is for: a change a member asked for, or the upstream repository's commits merged in. */
+export const BRANCH_TYPES = ["session-request", "upstream-pull"] as const;
+export type BranchType = (typeof BRANCH_TYPES)[number];
+
 /** Where reverting a merged branch stands; null for a branch never reverted. */
 export const REVERT_STATUSES = ["reverting", "reverted", "failed"] as const;
 export type RevertStatus = (typeof REVERT_STATUSES)[number];
@@ -37,6 +41,7 @@ export const branches = sqliteTable(
     // Main's head when the branch was cut; merge compares it with main's head.
     baseCommit: text("base_commit").notNull(),
     headCommit: text("head_commit"),
+    type: text("type", { enum: BRANCH_TYPES }).default("session-request").notNull(),
     status: text("status", { enum: BRANCH_STATUSES }).default("deploying").notNull(),
     archivedAt: timestamp("archived_at"),
     // A merged branch taken back out of main: by its own revert, or by reverting an

@@ -2,7 +2,7 @@ import { getAgentByName } from "agents";
 import { desc, eq } from "drizzle-orm";
 import { branchPermissions } from "@backend/arch-branches/permissions";
 import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
-import { DOMAIN_ERROR_STATUS, DomainError } from "@backend/commons/errors";
+import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
@@ -11,6 +11,7 @@ import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-
 import { canArchiveSession, canClearSession } from "./archive";
 import type { BuildSession } from "@shared/contract/arch/sessions";
 import { sessionsEnv } from "./env";
+import type { BuildSessionObject } from "./session-object";
 
 const log = logger("arch-sessions/service");
 
@@ -123,30 +124,38 @@ export async function createSession(principal: Principal): Promise<BuildSession>
 }
 
 /**
+ * The session's Durable Object, for a caller that may use the session: its
+ * member, or the owner. What it can do is the object's own methods.
+ */
+export async function getSession(
+  principal: Principal,
+  sessionId: string,
+): Promise<DurableObjectStub<BuildSessionObject>> {
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
+  }
+  return sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
+}
+
+/**
  * Upgrades the request to a WebSocket served by the session's Durable Object,
  * which replays the transcript on it and then streams every new frame. The
  * identity travels in headers the Durable Object trusts: only the router can
- * reach it. Called from a plain route, so refusals are answered here rather
- * than thrown.
+ * reach it. A refusal is thrown; the route's error hook answers it.
  */
 export async function openSessionSocket(
   principal: Principal,
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  try {
-    authorize(principal);
-    const row = await getSessionRow(sessionId);
-    if (row.userId !== principal.userId && principal.role !== "owner") {
-      throw new DomainError("FORBIDDEN", "This is not your build session");
-    }
-    if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
-  } catch (err) {
-    if (err instanceof DomainError) {
-      return new Response(err.message, { status: DOMAIN_ERROR_STATUS[err.code] });
-    }
-    throw err;
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
   }
+  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("Expected a WebSocket upgrade", { status: 426 });
   }

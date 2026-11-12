@@ -1,8 +1,8 @@
 import { DomainError } from "@backend/commons/errors";
-import { deploymentNames } from "@backend/commons/names";
 import { logger } from "@backend/commons/logger";
 import { MAIN_BRANCH } from "@backend/commons/principal";
 import { repositoryEnv } from "./env";
+import { pullBranch, type Pulled } from "./mirror";
 
 const log = logger("arch-repository/service");
 
@@ -13,6 +13,8 @@ const MAX_SEARCH_MATCHES = 60;
 const MAX_LINE_CHARS = 200;
 const MAX_SEARCHED_BLOB_BYTES = 200_000;
 const READ_CONCURRENCY = 8;
+// Long enough for the fetches and the push.
+const PULL_TOKEN_SECONDS = 300;
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   "dist",
@@ -25,14 +27,15 @@ const SKIPPED_DIRECTORIES = new Set([
 async function openRepository(): Promise<ArtifactsRepo> {
   const { ARTIFACTS, WORKER_NAME } = repositoryEnv();
   if (!ARTIFACTS) {
-    throw new DomainError("UNAVAILABLE", "The code repository is not available");
+    throw new DomainError("SERVICE_UNAVAILABLE", "The code repository is not available");
   }
-  const { repository } = deploymentNames(WORKER_NAME);
+  // The repository, like its namespace, carries the Worker's name.
+  const repository = WORKER_NAME;
   try {
     return await ARTIFACTS.get(repository);
   } catch (err) {
     log.error("repository lookup failed", { err, repository });
-    throw new DomainError("UNAVAILABLE", "The code repository is not available");
+    throw new DomainError("SERVICE_UNAVAILABLE", "The code repository is not available");
   }
 }
 
@@ -58,11 +61,20 @@ export async function withRepository<T>(
 
 /** Main's head commit in the code repository (Artifacts). */
 export async function mainHead(): Promise<string> {
+  const head = await branchHead(MAIN_BRANCH);
+  if (!head)
+    throw new DomainError(
+      "SERVICE_UNAVAILABLE",
+      "The code repository has no main branch",
+    );
+  return head;
+}
+
+/** A branch's head commit; null when the repository has no such branch. */
+export async function branchHead(branch: string): Promise<string | null> {
   return withRepository(async (repo) => {
-    const [head] = await repo.log({ ref: MAIN_BRANCH, limit: 1 });
-    if (!head)
-      throw new DomainError("UNAVAILABLE", "The code repository has no main branch");
-    return head.hash;
+    const [head] = await repo.log({ ref: branch, limit: 1 });
+    return head?.hash ?? null;
   });
 }
 
@@ -179,4 +191,22 @@ async function textOf(repo: ArtifactsRepo, hash: string): Promise<string | null>
   if (!blob || blob.size > MAX_SEARCHED_BLOB_BYTES) return null;
   const text = await blob.text();
   return text.includes("\0") ? null : text;
+}
+
+/**
+ * Copies a branch of a public git repository into `branch` here, which ends at
+ * the source's head whatever it held before, and says whether main holds it.
+ */
+export async function pullInto(
+  branch: string,
+  from: { url: string; branch: string },
+): Promise<Pulled> {
+  const { remote, token } = await writeToken(PULL_TOKEN_SECONDS);
+  const pulled = await pullBranch({
+    from,
+    to: { url: remote, branch, token },
+    compareWith: MAIN_BRANCH,
+  });
+  log.info("branch pulled", { branch, ...pulled });
+  return pulled;
 }

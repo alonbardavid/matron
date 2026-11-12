@@ -1,6 +1,5 @@
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
-import { deploymentNames } from "@backend/commons/names";
 import { timeTravelEnv } from "./env";
 import {
   replaceRouterTables,
@@ -96,7 +95,8 @@ export async function restoreProductionDatabase(
 }
 
 async function productionDatabaseId(): Promise<string> {
-  const name = deploymentNames(timeTravelEnv().WORKER_NAME).database;
+  // The production database is named after the Worker.
+  const name = timeTravelEnv().WORKER_NAME;
   const rows = await call<{ uuid: string; name: string }[]>(
     `/d1/database?per_page=100&name=${encodeURIComponent(name)}`,
   );

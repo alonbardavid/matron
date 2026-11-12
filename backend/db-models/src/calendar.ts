@@ -1,27 +1,101 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createdAt, timestamp, updatedAt } from "./columns";
 
-export const RECURRENCE_FREQUENCIES = ["weekly", "monthly"] as const;
-export type RecurrenceFrequency = (typeof RECURRENCE_FREQUENCIES)[number];
+/** Where a calendar's events come from: made in Matron, or imported from the owner's Google Calendar. */
+export const CALENDAR_SOURCES = ["matron", "google"] as const;
+export type CalendarSource = (typeof CALENDAR_SOURCES)[number];
 
-export const calendarEvent = sqliteTable("calendar_event", {
-  id: text("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
-  creatorId: text("creator_id").notNull(),
-  allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
-  startAt: timestamp("start_at").notNull(),
-  endAt: timestamp("end_at").notNull(),
-  timeZone: text("time_zone").notNull(),
-  recurrenceFrequency: text("recurrence_frequency", { enum: RECURRENCE_FREQUENCIES }),
-  /** JSON array of weekdays (0 Sunday to 6 Saturday) or days of the month. */
-  recurrenceDays: text("recurrence_days"),
-  /** The last day an occurrence may fall on, `YYYY-MM-DD`. */
-  recurrenceUntil: text("recurrence_until"),
-  recurrenceCount: integer("recurrence_count"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+/**
+ * A member's calendar: every event belongs to one. Each member has a default
+ * Matron calendar; each Google calendar they import is a calendar of its own.
+ */
+export const calendar = sqliteTable(
+  "calendar",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    name: text("name").notNull(),
+    /** A CSS hex colour, `#rrggbb`. */
+    color: text("color").notNull(),
+    source: text("source", { enum: CALENDAR_SOURCES }).notNull().default("matron"),
+    /** For an imported calendar: its id at the source (a Google calendar id). */
+    externalId: text("external_id"),
+    /** The owner's calendar new events go to; one per owner. */
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    /** Where events others share with the owner show, unless placed elsewhere; one per owner, else the default. */
+    receivesShared: integer("receives_shared", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("calendar_owner_idx").on(table.ownerId),
+    uniqueIndex("calendar_owner_source_external").on(
+      table.ownerId,
+      table.source,
+      table.externalId,
+    ),
+  ],
+);
+
+/**
+ * A calendar shared read-only with another member: they see every event in it,
+ * in the colour they choose for it.
+ */
+export const calendarShare = sqliteTable(
+  "calendar_share",
+  {
+    id: text("id").primaryKey(),
+    calendarId: text("calendar_id").notNull(),
+    userId: text("user_id").notNull(),
+    /** The viewer's own colour for it; the calendar's when null. */
+    color: text("color"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_share_calendar_user").on(table.calendarId, table.userId),
+    index("calendar_share_user_idx").on(table.userId),
+  ],
+);
+
+export const calendarEvent = sqliteTable(
+  "calendar_event",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    creatorId: text("creator_id").notNull(),
+    allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
+    startAt: timestamp("start_at").notNull(),
+    endAt: timestamp("end_at").notNull(),
+    timeZone: text("time_zone").notNull(),
+    /**
+     * For a repeating event: its iCalendar RRULE value (RFC 5545), such as
+     * `FREQ=WEEKLY;BYDAY=TU,TH`. The event's start is the series' DTSTART, in
+     * `time_zone`; UNTIL is a UTC instant, or a day for an all-day series.
+     */
+    rrule: text("rrule"),
+    /** The calendar it belongs to, always one of the creator's. */
+    calendarId: text("calendar_id").notNull(),
+    /** For an imported event: its id at the source, unique within its calendar. */
+    externalId: text("external_id"),
+    /** For an imported occurrence of a repeating event: the series' id at the source. */
+    externalSeriesId: text("external_series_id"),
+    /** For an imported event: where to open it at the source. */
+    externalUrl: text("external_url"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("calendar_event_calendar_idx").on(table.calendarId),
+    uniqueIndex("calendar_event_calendar_external").on(
+      table.calendarId,
+      table.externalId,
+    ),
+  ],
+);
 
 export const calendarEventShare = sqliteTable(
   "calendar_event_share",
@@ -30,9 +104,81 @@ export const calendarEventShare = sqliteTable(
     eventId: text("event_id").notNull(),
     userId: text("user_id").notNull(),
     attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
+    /** The recipient's own calendar it shows in; their calendar for shared events when null. */
+    calendarId: text("calendar_id"),
     createdAt: createdAt(),
   },
   (table) => [
     uniqueIndex("calendar_event_share_event_user").on(table.eventId, table.userId),
   ],
 );
+
+/**
+ * One occurrence of a repeating event cancelled or changed, keyed by the
+ * instant the series had it due (an iCalendar EXDATE, or a RECURRENCE-ID
+ * override).
+ */
+export const calendarEventException = sqliteTable(
+  "calendar_event_exception",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    originalStartAt: timestamp("original_start_at").notNull(),
+    cancelled: integer("cancelled", { mode: "boolean" }).notNull().default(false),
+    /** What the occurrence changed; null keeps the series' own. */
+    title: text("title"),
+    description: text("description"),
+    startAt: timestamp("start_at"),
+    endAt: timestamp("end_at"),
+    /** For an imported change: the instance's id at the source. */
+    externalId: text("external_id"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_event_exception_event_original").on(
+      table.eventId,
+      table.originalStartAt,
+    ),
+  ],
+);
+
+export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const;
+export type GoogleConnectionStatus = (typeof GOOGLE_CONNECTION_STATUSES)[number];
+
+/**
+ * A member's import of their own Google Calendar: whose account it is and how
+ * the last sync went. The linked account and its tokens are the auth's. Which
+ * Google calendars are imported is the member's `google` calendars. One per user.
+ */
+export const googleCalendarConnection = sqliteTable("google_calendar_connection", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  /** The Google account's email, to show which account is connected. */
+  googleEmail: text("google_email").notNull(),
+  status: text("status", { enum: GOOGLE_CONNECTION_STATUSES })
+    .notNull()
+    .default("active"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  /** Why the last sync failed, cleared by the next one that succeeds. */
+  lastError: text("last_error"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
+ * Google's standing notice for one imported calendar: Google posts to the
+ * router when the calendar changes, naming this row's id, and that calendar is
+ * synced. Google ends a notice after a while, so each is renewed before
+ * `expiresAt`. One per imported calendar, on production only.
+ */
+export const googleCalendarWatch = sqliteTable("google_calendar_watch", {
+  /** Also the channel id Google is given; nobody else learns it. */
+  id: text("id").primaryKey(),
+  calendarId: text("calendar_id").notNull().unique(),
+  /** Google's own name for what is watched; it is needed to end the notice. */
+  resourceId: text("resource_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});

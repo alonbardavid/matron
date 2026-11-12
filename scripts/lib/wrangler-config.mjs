@@ -3,12 +3,6 @@
 // (scripts/gen-wrangler-config.mjs) reads env and files. Unit tests live in
 // wrangler-config.test.ts.
 /* global structuredClone */
-import { deploymentNames } from "./names.mjs";
-
-/** The container application's name; the `exports` entry of BuilderObject points at it. */
-export const BUILDER_CONTAINER = "builder";
-/** The image name under `containers[].images`; read as `ctx.container.images.builder`. */
-export const BUILDER_IMAGE_NAME = "builder";
 
 export const REQUIRED_COMPAT_FLAGS = [
   "nodejs_compat",
@@ -17,8 +11,21 @@ export const REQUIRED_COMPAT_FLAGS = [
   "enable_ctx_exports",
 ];
 
+/**
+ * When production syncs every member's imported Google calendars in full, once
+ * a day (UTC). Google's own notices bring each change in between.
+ */
+export const GOOGLE_SYNC_CRON = "17 3 * * *";
+
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
-export const SECRET_VARS = ["BETTER_AUTH_SECRET", "SIGNING_KEY", "CLOUDFLARE_API_TOKEN"];
+export const SECRET_VARS = [
+  "BETTER_AUTH_SECRET",
+  "SIGNING_KEY",
+  // Set from App settings, through Cloudflare's API.
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "CLOUDFLARE_API_TOKEN",
+];
 
 /**
  * @typedef {object} Options
@@ -43,7 +50,6 @@ export const SECRET_VARS = ["BETTER_AUTH_SECRET", "SIGNING_KEY", "CLOUDFLARE_API
 export function generateWranglerConfig(emitted, options) {
   const config = structuredClone(emitted);
   const isProduction = options.target === "production";
-  const names = deploymentNames(options.workerName);
 
   config.name = options.workerName;
   delete config.env;
@@ -64,8 +70,8 @@ export function generateWranglerConfig(emitted, options) {
         migrations_dir: options.migrationsDir,
       },
     ],
-    r2_buckets: [{ binding: "FILES", bucket_name: names.bucket }],
-    artifacts: [{ binding: "ARTIFACTS", namespace: names.namespace }],
+    r2_buckets: [{ binding: "FILES", bucket_name: options.workerName }],
+    artifacts: [{ binding: "ARTIFACTS", namespace: options.workerName }],
     images: { binding: "IMAGES" },
     // Workers AI and the AI Gateway behind it; a Preview reaches models only this way.
     ai: { binding: "AI" },
@@ -94,8 +100,11 @@ export function generateWranglerConfig(emitted, options) {
 
   delete config.containers;
   delete config.previews;
+  delete config.triggers;
 
   if (isProduction) {
+    // The daily sync of members' imported Google calendars.
+    config.triggers = { crons: [GOOGLE_SYNC_CRON] };
     if (options.appOrigin.endsWith(".workers.dev")) config.workers_dev = true;
     // Previews are reached by URL from the router, so they need their URLs on.
     config.preview_urls = true;
@@ -104,11 +113,11 @@ export function generateWranglerConfig(emitted, options) {
       // `ctx.container.images.builder` and picks the instance size then.
       config.containers = [
         {
-          name: BUILDER_CONTAINER,
+          name: options.workerName,
           class_name: "BuilderObject",
           scheduling_policy: "durable_object",
           images: {
-            [BUILDER_IMAGE_NAME]: options.builderImage
+            builder: options.builderImage
               ? { image: options.builderImage }
               : { dockerfile: options.dockerfilePath },
           },
@@ -116,7 +125,10 @@ export function generateWranglerConfig(emitted, options) {
       ];
       config.exports = {
         ...config.exports,
-        BuilderObject: { ...config.exports?.BuilderObject, container: BUILDER_CONTAINER },
+        BuilderObject: {
+          ...config.exports?.BuilderObject,
+          container: options.workerName,
+        },
       };
     }
   } else {

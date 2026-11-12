@@ -1,5 +1,6 @@
 import {
   clearContainers,
+  listAllBranches,
   listContainers,
   listDatabases,
   listMerges,
@@ -20,6 +21,11 @@ export const troubleshooting = arch.troubleshooting.router({
       await removeDatabase(context.principal, input.id);
       return done;
     }),
+  },
+  branches: {
+    list: arch.troubleshooting.branches.list.handler(({ context }) =>
+      listAllBranches(context.principal),
+    ),
   },
   merges: {
     list: arch.troubleshooting.merges.list.handler(({ context }) =>

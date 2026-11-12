@@ -38,7 +38,7 @@ export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
   ];
   const more: Item[] = [
     { to: "/conversations", icon: <IconMessages size={20} /> },
-    { to: "/branches", icon: <IconBranch size={20} />, show: can("view") },
+    { to: "/builds", icon: <IconBranch size={20} />, show: can("view") },
     { to: "/users", icon: <IconUsers size={20} />, show: canManage },
     { to: "/app-settings", icon: <IconSliders size={20} />, show: canManage },
     { to: "/troubleshooting", icon: <IconWrench size={20} />, show: canTroubleshoot },

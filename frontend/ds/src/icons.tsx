@@ -215,3 +215,36 @@ export function IconRefresh(props: IconProps) {
     </Svg>
   );
 }
+
+/** An arrow coming down onto a line: taking in what is upstream. */
+export function IconPull(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
+    </Svg>
+  );
+}
+
+export function IconPaperclip(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </Svg>
+  );
+}
+
+export function IconFile(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5" />
+    </Svg>
+  );
+}
+
+export function IconNotes(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </Svg>
+  );
+}

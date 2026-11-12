@@ -3,12 +3,12 @@ import { and, desc, eq, gt, isNull, like, ne, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import { deploymentNames } from "@backend/commons/names";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import { user } from "@backend/db-models/arch-auth";
 import {
   branches,
   type BranchStatus,
+  type BranchType,
   type RevertStatus,
 } from "@backend/db-models/arch-branches";
 import { buildSessions } from "@backend/db-models/arch-sessions";
@@ -30,6 +30,7 @@ export interface BranchRow {
   userId: string;
   baseCommit: string;
   headCommit: string | null;
+  type: BranchType;
   status: BranchStatus;
   archivedAt: Date | null;
   revertStatus: RevertStatus | null;
@@ -41,7 +42,7 @@ export interface BranchRow {
 /**
  * How far back the production database can be restored: D1 Time Travel keeps
  * thirty days. A revert must start an hour inside them, so the restore point is
- * still there when the job reaches it.
+ * still there when the run reaches it.
  */
 export const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const RESTORE_MARGIN_MS = 60 * 60_000;
@@ -114,7 +115,13 @@ export async function branchForSession(
  */
 export async function createBranch(
   principal: Principal,
-  input: { buildSessionId: string; name: string; baseCommit: string },
+  input: {
+    buildSessionId: string;
+    name: string;
+    baseCommit: string;
+    /** A change a member asked for, unless said otherwise. */
+    type?: BranchType;
+  },
 ): Promise<BranchRow> {
   if (!branchPermissions.can(principal.role, "create")) {
     throw new DomainError("FORBIDDEN", "You cannot create branches");
@@ -131,7 +138,8 @@ export async function createBranch(
       slug,
       taken.map((row) => row.name),
     ),
-    deploymentNames(WORKER_NAME).database,
+    // The production database carries the Worker's name.
+    WORKER_NAME,
   );
   const [row] = await getDb()
     .insert(branches)
@@ -143,10 +151,22 @@ export async function createBranch(
       buildSessionId: input.buildSessionId,
       userId: principal.userId,
       baseCommit: input.baseCommit,
+      type: input.type ?? "session-request",
     })
     .returning();
   log.info("branch created", { branchId: id, buildSessionId: input.buildSessionId });
   return row!;
+}
+
+/** The newest live branch of the given type, if one is open. */
+export async function liveBranchOfType(type: BranchType): Promise<BranchRow | null> {
+  const [row] = await getDb()
+    .select()
+    .from(branches)
+    .where(and(eq(branches.type, type), isNull(branches.archivedAt)))
+    .orderBy(desc(branches.createdAt))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function markDeployed(
@@ -209,11 +229,14 @@ export async function beginMerge(
   return { ...branch, status: "merging" };
 }
 
+/** Owners abandon any branch; whoever may build abandons the branches they started. */
 export async function beginAbandon(principal: Principal, id: string): Promise<BranchRow> {
-  if (!branchPermissions.can(principal.role, "merge")) {
-    throw new DomainError("FORBIDDEN", "You cannot abandon branches");
-  }
+  const owns = branchPermissions.can(principal.role, "merge");
+  if (!owns) branchPermissions.require(principal, "create");
   const branch = await getBranch(id);
+  if (!owns && branch.userId !== principal.userId) {
+    throw new DomainError("FORBIDDEN", "This is not your branch");
+  }
   if (branch.status === "merging") {
     throw new DomainError("CONFLICT", "The branch is being merged");
   }
@@ -294,7 +317,7 @@ export async function laterMerges(branch: BranchRow): Promise<BranchRow[]> {
 
 /**
  * Why `branch` cannot be reverted now, or null when it can. `builderActive`
- * says whether its builder is running a job: a revert marked under way whose
+ * says whether its builder is running: a revert marked under way whose
  * builder is idle stopped without reporting, and may be started again.
  */
 export async function revertRefusal(
@@ -402,6 +425,7 @@ function toBranch(
     buildSessionId: row.buildSessionId,
     sessionViewable: derived.sessionViewable,
     behindMain: derived.behindMain,
+    type: row.type,
     userId: row.userId,
     userName,
     status: row.status,
