@@ -162,6 +162,7 @@ export function CalendarScreen() {
     attachLink,
     detach,
     reply,
+    leave,
   } = useEventActions();
   const calendars = useCalendars();
   const labels = useLabels();
@@ -255,6 +256,7 @@ export function CalendarScreen() {
         id: opening.eventId,
         sharedWith: values.sharedWith,
         attendees: values.attendees,
+        permissions: values.permissions,
         labelIds: values.labelIds,
       });
       return;
@@ -574,6 +576,13 @@ export function CalendarScreen() {
           opening?.eventId
             ? async (attachmentId) => {
                 await detach.mutateAsync({ id: opening.eventId!, attachmentId });
+              }
+            : undefined
+        }
+        onLeave={
+          opening?.eventId
+            ? async () => {
+                await leave.mutateAsync({ id: opening.eventId! });
               }
             : undefined
         }

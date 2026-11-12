@@ -21,7 +21,9 @@ import type {
   EventResponse,
 } from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
+import { useMe } from "@frontend/auth/useMe";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
+import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import {
   IconCalendar,
   IconEyeOff,
@@ -61,6 +63,8 @@ interface EventViewProps {
     value: EventResponse | null;
     onChange: (response: Exclude<EventResponse, "needs_action">) => void;
   };
+  /** For an event someone shared with the caller: stop having it. */
+  onLeave?: () => Promise<void>;
   /** Hides the event from the caller's own calendar, or shows it again. */
   onHide?: (hidden: boolean) => void | Promise<void>;
   onClose: () => void;
@@ -105,10 +109,12 @@ export function EventView({
   onPlace,
   onEdit,
   reply,
+  onLeave,
   onHide,
   onClose,
 }: EventViewProps) {
   const { nameOf, avatarUrlOf } = useHouseholdMembers();
+  const { me } = useMe();
   const labels = labelsOf(event.labelIds, useLabels().data ?? []);
   const repeats = event.rrule
     ? describeRule(event.rrule)
@@ -121,7 +127,11 @@ export function EventView({
       ? "Shared with you, read-only"
       : event.source === "google"
         ? "From Google Calendar"
-        : `Created by ${nameOf(event.creatorId)}`;
+        : `Created by ${nameOf(event.creatorId)}${
+            event.creatorId !== me?.id && event.sharedWith.includes(me?.id ?? "")
+              ? ` · you can ${event.can.manage ? "manage" : event.can.edit ? "edit" : "view"} it`
+              : ""
+          }`;
   return (
     <Stack gap="md">
       <Group justify="flex-end" gap={4}>
@@ -324,6 +334,20 @@ export function EventView({
           <Divider />
           <ReplyControl value={reply.value} onChange={reply.onChange} />
         </>
+      )}
+      {onLeave && (
+        <Group justify="flex-end">
+          <ConfirmButton
+            variant="subtle"
+            color="gray"
+            size="compact-sm"
+            message="Leave this event? It goes from your calendar, and whoever shared it can share it again."
+            confirmLabel="Leave"
+            onConfirm={onLeave}
+          >
+            Leave event
+          </ConfirmButton>
+        </Group>
       )}
     </Stack>
   );
