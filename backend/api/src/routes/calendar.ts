@@ -94,7 +94,7 @@ export const calendar = app.calendar.router({
     }),
   }),
   places: app.calendar.places.handler(({ context, input }) =>
-    suggestPlaces(context.principal, input, context.near),
+    suggestPlaces(context.principal, input, context.coordinates),
   ),
   placeDetails: app.calendar.placeDetails.handler(({ context, input }) =>
     placeDetails(context.principal, input),

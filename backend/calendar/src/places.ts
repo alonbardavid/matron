@@ -29,19 +29,27 @@ interface PlacePrediction {
 export async function suggestPlaces(
   principal: Principal,
   input: { query: string; session: string },
-  near?: { latitude: number; longitude: number },
+  coordinates: { latitude?: string; longitude?: string } = {},
 ): Promise<PlaceSuggestions> {
   calendarPermissions.require(principal, "view");
   const key = placesKey();
   if (!key) return { available: false, places: [] };
+  const { latitude, longitude } = coordinates;
   const response = await fetch(`${PLACES_API}/places:autocomplete`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       input: input.query,
       sessionToken: input.session,
-      ...(near
-        ? { locationBias: { circle: { center: near, radius: NEAR_RADIUS_METRES } } }
+      ...(latitude && longitude
+        ? {
+            locationBias: {
+              circle: {
+                center: { latitude: Number(latitude), longitude: Number(longitude) },
+                radius: NEAR_RADIUS_METRES,
+              },
+            },
+          }
         : {}),
     }),
   });

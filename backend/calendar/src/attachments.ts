@@ -79,7 +79,7 @@ export async function attachFile(
       `A file may be at most ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`,
     );
   }
-  await requireRoom(eventId);
+  await checkMaxAttachments(eventId);
   const title = upload.name.trim().slice(0, 200) || "File";
   const fileId = await storeFile(principal, branch, {
     folder: ATTACHMENT_FOLDER,
@@ -112,7 +112,7 @@ export async function attachLink(
 ): Promise<void> {
   if (!safeUrl(url))
     throw new DomainError("BAD_REQUEST", "A web address (http or https)");
-  await requireRoom(eventId);
+  await checkMaxAttachments(eventId);
   await getDb()
     .insert(calendarEventAttachment)
     .values({
@@ -246,7 +246,7 @@ export function importedLinks(
     }));
 }
 
-async function requireRoom(eventId: string): Promise<void> {
+async function checkMaxAttachments(eventId: string): Promise<void> {
   const rows = await getDb()
     .select({ id: calendarEventAttachment.id })
     .from(calendarEventAttachment)

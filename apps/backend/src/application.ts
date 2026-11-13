@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
-import type { ApiContext } from "@backend/commons/api";
 import { servePublicAppApi } from "@backend/api/public/handler";
 import { openAskSocket } from "@backend/ask/socket";
 import { answerError } from "@backend/commons/errors";
@@ -35,10 +34,11 @@ application.use(`${PUBLIC_APP_PATH}/*`, async (c, next) => {
 
 application.use("/api/app/*", async (c, next) => {
   // A signed-out visitor reaches the SPA but not the API, which requires a principal.
+  const { latitude, longitude } = (c.req.raw.cf ?? {}) as IncomingRequestCfProperties;
   const response = await serveAppApi(c.req.raw, {
     principal: c.get("principal"),
     branch: c.get("branch"),
-    near: nearOf(c.req.raw),
+    coordinates: { latitude, longitude },
   });
   return response ?? next();
 });
@@ -60,13 +60,3 @@ application.get("*", async (c) => {
   }
   return assets.fetch(c.req.raw);
 });
-
-/** Where Cloudflare places the request's IP, for suggestions near the member. */
-function nearOf(request: Request): ApiContext["near"] {
-  const { latitude, longitude } = request.cf ?? {};
-  if (!latitude || !longitude) return undefined;
-  const near = { latitude: Number(latitude), longitude: Number(longitude) };
-  return Number.isFinite(near.latitude) && Number.isFinite(near.longitude)
-    ? near
-    : undefined;
-}
