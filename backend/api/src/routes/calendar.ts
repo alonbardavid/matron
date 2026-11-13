@@ -26,6 +26,7 @@ import {
   selectGoogleCalendars,
   syncGoogleCalendar,
 } from "@backend/calendar/google";
+import { placeDetails, suggestPlaces } from "@backend/calendar/places";
 import { app } from "../implementer";
 
 export const calendar = app.calendar.router({
@@ -92,6 +93,12 @@ export const calendar = app.calendar.router({
       return { ok: true as const };
     }),
   }),
+  places: app.calendar.places.handler(({ context, input }) =>
+    suggestPlaces(context.principal, input, context.near),
+  ),
+  placeDetails: app.calendar.placeDetails.handler(({ context, input }) =>
+    placeDetails(context.principal, input),
+  ),
   google: app.calendar.google.router({
     status: app.calendar.google.status.handler(({ context }) =>
       getGoogleStatus(context.principal, context.branch),

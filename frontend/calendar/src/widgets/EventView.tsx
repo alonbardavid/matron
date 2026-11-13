@@ -172,7 +172,7 @@ export function EventView({
             {event.location}
           </Text>
           <Anchor
-            href={mapsUrl(event.location)}
+            href={mapsUrl(event.location, event.place)}
             target="_blank"
             rel="noopener noreferrer"
             size="xs"

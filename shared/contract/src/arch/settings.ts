@@ -53,9 +53,14 @@ export const GOOGLE_REDIRECT_PATH = "/api/arch/auth/callback/google";
 /**
  * The secrets a household may set from App settings, and no others: each is a
  * secret of the Worker itself, by this name. Here, the household's own Google
- * OAuth app, which members connect their Google Calendar through.
+ * OAuth app, which members connect their Google Calendar through, and a Google
+ * API key for Places, which suggests an event's location as it is typed.
  */
-export const HOUSEHOLD_SECRETS = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] as const;
+export const HOUSEHOLD_SECRETS = [
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_PLACES_API_KEY",
+] as const;
 export type HouseholdSecret = (typeof HOUSEHOLD_SECRETS)[number];
 
 /** A secret as it may be shown: its first few characters and asterisks (`GOCSPX-ab****`), or null when it is not set. */
@@ -68,6 +73,7 @@ export const householdSecretsSchema = z.object({
   secrets: z.object({
     GOOGLE_CLIENT_ID: secretHint,
     GOOGLE_CLIENT_SECRET: secretHint,
+    GOOGLE_PLACES_API_KEY: secretHint,
   } satisfies Record<HouseholdSecret, typeof secretHint>),
 });
 export type HouseholdSecrets = z.infer<typeof householdSecretsSchema>;
@@ -78,6 +84,7 @@ const secretChange = z.string().trim().min(1).max(1000).nullable().optional();
 export const householdSecretsUpdateSchema = z.strictObject({
   GOOGLE_CLIENT_ID: secretChange,
   GOOGLE_CLIENT_SECRET: secretChange,
+  GOOGLE_PLACES_API_KEY: secretChange,
 } satisfies Record<HouseholdSecret, typeof secretChange>);
 export type HouseholdSecretsUpdate = z.infer<typeof householdSecretsUpdateSchema>;
 

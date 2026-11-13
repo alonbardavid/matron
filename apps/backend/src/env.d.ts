@@ -24,6 +24,8 @@ declare namespace Cloudflare {
     /** The household's Google OAuth app, set in App settings as secrets of the Worker. */
     GOOGLE_CLIENT_ID?: string;
     GOOGLE_CLIENT_SECRET?: string;
+    /** The household's Google API key for Places, also set in App settings. */
+    GOOGLE_PLACES_API_KEY?: string;
     /** The account token: the router's API calls, and every model call through the gateway. */
     CLOUDFLARE_API_TOKEN?: string;
     CLOUDFLARE_ACCOUNT_ID?: string;

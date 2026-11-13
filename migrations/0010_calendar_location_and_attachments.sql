@@ -3,6 +3,10 @@
 -- the next sync moves it here.
 ALTER TABLE calendar_event ADD COLUMN location TEXT NOT NULL DEFAULT '';
 ALTER TABLE calendar_event_exception ADD COLUMN location TEXT;
+-- The place a location was picked as from Google's suggestions, as JSON:
+-- Google's id, name, address, latitude, longitude and Maps link.
+ALTER TABLE calendar_event ADD COLUMN place TEXT;
+ALTER TABLE calendar_event_exception ADD COLUMN place TEXT;
 
 -- Files uploaded to an event, and links; ones imported from Google are links
 -- with the source 'google', replaced on each sync.

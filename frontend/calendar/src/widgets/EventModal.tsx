@@ -19,6 +19,7 @@ import type {
   Calendar,
   CalendarEvent,
   OccurrenceUpdate,
+  Place,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
@@ -26,7 +27,6 @@ import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { Form } from "@frontend/ds/forms/Form";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { EventView } from "./EventView";
-import { IconMapPin } from "@frontend/ds/icons";
 import { isLink, mapsUrl } from "../places";
 import {
   AttachmentsField,
@@ -34,6 +34,7 @@ import {
   type AttachmentItem,
   type LinkDraft,
 } from "./AttachmentsField";
+import { LocationInput } from "./LocationInput";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -51,12 +52,15 @@ export interface EventDraft {
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
   location: string;
+  /** The place the location was picked as from Google's suggestions; null when typed. */
+  place: Place | null;
 }
 
 export interface EventSubmit {
   title: string;
   description: string;
   location: string;
+  place: Place | null;
   allDay: boolean;
   startAt: number;
   endAt: number;
@@ -131,6 +135,7 @@ function draftOf(
     title: occurrence?.title ?? event?.title ?? "",
     description: own?.description ?? event?.description ?? "",
     location: own?.location ?? event?.location ?? "",
+    place: own && own.location !== null ? own.place : (event?.place ?? null),
     allDay,
     start: allDay ? toDayString(startAt) : toDateTimeString(startAt),
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
@@ -251,6 +256,7 @@ export function EventModal({
           title: draft.title.trim(),
           description: draft.description.trim(),
           location: draft.location.trim(),
+          place: draft.place,
           ...span,
         });
         onClose();
@@ -260,6 +266,7 @@ export function EventModal({
         title: draft.title.trim(),
         description: draft.description.trim(),
         location: draft.location.trim(),
+        place: draft.place,
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
@@ -405,16 +412,15 @@ export function EventModal({
                 data-autofocus
               />
               <Stack gap={2}>
-                <TextInput
-                  label="Location"
-                  placeholder="Add a place or a link"
-                  leftSection={<IconMapPin size={16} />}
+                <LocationInput
                   value={draft.location}
-                  onChange={(e) => set("location", e.currentTarget.value)}
+                  onChange={(location, place) =>
+                    setDraft((prev) => ({ ...prev, location, place }))
+                  }
                 />
                 {draft.location.trim() && (
                   <Anchor
-                    href={mapsUrl(draft.location.trim())}
+                    href={mapsUrl(draft.location.trim(), draft.place)}
                     target="_blank"
                     rel="noopener noreferrer"
                     size="xs"

@@ -9,6 +9,7 @@ import {
   calendarEventException,
   calendarEventHidden,
   calendarEventShare,
+  type StoredPlace,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
@@ -173,6 +174,7 @@ export async function listOccurrences(
           originalStartAt: null,
           title: row.title,
           location: row.location,
+          place: row.place,
           startAt: row.startAt.getTime(),
           endAt: row.endAt.getTime(),
           recurring: row.externalSeriesId !== null,
@@ -195,7 +197,7 @@ export async function listOccurrences(
           id: `${row.id}:${window.originalStartAt}`,
           originalStartAt: window.originalStartAt,
           title: changedOf.get(window.originalStartAt)?.title ?? row.title,
-          location: changedOf.get(window.originalStartAt)?.location ?? row.location,
+          ...locationOf(row, changedOf.get(window.originalStartAt)),
           startAt: window.startAt,
           endAt: window.endAt,
           recurring: true,
@@ -363,6 +365,7 @@ export async function createEvent(
       title: input.title,
       description: input.description ?? "",
       location: input.location ?? "",
+      place: (input.location && input.place) || null,
       creatorId: principal.userId,
       allDay: input.allDay,
       startAt: new Date(input.startAt),
@@ -423,7 +426,10 @@ export async function updateEvent(
     .set({
       ...(changes.title !== undefined && { title: changes.title }),
       ...(changes.description !== undefined && { description: changes.description }),
-      ...(changes.location !== undefined && { location: changes.location }),
+      ...(changes.location !== undefined && {
+        location: changes.location,
+        place: (changes.location && changes.place) || null,
+      }),
       ...(changes.allDay !== undefined && { allDay: changes.allDay }),
       startAt: new Date(startAt),
       endAt: new Date(endAt),
@@ -501,7 +507,9 @@ export async function editOccurrence(
     cancelled: false,
     title: changes.title ?? existing?.title ?? null,
     description: changes.description ?? existing?.description ?? null,
-    location: changes.location ?? existing?.location ?? null,
+    ...(changes.location !== undefined
+      ? { location: changes.location, place: (changes.location && changes.place) || null }
+      : { location: existing?.location ?? null, place: existing?.place ?? null }),
     // Kept only when they differ from the series' own times.
     startAt: startAt === originalStartAt ? null : new Date(startAt),
     endAt: endAt === originalStartAt + duration ? null : new Date(endAt),
@@ -529,6 +537,7 @@ export async function cancelOccurrence(
     title: null,
     description: null,
     location: null,
+    place: null,
     startAt: null,
     endAt: null,
     updatedAt: new Date(),
@@ -632,24 +641,23 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions, hidden, attachments] =
-    await Promise.all([
-      sharesOf([row.id]),
-      calendarsById([row.calendarId]),
-      viewerOf(principal),
-      row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
-      getDb()
-        .select({ id: calendarEventHidden.id })
-        .from(calendarEventHidden)
-        .where(
-          and(
-            eq(calendarEventHidden.eventId, row.id),
-            eq(calendarEventHidden.userId, principal.userId),
-          ),
-        )
-        .get(),
-      attachmentsOfEvents([row.id]),
-    ]);
+  const [shares, calendars, viewer, exceptions, hidden, attachments] = await Promise.all([
+    sharesOf([row.id]),
+    calendarsById([row.calendarId]),
+    viewerOf(principal),
+    row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
+    getDb()
+      .select({ id: calendarEventHidden.id })
+      .from(calendarEventHidden)
+      .where(
+        and(
+          eq(calendarEventHidden.eventId, row.id),
+          eq(calendarEventHidden.userId, principal.userId),
+        ),
+      )
+      .get(),
+    attachmentsOfEvents([row.id]),
+  ]);
   const list = shares.get(row.id) ?? [];
   const placement = placementOf(
     viewer,
@@ -784,7 +792,18 @@ function toException(row: ExceptionRow): OccurrenceException {
     title: row.title,
     description: row.description,
     location: row.location,
+    place: row.place,
   };
+}
+
+/** An occurrence's location: its own when it changed it, with the place picked for it; else the series'. */
+function locationOf(
+  row: EventRow,
+  own: ExceptionRow | undefined,
+): { location: string; place: StoredPlace | null } {
+  return own && own.location !== null
+    ? { location: own.location, place: own.place }
+    : { location: row.location, place: row.place };
 }
 
 function toEvent(
@@ -803,6 +822,7 @@ function toEvent(
     title: row.title,
     description: row.description,
     location: row.location,
+    place: row.place,
     attachments: extra.attachments,
     creatorId: row.creatorId,
     allDay: row.allDay,
@@ -830,6 +850,7 @@ interface OccurrenceFields {
   originalStartAt: number | null;
   title: string;
   location: string;
+  place: StoredPlace | null;
   startAt: number;
   endAt: number;
   recurring: boolean;

@@ -23,13 +23,18 @@ test.describe("google calendar", () => {
       secrets: {
         GOOGLE_CLIENT_ID: "1234-local****",
         GOOGLE_CLIENT_SECRET: "local-dev-****",
+        GOOGLE_PLACES_API_KEY: null,
       },
     });
 
     // They are secrets of the Worker, set through Cloudflare's API, which a
     // deployment without a token cannot reach: nothing changes from here.
-    await expect(page.getByText("holds no Cloudflare API token")).toBeVisible();
+    // Both cards of secrets say so: the Google app's and the Places key's.
+    await expect(page.getByText("holds no Cloudflare API token")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Save Google app" })).toBeDisabled();
+    // The Places key is one more such secret, not set locally.
+    await expect(page.getByLabel("API key")).toBeEmpty();
+    await expect(page.getByRole("button", { name: "Save Places key" })).toBeDisabled();
     const refused = await page.request.put("/api/arch/settings/secrets", {
       data: { GOOGLE_CLIENT_SECRET: "another" },
     });
