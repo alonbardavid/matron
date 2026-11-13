@@ -65,6 +65,13 @@ test.describe("reminders", () => {
     expect(scope).toBe("/");
   });
 
+  test("a cron the Worker does not know is refused", async ({ page }) => {
+    const response = await page.request.get(
+      "http://localhost:8301/cdn-cgi/handler/scheduled?cron=5+4+*+*+*",
+    );
+    expect(response.ok()).toBe(false);
+  });
+
   test("settings offer reminders on this device", async ({ page }) => {
     await signIn(page, OWNER);
     await navLink(page, "Settings").click();
@@ -107,6 +114,12 @@ test.describe("reminders", () => {
     };
     const soon = await event("Dentist", 45 * MINUTE);
     const later = await event("Dinner party", 4 * 60 * MINUTE);
+    // An event its attendee hid from their calendar is not reminded of.
+    const hidden = await event("Team sync", 50 * MINUTE);
+    const hid = await page.request.put(`/api/app/calendar/events/${hidden.id}/hidden`, {
+      data: { hidden: true },
+    });
+    expect(hid.ok()).toBe(true);
 
     const task = async (title: string, dueDate: string) => {
       const response = await page.request.post("/api/app/tasks", {
@@ -131,7 +144,9 @@ test.describe("reminders", () => {
     expect(subjects).toContain(`task:${tonight.id}:${dueToday}`);
     expect(subjects.filter((s) => s.includes(soon.id))).toHaveLength(1);
     expect(
-      subjects.filter((s) => s.includes(later.id) || s.includes(nextWeek.id)),
+      subjects.filter(
+        (s) => s.includes(later.id) || s.includes(hidden.id) || s.includes(nextWeek.id),
+      ),
     ).toEqual([]);
   });
 });

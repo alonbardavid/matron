@@ -67,7 +67,7 @@
     "VAPID_PUBLIC_KEY": "BLV4n6cvfBY3bbnO8I2Jl6ALrHt3PRhzTEni4nxqkGh_ZnpnNtL_913GT-jLiJrclp_IAdDqbiFiIxa5ngHmAsk",
     "VAPID_PRIVATE_KEY": "9x2b_QkB2GyaBCQwK9Xh2jCfk_UEeay3n3CKewXPm_M",
   },
-  // The reminder sweep (backend/notifications/src/reminders.ts). Production only:
-  // a Preview's data is a copy, and its reminders would repeat main's.
-  "triggers": { "crons": ["0 * * * *"] },
+  // The reminder sweep (backend/notifications/src/reminders.ts) and the daily Google
+  // sync (backend/calendar/src/google.ts). Production only: a Preview has neither.
+  "triggers": { "crons": ["0 * * * *", "17 3 * * *"] },
 }

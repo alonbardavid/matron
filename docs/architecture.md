@@ -55,7 +55,8 @@ A Preview holds the token too, so its assistant takes the same route.
 worker handles no fetch, only `push` and `notificationclick`. `frontend/notifications` holds
 the install prompt, the device's subscription and the settings card. A subscription is a row
 in `push_subscription` (`backend/notifications/src/service.ts`), with the device's time zone.
-The Worker's `scheduled` entry (`apps/backend/src/index.ts`, cron `0 * * * *`) runs
+The Worker's `scheduled` entry (`apps/backend/src/index.ts`) picks its job by the cron's
+text and throws for one it does not know. On `0 * * * *` it runs
 `sendDueReminders` (`reminders.ts`): it asks the calendar and tasks services for what is due in
 the next 90 minutes, claims a `reminder` row per person and subject so a reminder goes out
 once, and sends it with `web-push.ts` (RFC 8291 encryption, VAPID keys from

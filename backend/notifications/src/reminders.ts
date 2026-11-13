@@ -45,10 +45,11 @@ export interface SweepResult {
 }
 
 /**
- * Pushes a reminder to each attendee of an event about to start and to each
- * assignee (or, with none, the creator) of an open task whose due day is
- * about to end, on every device they subscribed. A task's day ends at
- * midnight in the time zone of the person's latest subscribed device.
+ * Pushes a reminder to each attendee of an event about to start, unless they
+ * hid it from their calendar, and to each assignee (or, with none, the
+ * creator) of an open task whose due day is about to end, on every device
+ * they subscribed. A task's day ends at midnight in the time zone of the
+ * person's latest subscribed device.
  */
 export async function sendDueReminders(now: number): Promise<SweepResult> {
   const vapid = vapidKeys();

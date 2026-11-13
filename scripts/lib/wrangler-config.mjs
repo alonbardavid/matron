@@ -13,7 +13,9 @@ export const REQUIRED_COMPAT_FLAGS = [
 
 /**
  * When production syncs every member's imported Google calendars in full, once
- * a day (UTC). Google's own notices bring each change in between.
+ * a day (UTC). Google's own notices bring each change in between. The Worker
+ * tells its crons apart by this text (`GOOGLE_SYNC_CRON` in
+ * backend/calendar/src/google.ts) and refuses one it does not know.
  */
 export const GOOGLE_SYNC_CRON = "17 3 * * *";
 

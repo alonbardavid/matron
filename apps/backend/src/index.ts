@@ -1,4 +1,4 @@
-import { syncAllGoogleConnections } from "@backend/calendar/google";
+import { GOOGLE_SYNC_CRON, syncAllGoogleConnections } from "@backend/calendar/google";
 import { logger } from "@backend/commons/logger";
 import { REMINDER_CRON, sendDueReminders } from "@backend/notifications/reminders";
 import { application } from "./application";
@@ -36,11 +36,17 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     if (env.WORKER_ROLE === "application") return;
-    if (controller.cron !== REMINDER_CRON) {
-      ctx.waitUntil(syncAllGoogleConnections());
-      return;
+    switch (controller.cron) {
+      case REMINDER_CRON: {
+        const result = await sendDueReminders(controller.scheduledTime);
+        log.info("reminder sweep finished", { cron: controller.cron, ...result });
+        return;
+      }
+      case GOOGLE_SYNC_CRON:
+        ctx.waitUntil(syncAllGoogleConnections());
+        return;
+      default:
+        throw new Error(`No job runs on the cron "${controller.cron}"`);
     }
-    const result = await sendDueReminders(controller.scheduledTime);
-    log.info("reminder sweep finished", { cron: controller.cron, ...result });
   },
 };

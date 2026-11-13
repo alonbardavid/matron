@@ -197,7 +197,7 @@ export async function listOccurrences(
   return out.sort((a, b) => a.startAt - b.startAt);
 }
 
-/** An occurrence that is about to start, and who attends it. */
+/** An occurrence that is about to start, and who attends it and has not hidden it. */
 export interface StartingOccurrence {
   /** The occurrence's id: the event's own, or `<event id>:<when it was due>` in a series. */
   id: string;
@@ -231,7 +231,12 @@ export async function occurrencesStartingBetween(
   const starting: { row: EventRow; id: string; title: string; startAt: number }[] = [];
   for (const row of rows) {
     if (!row.rrule) {
-      starting.push({ row, id: row.id, title: row.title, startAt: row.startAt.getTime() });
+      starting.push({
+        row,
+        id: row.id,
+        title: row.title,
+        startAt: row.startAt.getTime(),
+      });
       continue;
     }
     const own = exceptions.get(row.id) ?? [];
@@ -251,7 +256,8 @@ export async function occurrencesStartingBetween(
       });
     }
   }
-  const shares = await sharesOf([...new Set(starting.map(({ row }) => row.id))]);
+  const eventIds = [...new Set(starting.map(({ row }) => row.id))];
+  const [shares, hiders] = await Promise.all([sharesOf(eventIds), hidersOf(eventIds)]);
   return starting.map(({ row, id, title, startAt }) => ({
     id,
     title,
@@ -259,9 +265,23 @@ export async function occurrencesStartingBetween(
     startAt,
     timeZone: row.timeZone,
     attendeeIds: (shares.get(row.id) ?? [])
-      .filter((s) => s.attendee)
+      .filter((s) => s.attendee && !hiders.get(row.id)?.has(s.userId))
       .map((s) => s.userId),
   }));
+}
+
+/** Who hid each of these events from their calendar, by event. */
+async function hidersOf(eventIds: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (eventIds.length === 0) return out;
+  const rows = await getDb()
+    .select({ eventId: calendarEventHidden.eventId, userId: calendarEventHidden.userId })
+    .from(calendarEventHidden)
+    .where(inArray(calendarEventHidden.eventId, eventIds));
+  for (const row of rows) {
+    out.set(row.eventId, (out.get(row.eventId) ?? new Set()).add(row.userId));
+  }
+  return out;
 }
 
 /** The event, when the caller created it, was given it, or sees its calendar. */

@@ -56,6 +56,12 @@ const log = logger("calendar/google");
 
 type ConnectionRow = typeof googleCalendarConnection.$inferSelect;
 
+/**
+ * The cron the full sync of every member runs on, as the deployment's config
+ * declares it (`GOOGLE_SYNC_CRON` in scripts/lib/wrangler-config.mjs): daily.
+ */
+export const GOOGLE_SYNC_CRON = "17 3 * * *";
+
 /** The provider members link their account at; the link and its tokens are the auth's. */
 const PROVIDER = "google";
 /** What a sync mirrors: a month back and a year ahead. Older imported events stay as they were. */
@@ -545,6 +551,14 @@ async function mirrorCalendar(
     }
   }
 
+  const known = new Set(
+    (
+      await db
+        .select({ externalId: calendarEvent.externalId })
+        .from(calendarEvent)
+        .where(eq(calendarEvent.calendarId, cal.id))
+    ).map((event) => event.externalId),
+  );
   const writes: BatchItem<"sqlite">[] = [...rows.values()].map(({ externalId, values }) =>
     db
       .insert(calendarEvent)
@@ -576,6 +590,24 @@ async function mirrorCalendar(
     .where(
       and(eq(calendarEvent.calendarId, cal.id), lt(calendarEvent.startAt, new Date(to))),
     );
+
+  // Whoever imported an event attends it, as an event's creator does by
+  // default; only on arrival, so taking themselves off it holds.
+  const attending: BatchItem<"sqlite">[] = present
+    .filter((event) => rows.has(event.externalId ?? "") && !known.has(event.externalId))
+    .map((event) =>
+      db
+        .insert(calendarEventShare)
+        .values({
+          id: newEntityId("CALENDAR_EVENT_SHARE"),
+          eventId: event.id,
+          userId: cal.ownerId,
+          attendee: true,
+        })
+        .onConflictDoNothing(),
+    );
+  for (const chunk of chunks(attending, WRITE_CHUNK))
+    await db.batch(chunk as [BatchItem<"sqlite">]);
 
   // Each series' exceptions in the window are what Google sent this time.
   for (const event of present) {
