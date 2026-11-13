@@ -257,6 +257,14 @@ export function IconFilter(props: IconProps) {
   );
 }
 
+export function IconBell(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4l2-2M10 21a2 2 0 0 0 4 0" />
+    </Svg>
+  );
+}
+
 export function IconEyeOff(props: IconProps) {
   return (
     <Svg {...props}>

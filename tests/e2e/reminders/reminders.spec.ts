@@ -1,52 +1,34 @@
-import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { navLink, signIn } from "../helpers";
-import { OWNER } from "../users";
+import { MEMBER, OWNER } from "../users";
 
-const backendDir = resolve(import.meta.dirname, "../../../apps/backend");
 const MINUTE = 60_000;
+const SCHEDULED = "http://localhost:8301/cdn-cgi/handler/scheduled";
 
-/** Runs the Worker's hourly cron once, as Cloudflare would. */
-async function runReminderSweep(page: Page): Promise<void> {
-  const response = await page.request.get(
-    "http://localhost:8301/cdn-cgi/handler/scheduled?cron=0+*+*+*+*",
-  );
+async function newEvent(page: Page, title: string, startsIn: number) {
+  const startAt = Date.now() + startsIn;
+  const response = await page.request.post("/api/app/calendar/events", {
+    data: {
+      title,
+      allDay: false,
+      startAt,
+      endAt: startAt + 30 * MINUTE,
+      timeZone: "UTC",
+    },
+  });
   expect(response.ok()).toBe(true);
+  return (await response.json()) as { id: string };
 }
 
-/** The reminders the sweeps have claimed, read from the test database. */
-function remindersSent(): { subject: string; user_id: string }[] {
-  const result = spawnSync(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "d1",
-      "execute",
-      "DB",
-      "--local",
-      "--persist-to",
-      ".wrangler-test",
-      "--json",
-      "--command",
-      "SELECT subject, user_id FROM reminder ORDER BY subject",
-    ],
-    { cwd: backendDir, encoding: "utf8" },
-  );
-  if (result.status !== 0) throw new Error(result.stderr);
-  return JSON.parse(result.stdout)[0].results;
+/** The caller's alarm on an event or a task, as the API has it. */
+async function alarmOf(page: Page, path: string): Promise<number | null> {
+  const response = await page.request.get(`${path}/alarm`);
+  expect(response.ok()).toBe(true);
+  return ((await response.json()) as { minutesBefore: number | null }).minutesBefore;
 }
 
-/** A fixed-offset zone whose wall clock reads 23:xx now, so its day ends within the hour. */
-function zoneNearMidnight(now: Date): string {
-  const offset = ((23 - now.getUTCHours() + 36) % 24) - 12; // within -12..11
-  // Etc/GMT names have the sign reversed: Etc/GMT-3 is three hours ahead of UTC.
-  return offset === 0 ? "Etc/GMT" : `Etc/GMT${offset > 0 ? "-" : "+"}${Math.abs(offset)}`;
-}
-
-function dayIn(timeZone: string, at: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(at);
+async function setAlarm(page: Page, path: string, minutesBefore: number | null) {
+  return page.request.put(`${path}/alarm`, { data: { minutesBefore } });
 }
 
 test.describe("reminders", () => {
@@ -65,11 +47,11 @@ test.describe("reminders", () => {
     expect(scope).toBe("/");
   });
 
-  test("a cron the Worker does not know is refused", async ({ page }) => {
-    const response = await page.request.get(
-      "http://localhost:8301/cdn-cgi/handler/scheduled?cron=5+4+*+*+*",
-    );
-    expect(response.ok()).toBe(false);
+  test("the Worker runs the cron it knows and refuses any other", async ({ page }) => {
+    const known = await page.request.get(`${SCHEDULED}?cron=17+3+*+*+*`);
+    expect(known.ok()).toBe(true);
+    const unknown = await page.request.get(`${SCHEDULED}?cron=5+4+*+*+*`);
+    expect(unknown.ok()).toBe(false);
   });
 
   test("settings offer reminders on this device", async ({ page }) => {
@@ -81,72 +63,139 @@ test.describe("reminders", () => {
     ).toBeVisible();
   });
 
-  test("an attendee and an assignee are reminded once, ahead of time", async ({
-    page,
-  }) => {
+  test("a member's alarm on an event rings ahead of it, once", async ({ page }) => {
     await signIn(page, OWNER);
-    const now = new Date();
-    const timeZone = zoneNearMidnight(now);
     const subscribed = await page.request.post(
       "/api/app/notifications/push/subscriptions",
       {
         data: {
-          // Nothing answers here: the sweep's push fails, and its claim stands all the same.
+          // Nothing answers here: the ring's push fails, and the alarm is rung all the same.
           endpoint: `https://push.invalid/${crypto.randomUUID()}`,
           keys: {
             p256dh:
               "BLV4n6cvfBY3bbnO8I2Jl6ALrHt3PRhzTEni4nxqkGh_ZnpnNtL_913GT-jLiJrclp_IAdDqbiFiIxa5ngHmAsk",
             auth: "c2VjcmV0LWF1dGgta2V5IQ",
           },
-          timeZone,
+          timeZone: "UTC",
         },
       },
     );
     expect(subscribed.ok()).toBe(true);
+    // Five minutes before each of these is seconds from now, and an hour from now.
+    const soon = await newEvent(page, "Dentist", 5 * MINUTE + 4_000);
+    const later = await newEvent(page, "Dinner party", 65 * MINUTE);
+    const soonPath = `/api/app/calendar/events/${soon.id}`;
+    const laterPath = `/api/app/calendar/events/${later.id}`;
+    expect(await alarmOf(page, soonPath)).toBeNull();
 
-    const event = async (title: string, startsIn: number) => {
-      const startAt = now.getTime() + startsIn;
-      const response = await page.request.post("/api/app/calendar/events", {
-        data: { title, allDay: false, startAt, endAt: startAt + 30 * MINUTE, timeZone },
-      });
-      expect(response.ok()).toBe(true);
-      return (await response.json()) as { id: string; startAt: number };
-    };
-    const soon = await event("Dentist", 45 * MINUTE);
-    const later = await event("Dinner party", 4 * 60 * MINUTE);
-    // An event its attendee hid from their calendar is not reminded of.
-    const hidden = await event("Team sync", 50 * MINUTE);
-    const hid = await page.request.put(`/api/app/calendar/events/${hidden.id}/hidden`, {
-      data: { hidden: true },
+    expect((await setAlarm(page, soonPath, 5)).ok()).toBe(true);
+    expect((await setAlarm(page, laterPath, 5)).ok()).toBe(true);
+    // Only the choices on offer are taken.
+    expect((await setAlarm(page, laterPath, 7)).ok()).toBe(false);
+
+    // An alarm that rang with nothing after it is gone; one still ahead stands.
+    await expect.poll(() => alarmOf(page, soonPath), { timeout: 30_000 }).toBeNull();
+    expect(await alarmOf(page, laterPath)).toBe(5);
+
+    expect((await setAlarm(page, laterPath, null)).ok()).toBe(true);
+    expect(await alarmOf(page, laterPath)).toBeNull();
+  });
+
+  test("an alarm follows its event when the event moves", async ({ page }) => {
+    await signIn(page, OWNER);
+    const event = await newEvent(page, "Team sync", 3 * 60 * MINUTE);
+    const path = `/api/app/calendar/events/${event.id}`;
+    expect((await setAlarm(page, path, 10)).ok()).toBe(true);
+
+    const startAt = Date.now() + 10 * MINUTE + 4_000;
+    const moved = await page.request.put(path, {
+      data: { startAt, endAt: startAt + 30 * MINUTE },
     });
-    expect(hid.ok()).toBe(true);
+    expect(moved.ok()).toBe(true);
+    await expect.poll(() => alarmOf(page, path), { timeout: 30_000 }).toBeNull();
+  });
 
-    const task = async (title: string, dueDate: string) => {
-      const response = await page.request.post("/api/app/tasks", {
-        data: { title, dueDate },
-      });
-      expect(response.ok()).toBe(true);
-      return (await response.json()) as { id: string };
-    };
-    const dueToday = dayIn(timeZone, now);
-    const tonight = await task("Take the bins out", dueToday);
-    const nextWeek = await task(
-      "Book flights",
-      dayIn(timeZone, new Date(now.getTime() + 2 * 86_400_000)),
-    );
+  test("a repeating event keeps its alarm for the next occurrence", async ({ page }) => {
+    await signIn(page, OWNER);
+    const startAt = Date.now() + 5 * MINUTE + 4_000;
+    const created = await page.request.post("/api/app/calendar/events", {
+      data: {
+        title: "Stand-up",
+        allDay: false,
+        startAt,
+        endAt: startAt + 15 * MINUTE,
+        timeZone: "UTC",
+        rrule: "FREQ=DAILY",
+      },
+    });
+    expect(created.ok()).toBe(true);
+    const path = `/api/app/calendar/events/${((await created.json()) as { id: string }).id}`;
+    expect((await setAlarm(page, path, 5)).ok()).toBe(true);
+    // Past the first ring, it is still set: tomorrow's is ahead.
+    await page.waitForTimeout(8_000);
+    expect(await alarmOf(page, path)).toBe(5);
+  });
 
-    await runReminderSweep(page);
-    await runReminderSweep(page);
+  test("an alarm is one's own, on what one can see", async ({ page, browser }) => {
+    await signIn(page, OWNER);
+    const event = await newEvent(page, "Private", 2 * 60 * MINUTE);
+    const eventPath = `/api/app/calendar/events/${event.id}`;
+    const created = await page.request.post("/api/app/tasks", {
+      data: { title: "Take the bins out", dueDate: "2099-01-01" },
+    });
+    const taskPath = `/api/app/tasks/${((await created.json()) as { id: string }).id}`;
+    expect((await setAlarm(page, taskPath, 120)).ok()).toBe(true);
+    expect(await alarmOf(page, taskPath)).toBe(120);
 
-    // Other specs' events may be reminded too; these are the ones this test made.
-    const subjects = remindersSent().map((r) => r.subject);
-    expect(subjects).toContain(`event:${soon.id}:${soon.startAt}`);
-    expect(subjects).toContain(`task:${tonight.id}:${dueToday}`);
-    expect(subjects.filter((s) => s.includes(soon.id))).toHaveLength(1);
-    expect(
-      subjects.filter(
-        (s) => s.includes(later.id) || s.includes(hidden.id) || s.includes(nextWeek.id),
-      ),
-    ).toEqual([]);
+    const other = await browser.newContext();
+    const theirs = await other.newPage();
+    await signIn(theirs, MEMBER);
+    expect((await setAlarm(theirs, eventPath, 15)).status()).toBe(404);
+    expect((await setAlarm(theirs, taskPath, 15)).status()).toBe(404);
+    await other.close();
+
+    // A task that is removed takes its alarms with it.
+    expect((await page.request.delete(taskPath)).ok()).toBe(true);
+    expect((await page.request.get(`${taskPath}/alarm`)).status()).toBe(404);
+  });
+
+  test("a task with a due day offers the reminder", async ({ page }) => {
+    await signIn(page, OWNER);
+    const created = await page.request.post("/api/app/tasks", {
+      data: { title: "Water the plants", dueDate: "2099-01-01" },
+    });
+    const { id } = (await created.json()) as { id: string };
+    await page.goto("/tasks");
+    await page.getByRole("button", { name: "Water the plants" }).click();
+    const remind = page.getByRole("dialog").getByRole("combobox", { name: "Remind me" });
+    await expect(remind).toHaveValue("No reminder");
+    await remind.click();
+    await page.getByRole("option", { name: "2 hours before" }).click();
+    await expect.poll(() => alarmOf(page, `/api/app/tasks/${id}`)).toBe(120);
+  });
+
+  test("the event view sets the reminder", async ({ page }) => {
+    await signIn(page, OWNER);
+    const start = new Date();
+    start.setHours(12, 0, 0, 0);
+    const created = await page.request.post("/api/app/calendar/events", {
+      data: {
+        title: "Lunch",
+        allDay: false,
+        startAt: start.getTime(),
+        endAt: start.getTime() + 30 * MINUTE,
+        timeZone: "UTC",
+      },
+    });
+    const { id } = (await created.json()) as { id: string };
+    await page.reload();
+    await page.getByText("Lunch", { exact: true }).first().click();
+    const dialog = page.getByRole("dialog");
+    const remind = dialog.getByRole("combobox", { name: "Remind me" });
+    await expect(remind).toHaveValue("No reminder");
+    await remind.click();
+    await page.getByRole("option", { name: "30 minutes before" }).click();
+    await expect(remind).toHaveValue("30 minutes before");
+    await expect.poll(() => alarmOf(page, `/api/app/calendar/events/${id}`)).toBe(30);
   });
 });

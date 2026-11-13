@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { alarmSchema } from "./notifications";
 import { dayString } from "./tasks";
 
 /**
@@ -329,6 +330,16 @@ export const calendarContract = {
     .route({ method: "PUT", path: "/api/app/calendar/events/{id}/placement" })
     .input(z.object({ id: z.string(), calendarId: z.string().nullable() }))
     .output(calendarEventSchema),
+  /** The caller's own alarm on the event: how long before each occurrence starts they are reminded. */
+  alarm: oc
+    .route({ method: "GET", path: "/api/app/calendar/events/{id}/alarm" })
+    .input(z.object({ id: z.string() }))
+    .output(alarmSchema),
+  /** Sets, changes or (null) removes the caller's own alarm on the event. */
+  setAlarm: oc
+    .route({ method: "PUT", path: "/api/app/calendar/events/{id}/alarm" })
+    .input(alarmSchema.extend({ id: z.string() }))
+    .output(alarmSchema),
   calendars: calendarsContract,
   google: googleCalendarContract,
 };

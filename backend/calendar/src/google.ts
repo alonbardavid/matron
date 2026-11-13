@@ -24,6 +24,7 @@ import {
   googleCalendarWatch,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
+import { dropAlarms, rearmAlarms } from "@backend/notifications/alarms";
 import {
   CALENDAR_COLORS,
   GOOGLE_CALENDAR_SCOPE,
@@ -644,6 +645,13 @@ async function mirrorCalendar(
       db.delete(calendarEvent).where(inArray(calendarEvent.id, ids)),
     ]);
   }
+  // What Google sent may have moved an event under someone's alarm.
+  const left = new Set(gone);
+  await dropAlarms("event", gone);
+  await rearmAlarms(
+    "event",
+    present.map((event) => event.id).filter((id) => !left.has(id)),
+  );
 }
 
 /** Replaces a series' exceptions due in [from, to) with those Google sent; ones outside stay. */

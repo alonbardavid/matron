@@ -55,13 +55,20 @@ A Preview holds the token too, so its assistant takes the same route.
 worker handles no fetch, only `push` and `notificationclick`. `frontend/notifications` holds
 the install prompt, the device's subscription and the settings card. A subscription is a row
 in `push_subscription` (`backend/notifications/src/service.ts`), with the device's time zone.
+
+A member's alarm on an event or a task is a row in `alarm` (`backend/notifications/src/alarms.ts`):
+how many minutes before. Each has a Durable Object of its own, an Agents SDK agent
+(`alarm-object.ts`) holding one schedule: the next ring. A ring works out again what is due,
+pushes it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`) and schedules the one after. The feature a thing
+belongs to extends the object with how its rings are worked out (`EventAlarmObject` and
+`nextEventRing` in `backend/calendar`, `TaskAlarmObject` and `nextTaskRing` in
+`backend/tasks`), decides who may set an alarm, and arms it again when the thing changes
+(`rearmAlarms`), so `backend/notifications` knows neither events nor tasks.
+
 The Worker's `scheduled` entry (`apps/backend/src/index.ts`) picks its job by the cron's
-text and throws for one it does not know. On `0 * * * *` it runs
-`sendDueReminders` (`reminders.ts`): it asks the calendar and tasks services for what is due in
-the next 90 minutes, claims a `reminder` row per person and subject so a reminder goes out
-once, and sends it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
-`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`). Locally, `curl
-"localhost:8301/cdn-cgi/handler/scheduled?cron=0+*+*+*+*"` runs one sweep.
+text and throws for one it does not know. The one cron is the daily Google sync; locally,
+`curl "localhost:8301/cdn-cgi/handler/scheduled?cron=17+3+*+*+*"` runs it.
 
 ## Building
 

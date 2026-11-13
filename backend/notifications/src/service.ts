@@ -11,6 +11,7 @@ import type {
 } from "@shared/contract/app/notifications";
 import { vapidKeys } from "./env";
 import { pushPermissions } from "./permissions";
+import { sendPush, type PushMessage } from "./web-push";
 
 const log = logger("notifications/service");
 
@@ -86,7 +87,40 @@ export async function unsubscribeDevice(
   });
 }
 
-/** Every subscribed device of these people, newest first, for the reminder sweep. */
+/**
+ * Pushes a message to every device the person subscribed. `expiresAt` is when
+ * it stops being worth delivering. Nothing goes out where this deployment
+ * sends no push (a Preview). It acts for no one: an alarm rings on its own.
+ */
+export async function pushTo(
+  userId: string,
+  message: PushMessage,
+  expiresAt: number,
+): Promise<void> {
+  const vapid = vapidKeys();
+  if (!vapid) return;
+  const subscriptions = (await subscriptionsOf([userId])).get(userId) ?? [];
+  let delivered = 0;
+  for (const subscription of subscriptions) {
+    const outcome = await sendPush(subscription, message, vapid, expiresAt);
+    if (outcome === "gone") await forgetSubscription(subscription.id);
+    if (outcome === "delivered") delivered += 1;
+  }
+  log.info("push sent", {
+    userId,
+    tag: message.tag,
+    devices: subscriptions.length,
+    delivered,
+  });
+}
+
+/** The time zone of the person's latest subscribed device; null when they have none. */
+export async function timeZoneOf(userId: string): Promise<string | null> {
+  const latest = (await subscriptionsOf([userId])).get(userId)?.[0];
+  return latest?.timeZone ?? null;
+}
+
+/** Every subscribed device of these people, newest first. */
 export async function subscriptionsOf(
   userIds: readonly string[],
 ): Promise<Map<string, StoredSubscription[]>> {

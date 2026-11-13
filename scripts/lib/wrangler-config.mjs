@@ -19,13 +19,6 @@ export const REQUIRED_COMPAT_FLAGS = [
  */
 export const GOOGLE_SYNC_CRON = "17 3 * * *";
 
-/**
- * When production pushes the reminders that are due: hourly, on the hour. The
- * Worker tells its crons apart by this text (`REMINDER_CRON` in
- * backend/notifications/src/reminders.ts).
- */
-export const REMINDER_CRON = "0 * * * *";
-
 /** Vars that are Worker secrets; a value in the emitted config is only for local dev. */
 export const SECRET_VARS = [
   "BETTER_AUTH_SECRET",
@@ -114,9 +107,8 @@ export function generateWranglerConfig(emitted, options) {
   delete config.triggers;
 
   if (isProduction) {
-    // The daily sync of members' imported Google calendars, and the hourly
-    // reminder sweep. A Preview has neither: its database is a copy of production's.
-    config.triggers = { crons: [GOOGLE_SYNC_CRON, REMINDER_CRON] };
+    // The daily sync of members' imported Google calendars; a Preview has none.
+    config.triggers = { crons: [GOOGLE_SYNC_CRON] };
     if (options.appOrigin.endsWith(".workers.dev")) config.workers_dev = true;
     // Previews are reached by URL from the router, so they need their URLs on.
     config.preview_urls = true;

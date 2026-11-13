@@ -21,7 +21,7 @@ export const ENTITY_PREFIXES = {
   ASK_SESSION: "AS",
   FILE: "FL",
   PUSH_SUBSCRIPTION: "PS",
-  REMINDER: "RM",
+  ALARM: "AL",
 } as const satisfies Record<string, Uppercase<string>>;
 
 export type Entity = keyof typeof ENTITY_PREFIXES;

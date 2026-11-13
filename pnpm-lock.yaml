@@ -742,6 +742,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -840,27 +843,21 @@ importers:
 
   backend/notifications:
     dependencies:
-      '@backend/calendar':
-        specifier: workspace:*
-        version: link:../calendar
       '@backend/commons':
         specifier: workspace:*
         version: link:../commons
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
-      '@backend/household':
-        specifier: workspace:*
-        version: link:../household
-      '@backend/tasks':
-        specifier: workspace:*
-        version: link:../tasks
       '@block65/webcrypto-web-push':
         specifier: ^2.0.0
         version: 2.0.0
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      agents:
+        specifier: 0.32.0
+        version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
@@ -880,6 +877,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -1204,6 +1204,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@frontend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -1604,6 +1607,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

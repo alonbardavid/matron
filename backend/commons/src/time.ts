@@ -81,3 +81,20 @@ function offsetAt(ms: number, timeZone: string): number {
 export function dayKey(clock: { year: number; month: number; day: number }): string {
   return `${clock.year}-${String(clock.month).padStart(2, "0")}-${String(clock.day).padStart(2, "0")}`;
 }
+
+/** The instant `day` (`YYYY-MM-DD`) ends in `timeZone`: the next day's midnight. */
+export function endOfDay(day: string, timeZone: string): number {
+  const [year, month, date] = day.split("-").map(Number);
+  const next = new Date(Date.UTC(year!, month! - 1, date! + 1));
+  return fromWallClock(
+    {
+      year: next.getUTCFullYear(),
+      month: next.getUTCMonth() + 1,
+      day: next.getUTCDate(),
+      hour: 0,
+      minute: 0,
+      second: 0,
+    },
+    timeZone,
+  );
+}

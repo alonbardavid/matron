@@ -1,4 +1,11 @@
-import { createTask, listTasks, removeTask, updateTask } from "@backend/tasks/service";
+import {
+  createTask,
+  getTaskAlarm,
+  listTasks,
+  removeTask,
+  setTaskAlarm,
+  updateTask,
+} from "@backend/tasks/service";
 import { app } from "../implementer";
 
 export const tasks = app.tasks.router({
@@ -13,4 +20,10 @@ export const tasks = app.tasks.router({
     await removeTask(context.principal, input.id);
     return { ok: true as const };
   }),
+  alarm: app.tasks.alarm.handler(({ context, input }) =>
+    getTaskAlarm(context.principal, input.id),
+  ),
+  setAlarm: app.tasks.setAlarm.handler(({ context, input }) =>
+    setTaskAlarm(context.principal, input.id, input.minutesBefore),
+  ),
 });

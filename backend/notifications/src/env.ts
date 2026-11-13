@@ -1,10 +1,20 @@
 import { env } from "cloudflare:workers";
+import type { AlarmKind } from "@backend/db-models/notifications";
+import type { AlarmObject } from "./alarm-object";
 
 /** The bindings push reads; apps/backend/src/env.d.ts is the full declaration. */
 interface PushEnv {
   APP_ORIGIN: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
+  EVENT_ALARMS: DurableObjectNamespace<AlarmObject>;
+  TASK_ALARMS: DurableObjectNamespace<AlarmObject>;
+}
+
+/** The objects that ring the alarms of one kind: each feature's own class. */
+export function alarmObjects(kind: AlarmKind): DurableObjectNamespace<AlarmObject> {
+  const { EVENT_ALARMS, TASK_ALARMS } = env as unknown as PushEnv;
+  return kind === "event" ? EVENT_ALARMS : TASK_ALARMS;
 }
 
 export interface VapidKeys {

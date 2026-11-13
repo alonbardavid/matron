@@ -27,6 +27,16 @@ export const pushSubscriptionInputSchema = z.object({
 });
 export type PushSubscriptionInput = z.infer<typeof pushSubscriptionInputSchema>;
 
+/** How long before an event starts or a task is due an alarm can ring, in minutes. */
+export const ALARM_MINUTES = [5, 10, 15, 30, 60, 120] as const;
+export type AlarmMinutes = (typeof ALARM_MINUTES)[number];
+
+/** The caller's own alarm on an event or a task; `minutesBefore` is null when they set none. */
+export const alarmSchema = z.object({
+  minutesBefore: z.literal(ALARM_MINUTES).nullable(),
+});
+export type Alarm = z.infer<typeof alarmSchema>;
+
 const ok = z.object({ ok: z.literal(true) });
 
 export const notificationsContract = {

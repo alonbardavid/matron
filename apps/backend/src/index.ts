@@ -1,6 +1,4 @@
 import { GOOGLE_SYNC_CRON, syncAllGoogleConnections } from "@backend/calendar/google";
-import { logger } from "@backend/commons/logger";
-import { REMINDER_CRON, sendDueReminders } from "@backend/notifications/reminders";
 import { application } from "./application";
 import { router } from "./router";
 
@@ -9,10 +7,11 @@ export { BuilderObject } from "@backend/arch-builder/builder-object";
 // Each builder run is a child of its session; the handle class is found by name when a run starts.
 export { BuilderRunHandle } from "@backend/arch-builder/run-handle";
 export { AskSessionObject } from "@backend/ask/ask-object";
+// One member's alarm on one event or task; each rings on its own schedule.
+export { EventAlarmObject } from "@backend/calendar/event-alarm-object";
+export { TaskAlarmObject } from "@backend/tasks/task-alarm-object";
 // Adds the coding agent's credentials to its model requests outside the container.
 export { ContainerEgress } from "agents/harness/container";
-
-const log = logger("backend/index");
 
 // Production runs the router; a fork (a Preview) runs only the application.
 export default {
@@ -25,23 +24,16 @@ export default {
       ? application.fetch(request, env, ctx)
       : router.fetch(request, env, ctx);
   },
-  // Production's crons; a Preview has neither. Hourly, the reminders that are
-  // due are pushed: a Preview's database is a copy of production's, so its
-  // reminders would repeat main's. Daily, every member's imported Google
-  // calendars are synced and Google's notices renewed, which bring each change
-  // in between; a member syncs a branch's copy from their settings.
-  async scheduled(
+  // Production's cron; a Preview has none. Daily, every member's imported
+  // Google calendars are synced and Google's notices renewed, which bring each
+  // change in between; a member syncs a branch's copy from their settings.
+  scheduled(
     controller: ScheduledController,
     env: Cloudflare.Env,
     ctx: ExecutionContext,
-  ): Promise<void> {
+  ): void {
     if (env.WORKER_ROLE === "application") return;
     switch (controller.cron) {
-      case REMINDER_CRON: {
-        const result = await sendDueReminders(controller.scheduledTime);
-        log.info("reminder sweep finished", { cron: controller.cron, ...result });
-        return;
-      }
       case GOOGLE_SYNC_CRON:
         ctx.waitUntil(syncAllGoogleConnections());
         return;

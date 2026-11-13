@@ -9,6 +9,7 @@
   "dependencies": {
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
+    "@backend/notifications": "workspace:*",
     "@shared/contract": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "rrule": "2.8.1",

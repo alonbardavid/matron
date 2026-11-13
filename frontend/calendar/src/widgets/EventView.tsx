@@ -16,6 +16,7 @@ import type { Calendar, CalendarEvent } from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 import {
+  IconBell,
   IconCalendar,
   IconEyeOff,
   IconNotes,
@@ -25,6 +26,7 @@ import {
   IconX,
 } from "@frontend/ds/icons";
 import { describeRule } from "../rrule";
+import { EventAlarm } from "./EventAlarm";
 
 interface EventViewProps {
   event: CalendarEvent;
@@ -189,6 +191,9 @@ export function EventView({
           </Stack>
         </Row>
       )}
+      <Row icon={<IconBell size={18} />}>
+        <EventAlarm eventId={event.id} />
+      </Row>
       <Row icon={<IconCalendar size={18} />}>
         <Text size="sm">{calendar?.name ?? "Calendar"}</Text>
         <Text size="xs" c="dimmed">

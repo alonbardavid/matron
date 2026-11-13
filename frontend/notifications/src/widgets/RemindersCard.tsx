@@ -5,9 +5,9 @@ import { promptInstall, useInstallMethod } from "../installPrompt";
 import { usePushDevice, type PushDevice } from "../usePushDevice";
 
 /**
- * Reminders on this device: an hour before an event or a task's due time,
- * pushed to the devices that turned them on. Installing the app comes first
- * where push needs it.
+ * Reminders on this device: what the member asked to be reminded of on an
+ * event or a task is pushed to the devices that turned them on. Installing
+ * the app comes first where push needs it.
  */
 export function RemindersCard() {
   const device = usePushDevice();
@@ -15,7 +15,7 @@ export function RemindersCard() {
     <Card>
       <Stack gap="sm" role="group" aria-label="Reminders">
         <Text fw={600}>Reminders</Text>
-        <Hint>A notification about an hour before an event starts or a task is due.</Hint>
+        <Hint>A notification ahead of the events and tasks you set a reminder on.</Hint>
         <InstallApp />
         <DeviceControl device={device} />
       </Stack>
