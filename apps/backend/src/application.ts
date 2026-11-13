@@ -34,9 +34,11 @@ application.use(`${PUBLIC_APP_PATH}/*`, async (c, next) => {
 
 application.use("/api/app/*", async (c, next) => {
   // A signed-out visitor reaches the SPA but not the API, which requires a principal.
+  const { latitude, longitude } = (c.req.raw.cf ?? {}) as IncomingRequestCfProperties;
   const response = await serveAppApi(c.req.raw, {
     principal: c.get("principal"),
     branch: c.get("branch"),
+    coordinates: { latitude, longitude },
   });
   return response ?? next();
 });

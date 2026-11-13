@@ -60,12 +60,26 @@ export const calendarShare = sqliteTable(
   ],
 );
 
+/** A place picked from Google's suggestions for a location, as Google gave it (JSON). */
+export interface StoredPlace {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  mapsUrl: string;
+}
+
 export const calendarEvent = sqliteTable(
   "calendar_event",
   {
     id: text("id").primaryKey(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
+    /** Where it happens, as written: an address, a room, a link. */
+    location: text("location").notNull().default(""),
+    /** The place `location` was picked as; null when it was typed. */
+    place: text("place", { mode: "json" }).$type<StoredPlace>(),
     creatorId: text("creator_id").notNull(),
     allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
     startAt: timestamp("start_at").notNull(),
@@ -128,6 +142,8 @@ export const calendarEventException = sqliteTable(
     /** What the occurrence changed; null keeps the series' own. */
     title: text("title"),
     description: text("description"),
+    location: text("location"),
+    place: text("place", { mode: "json" }).$type<StoredPlace>(),
     startAt: timestamp("start_at"),
     endAt: timestamp("end_at"),
     /** For an imported change: the instance's id at the source. */
@@ -159,6 +175,34 @@ export const calendarEventHidden = sqliteTable(
     uniqueIndex("calendar_event_hidden_event_user").on(table.eventId, table.userId),
     index("calendar_event_hidden_user_idx").on(table.userId),
   ],
+);
+
+export const ATTACHMENT_KINDS = ["file", "link"] as const;
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+
+/**
+ * Something attached to an event, on every occurrence: a file uploaded here,
+ * or a link. One imported from Google (a Drive file, say) is a link with the
+ * source `google`, replaced on each sync; those added here stay.
+ */
+export const calendarEventAttachment = sqliteTable(
+  "calendar_event_attachment",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    kind: text("kind", { enum: ATTACHMENT_KINDS }).notNull(),
+    /** For a file: the uploaded file's id. */
+    fileId: text("file_id"),
+    /** For a link: where it points, https only. */
+    url: text("url"),
+    title: text("title").notNull(),
+    mimeType: text("mime_type"),
+    source: text("source", { enum: CALENDAR_SOURCES }).notNull().default("matron"),
+    /** Who added it here; null for an imported one. */
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+  },
+  (table) => [index("calendar_event_attachment_event_idx").on(table.eventId)],
 );
 
 export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const;
