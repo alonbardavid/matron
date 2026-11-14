@@ -139,5 +139,7 @@ async function alarmsOn(
 
 /** Has the alarm's own object schedule its next ring, or none when nothing is ahead. */
 function arm(kind: AlarmKind, subjectId: string, userId: string): Promise<void> {
-  return alarmObjects(kind).getByName(`${subjectId}:${userId}`).arm(subjectId, userId);
+  return alarmObjects()
+    .getByName(`${kind}:${subjectId}:${userId}`)
+    .arm(kind, subjectId, userId);
 }

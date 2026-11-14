@@ -61,14 +61,11 @@ how many minutes before. Each has a Durable Object of its own, an Agents SDK age
 (`alarm-object.ts`) holding one schedule: the next ring. A ring works out again what is due,
 pushes it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
 `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`) and schedules the one after. The feature a thing
-belongs to extends the object with how its rings are worked out (`EventAlarmObject` and
-`nextEventRing` in `backend/calendar`, `TaskAlarmObject` and `nextTaskRing` in
+belongs to works out its rings (`nextEventRing` in `backend/calendar`, `nextTaskRing` in
 `backend/tasks`), decides who may set an alarm, and arms it again when the thing changes
-(`rearmAlarms`), so `backend/notifications` knows neither events nor tasks.
-
-The Worker's `scheduled` entry (`apps/backend/src/index.ts`) picks its job by the cron's
-text and throws for one it does not know. The one cron is the daily Google sync; locally,
-`curl "localhost:8301/cdn-cgi/handler/scheduled?cron=17+3+*+*+*"` runs it.
+(`rearmAlarms`), so `backend/notifications` knows neither events nor tasks. The one class
+every alarm runs as, `AlarmObject` in `apps/backend/src/alarm-object.ts`, names each
+kind's rings.
 
 ## Building
 

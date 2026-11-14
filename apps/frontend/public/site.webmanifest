@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Matron",
   "short_name": "Matron",
-  "description": "The household's calendar, tasks and assistant.",
+  "description": "Matron is a self-releasing household organizer: a household runs it on its own Cloudflare account and changes it from inside the app.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -13,9 +13,7 @@ export const REQUIRED_COMPAT_FLAGS = [
 
 /**
  * When production syncs every member's imported Google calendars in full, once
- * a day (UTC). Google's own notices bring each change in between. The Worker
- * tells its crons apart by this text (`GOOGLE_SYNC_CRON` in
- * backend/calendar/src/google.ts) and refuses one it does not know.
+ * a day (UTC). Google's own notices bring each change in between.
  */
 export const GOOGLE_SYNC_CRON = "17 3 * * *";
 
@@ -107,7 +105,7 @@ export function generateWranglerConfig(emitted, options) {
   delete config.triggers;
 
   if (isProduction) {
-    // The daily sync of members' imported Google calendars; a Preview has none.
+    // The daily sync of members' imported Google calendars.
     config.triggers = { crons: [GOOGLE_SYNC_CRON] };
     if (options.appOrigin.endsWith(".workers.dev")) config.workers_dev = true;
     // Previews are reached by URL from the router, so they need their URLs on.

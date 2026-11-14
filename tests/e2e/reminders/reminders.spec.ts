@@ -3,7 +3,6 @@ import { navLink, signIn } from "../helpers";
 import { MEMBER, OWNER } from "../users";
 
 const MINUTE = 60_000;
-const SCHEDULED = "http://localhost:8301/cdn-cgi/handler/scheduled";
 
 async function newEvent(page: Page, title: string, startsIn: number) {
   const startAt = Date.now() + startsIn;
@@ -47,13 +46,6 @@ test.describe("reminders", () => {
     expect(scope).toBe("/");
   });
 
-  test("the Worker runs the cron it knows and refuses any other", async ({ page }) => {
-    const known = await page.request.get(`${SCHEDULED}?cron=17+3+*+*+*`);
-    expect(known.ok()).toBe(true);
-    const unknown = await page.request.get(`${SCHEDULED}?cron=5+4+*+*+*`);
-    expect(unknown.ok()).toBe(false);
-  });
-
   test("settings offer reminders on this device", async ({ page }) => {
     await signIn(page, OWNER);
     await navLink(page, "Settings").click();
@@ -71,11 +63,7 @@ test.describe("reminders", () => {
         data: {
           // Nothing answers here: the ring's push fails, and the alarm is rung all the same.
           endpoint: `https://push.invalid/${crypto.randomUUID()}`,
-          keys: {
-            p256dh:
-              "BLV4n6cvfBY3bbnO8I2Jl6ALrHt3PRhzTEni4nxqkGh_ZnpnNtL_913GT-jLiJrclp_IAdDqbiFiIxa5ngHmAsk",
-            auth: "c2VjcmV0LWF1dGgta2V5IQ",
-          },
+          keys: { p256dh: "this-is-not-a-real-key", auth: "this-is-not-a-real-secret" },
           timeZone: "UTC",
         },
       },

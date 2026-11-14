@@ -41,16 +41,14 @@
       { "name": "BUILD_SESSIONS", "class_name": "BuildSessionObject" },
       { "name": "BUILDERS", "class_name": "BuilderObject" },
       { "name": "ASK_SESSIONS", "class_name": "AskSessionObject" },
-      { "name": "EVENT_ALARMS", "class_name": "EventAlarmObject" },
-      { "name": "TASK_ALARMS", "class_name": "TaskAlarmObject" },
+      { "name": "ALARMS", "class_name": "AlarmObject" },
     ],
   },
   "exports": {
     "BuildSessionObject": { "type": "durable-object", "storage": "sqlite" },
     "BuilderObject": { "type": "durable-object", "storage": "sqlite" },
     "AskSessionObject": { "type": "durable-object", "storage": "sqlite" },
-    "EventAlarmObject": { "type": "durable-object", "storage": "sqlite" },
-    "TaskAlarmObject": { "type": "durable-object", "storage": "sqlite" },
+    "AlarmObject": { "type": "durable-object", "storage": "sqlite" },
   },
   "send_email": [{ "name": "SEND_EMAIL" }],
   "images": { "binding": "IMAGES" },
@@ -67,11 +65,9 @@
     "CLOUDFLARE_API_TOKEN": "",
     // Everything else (database, bucket, repository, image) is named after the Worker.
     "WORKER_NAME": "matron-local",
-    // A local-only push key pair; the deploy script generates production's.
-    "VAPID_PUBLIC_KEY": "BLV4n6cvfBY3bbnO8I2Jl6ALrHt3PRhzTEni4nxqkGh_ZnpnNtL_913GT-jLiJrclp_IAdDqbiFiIxa5ngHmAsk",
-    "VAPID_PRIVATE_KEY": "9x2b_QkB2GyaBCQwK9Xh2jCfk_UEeay3n3CKewXPm_M",
+    // Placeholders, not a key pair: reminders are offered locally and every
+    // push fails. The deploy script generates production's keys.
+    "VAPID_PUBLIC_KEY": "this-is-not-a-real-key",
+    "VAPID_PRIVATE_KEY": "do-not-use-in-production",
   },
-  // The daily Google sync (backend/calendar/src/google.ts). Production only: a
-  // Preview has none.
-  "triggers": { "crons": ["17 3 * * *"] },
 }

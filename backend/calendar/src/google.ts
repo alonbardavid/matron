@@ -57,12 +57,6 @@ const log = logger("calendar/google");
 
 type ConnectionRow = typeof googleCalendarConnection.$inferSelect;
 
-/**
- * The cron the full sync of every member runs on, as the deployment's config
- * declares it (`GOOGLE_SYNC_CRON` in scripts/lib/wrangler-config.mjs): daily.
- */
-export const GOOGLE_SYNC_CRON = "17 3 * * *";
-
 /** The provider members link their account at; the link and its tokens are the auth's. */
 const PROVIDER = "google";
 /** What a sync mirrors: a month back and a year ahead. Older imported events stay as they were. */

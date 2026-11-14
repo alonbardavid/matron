@@ -16,12 +16,7 @@ declare namespace Cloudflare {
     ASK_SESSIONS: DurableObjectNamespace<
       import("@backend/ask/ask-object").AskSessionObject
     >;
-    EVENT_ALARMS: DurableObjectNamespace<
-      import("@backend/calendar/event-alarm-object").EventAlarmObject
-    >;
-    TASK_ALARMS: DurableObjectNamespace<
-      import("@backend/tasks/task-alarm-object").TaskAlarmObject
-    >;
+    ALARMS: DurableObjectNamespace<import("./alarm-object").AlarmObject>;
     // "application" on a fork (a Preview); production runs the router.
     WORKER_ROLE?: "router" | "application";
     APP_ORIGIN: string;
