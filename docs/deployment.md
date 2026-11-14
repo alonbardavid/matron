@@ -43,8 +43,10 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    `registry.cloudflare.com/<account>/matron@sha256:<digest>`.
 6. Writes `apps/backend/dist/worker/wrangler.generated.production.json`.
 7. Applies pending D1 migrations to the production database.
-8. Lists the Worker's secrets; generates `BETTER_AUTH_SECRET` and `SIGNING_KEY` when missing.
-9. `wrangler deploy` with a temporary `--secrets-file` (deleted afterwards); the secrets it set go to the Worker's Preview base config too, which gives them to every Preview.
+8. Lists the Worker's secrets; generates `BETTER_AUTH_SECRET` and `SIGNING_KEY` when missing,
+   and the push key pair `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` once (a new pair would
+   unsubscribe every device).
+9. `wrangler deploy` with a temporary `--secrets-file` (deleted afterwards); the secrets it set go to the Worker's Preview base config too, which gives them to every Preview. The push key pair does not: a Preview sends no reminders.
 10. Creates the Artifacts repository `matron/matron` if missing, mints a one-hour write token and
     runs `git push --all` and `git push --tags` to it (the token travels in git's config env).
 11. If the `user` table is empty, asks for the owner's email, name and password (password without
@@ -66,7 +68,7 @@ Flags (`pnpm run deploy --name home`):
 
 | What                                                                              | Where                                                                                                            |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`                       | Worker secrets (never in config; printed nowhere)                                                                |
+| `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`, `VAPID_*`            | Worker secrets (never in config; printed nowhere)                                                                |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                        | Worker secrets too, set from App settings through Cloudflare's API; a deploy leaves them as they are             |
 | `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; every resource the deployment owns carries the name in `WORKER_NAME`        |
 | Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)            |

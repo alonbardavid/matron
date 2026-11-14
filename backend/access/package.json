@@ -15,6 +15,7 @@
     "@backend/calendar": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/household": "workspace:*",
+    "@backend/notifications": "workspace:*",
     "@backend/tasks": "workspace:*",
     "better-auth": "^1.7.7"
   },

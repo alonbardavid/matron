@@ -25,6 +25,7 @@
     "@backend/db-models": "workspace:*",
     "@backend/files": "workspace:*",
     "@backend/household": "workspace:*",
+    "@backend/notifications": "workspace:*",
     "@backend/tasks": "workspace:*",
     "@cloudflare/containers": "^0.3.7",
     "@shared/contract": "workspace:*",

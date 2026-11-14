@@ -1,0 +1,21 @@
+{
+  "name": "@backend/notifications",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@backend/commons": "workspace:*",
+    "@backend/db-models": "workspace:*",
+    "@block65/webcrypto-web-push": "^2.0.0",
+    "@shared/contract": "workspace:*",
+    "agents": "0.32.0",
+    "drizzle-orm": "^0.45.1",
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1"
+  }
+}

@@ -3,10 +3,12 @@ import {
   createEvent,
   editOccurrence,
   getEvent,
+  getEventAlarm,
   hideEvent,
   listOccurrences,
   placeEvent,
   removeEvent,
+  setEventAlarm,
   stopRecurrence,
   updateEvent,
 } from "@backend/calendar/service";
@@ -57,6 +59,12 @@ export const calendar = app.calendar.router({
   ),
   place: app.calendar.place.handler(({ context, input }) =>
     placeEvent(context.principal, input.id, input.calendarId),
+  ),
+  alarm: app.calendar.alarm.handler(({ context, input }) =>
+    getEventAlarm(context.principal, input.id),
+  ),
+  setAlarm: app.calendar.setAlarm.handler(({ context, input }) =>
+    setEventAlarm(context.principal, input.id, input.minutesBefore),
   ),
   calendars: app.calendar.calendars.router({
     list: app.calendar.calendars.list.handler(({ context }) =>

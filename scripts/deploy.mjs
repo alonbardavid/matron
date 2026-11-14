@@ -15,6 +15,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createUserSql } from "./lib/owner-sql.mjs";
+import { generateVapidKeys } from "./lib/vapid.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backendDir = join(root, "apps/backend");
@@ -484,8 +485,9 @@ wrangler(["d1", "migrations", "apply", "DB", "--remote", "--config", generatedCo
 step("Worker secrets");
 const secretsFileDir = mkdtempSync(join(tmpdir(), "matron-deploy-"));
 const secretsFile = join(secretsFileDir, "secrets.json");
+const previewSecretsFile = join(secretsFileDir, "preview-secrets.json");
 let firstDeploy = false;
-// What this run sets on the Worker, by name; the same goes to its Previews.
+// What this run sets on the Worker and gives its Previews too, by name.
 let settingNow;
 {
   const listed = wrangler(
@@ -520,8 +522,16 @@ let settingNow;
     if (!existing.includes(generated))
       secrets[generated] = randomBytes(32).toString("hex");
   }
-  writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
+  writeFileSync(previewSecretsFile, JSON.stringify(secrets), { mode: 0o600 });
   settingNow = Object.keys(secrets);
+  // The push key pair, generated once: a new pair would unsubscribe every device.
+  // It stays the Worker's own: a Preview sends no reminders.
+  if (!existing.includes("VAPID_PUBLIC_KEY") || !existing.includes("VAPID_PRIVATE_KEY")) {
+    const vapid = await generateVapidKeys();
+    secrets.VAPID_PUBLIC_KEY = vapid.publicKey;
+    secrets.VAPID_PRIVATE_KEY = vapid.privateKey;
+  }
+  writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
   console.log(`  setting: ${Object.keys(secrets).join(", ") || "nothing new"}`);
   if (hasApiToken) {
     console.log(
@@ -551,7 +561,7 @@ try {
         "base-config",
         "secret",
         "bulk",
-        secretsFile,
+        previewSecretsFile,
         "--worker-name",
         workerName,
       ],

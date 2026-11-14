@@ -41,12 +41,14 @@
       { "name": "BUILD_SESSIONS", "class_name": "BuildSessionObject" },
       { "name": "BUILDERS", "class_name": "BuilderObject" },
       { "name": "ASK_SESSIONS", "class_name": "AskSessionObject" },
+      { "name": "ALARMS", "class_name": "AlarmObject" },
     ],
   },
   "exports": {
     "BuildSessionObject": { "type": "durable-object", "storage": "sqlite" },
     "BuilderObject": { "type": "durable-object", "storage": "sqlite" },
     "AskSessionObject": { "type": "durable-object", "storage": "sqlite" },
+    "AlarmObject": { "type": "durable-object", "storage": "sqlite" },
   },
   "send_email": [{ "name": "SEND_EMAIL" }],
   "images": { "binding": "IMAGES" },
@@ -63,5 +65,9 @@
     "CLOUDFLARE_API_TOKEN": "",
     // Everything else (database, bucket, repository, image) is named after the Worker.
     "WORKER_NAME": "matron-local",
+    // Placeholders, not a key pair: reminders are offered locally and every
+    // push fails. The deploy script generates production's keys.
+    "VAPID_PUBLIC_KEY": "this-is-not-a-real-key",
+    "VAPID_PRIVATE_KEY": "do-not-use-in-production",
   },
 }

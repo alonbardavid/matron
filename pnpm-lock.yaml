@@ -103,6 +103,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../../backend/household
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../../backend/notifications
       '@backend/tasks':
         specifier: workspace:*
         version: link:../../backend/tasks
@@ -186,6 +189,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../../frontend/ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../../frontend/notifications
       '@frontend/root':
         specifier: workspace:*
         version: link:../../frontend/root
@@ -280,6 +286,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@backend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -308,6 +317,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@backend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -730,6 +742,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -826,6 +841,34 @@ importers:
         specifier: ^5.20261008.1
         version: 5.20261029.1
 
+  backend/notifications:
+    dependencies:
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@backend/db-models':
+        specifier: workspace:*
+        version: link:../db-models
+      '@block65/webcrypto-web-push':
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      agents:
+        specifier: 0.32.0
+        version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.13
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
   backend/tasks:
     dependencies:
       '@backend/commons':
@@ -834,6 +877,9 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -1158,6 +1204,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@frontend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -1333,6 +1382,43 @@ importers:
         specifier: ^7.1.0
         version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
 
+  frontend/notifications:
+    dependencies:
+      '@frontend/api':
+        specifier: workspace:*
+        version: link:../api
+      '@frontend/ds':
+        specifier: workspace:*
+        version: link:../ds
+      '@mantine/core':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/notifications':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      '@tanstack/react-query':
+        specifier: ^5.96.2
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      vite:
+        specifier: ^7.1.0
+        version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
+
   frontend/review:
     dependencies:
       '@frontend/api':
@@ -1466,6 +1552,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1518,6 +1607,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1982,6 +2074,10 @@ packages:
 
   '@better-fetch/fetch@1.3.3':
     resolution: {integrity: sha512-U6SlDt/GUWtK2JAxS/NhdoYTEim+EL1G5byz2TUj83KjLZBUpYzb5SmX0aXaCnbGkAjFKnV/o/0+cyXMbEcqqg==}
+
+  '@block65/webcrypto-web-push@2.0.0':
+    resolution: {integrity: sha512-BMrw8hABq5krABWPy3zFJvBC73HeRkyT/GTZ2AD7wqzo9hd9vO56MstBqjGMIxIw3e4lbRUbYxgihCcfhoTI2g==}
+    engines: {node: '>=22.0.0'}
 
   '@borewit/text-codec@0.2.3':
     resolution: {integrity: sha512-49CycTz1aAZmvFcwkeFyhud1HUmRIB5Tabf7ALV+VA4Iu85MTfz2cUwzPagMFAdVBvrWdkCxG67I30tUwwpKsw==}
@@ -5821,6 +5917,10 @@ snapshots:
       '@noble/hashes': 2.4.0
 
   '@better-fetch/fetch@1.3.3': {}
+
+  '@block65/webcrypto-web-push@2.0.0':
+    dependencies:
+      uint8array-extras: 1.6.0
 
   '@borewit/text-codec@0.2.3': {}
 

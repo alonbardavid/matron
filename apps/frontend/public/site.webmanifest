@@ -1,6 +1,13 @@
 {
+  "id": "/",
   "name": "Matron",
   "short_name": "Matron",
+  "description": "Matron is a self-releasing household organizer: a household runs it on its own Cloudflare account and changes it from inside the app.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#2B0B1F",
+  "background_color": "#FFFFFF",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -18,8 +25,5 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "theme_color": "#2B0B1F",
-  "background_color": "#FFFFFF",
-  "display": "standalone"
+  ]
 }

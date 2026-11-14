@@ -13,6 +13,15 @@ import {
 import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
 import {
+  alarmMinutesOf,
+  dropAlarms,
+  forgetAlarm,
+  rearmAlarms,
+  setAlarm,
+  type AlarmRing,
+} from "@backend/notifications/alarms";
+import { timeZoneOf } from "@backend/notifications/service";
+import {
   CALENDAR_COLORS,
   type CalendarEvent,
   type CalendarEventCreate,
@@ -21,6 +30,7 @@ import {
   type OccurrenceException,
   type OccurrenceUpdate,
 } from "@shared/contract/app/calendar";
+import type { Alarm } from "@shared/contract/app/notifications";
 import {
   calendarsById,
   sharedTargetOf,
@@ -60,7 +70,7 @@ interface Placement {
   access: "edit" | "read";
 }
 
-async function viewerOf(principal: Principal): Promise<Viewer> {
+async function viewerOf(principal: Pick<Principal, "userId">): Promise<Viewer> {
   const sharedTarget = await sharedTargetOf(principal.userId);
   const [own, viewed] = await Promise.all([
     getDb().select().from(calendar).where(eq(calendar.ownerId, principal.userId)),
@@ -253,6 +263,128 @@ async function hiddenBy(userId: string): Promise<Set<string>> {
   return new Set(rows.map((row) => row.eventId));
 }
 
+/** The caller's own alarm on the event. */
+export async function getEventAlarm(principal: Principal, id: string): Promise<Alarm> {
+  eventPermissions.require(principal, "view");
+  await getEvent(principal, id);
+  return { minutesBefore: await alarmMinutesOf("event", id, principal.userId) };
+}
+
+/**
+ * Sets, changes or (null) removes the caller's own alarm on an event they
+ * see: a reminder that long before every occurrence starts. Others are unaffected.
+ */
+export async function setEventAlarm(
+  principal: Principal,
+  id: string,
+  minutesBefore: Alarm["minutesBefore"],
+): Promise<Alarm> {
+  eventPermissions.require(principal, "view");
+  await getEvent(principal, id);
+  await setAlarm("event", id, principal.userId, minutesBefore);
+  return { minutesBefore };
+}
+
+/** How far ahead the next occurrence of a series is looked for. */
+const ALARM_HORIZON_MS = 2 * 366 * 86_400_000;
+
+/**
+ * The member's first ring on the event later than `after`, for their alarm's
+ * object: before the occurrence that starts next. Null when they set no
+ * alarm or nothing is ahead; an event that is gone, or no longer theirs to
+ * see, loses the alarm. It acts for no one: an alarm rings on its own.
+ */
+export async function nextEventRing(
+  eventId: string,
+  userId: string,
+  after: number,
+): Promise<AlarmRing | null> {
+  const minutes = await alarmMinutesOf("event", eventId, userId);
+  if (minutes === null) return null;
+  const db = getDb();
+  const row = await db
+    .select()
+    .from(calendarEvent)
+    .where(eq(calendarEvent.id, eventId))
+    .get();
+  const mine = and(
+    eq(calendarEventShare.eventId, eventId),
+    eq(calendarEventShare.userId, userId),
+  );
+  const seen =
+    row &&
+    placementOf(
+      await viewerOf({ userId }),
+      row,
+      await db.select().from(calendarEventShare).where(mine).get(),
+    );
+  if (!row || !seen) {
+    await forgetAlarm("event", eventId, userId);
+    return null;
+  }
+  const lead = minutes * 60_000;
+  // An occurrence rings later than `after` when it starts later than this.
+  const from = after + lead;
+  const next = row.rrule
+    ? await nextOccurrence(row, from)
+    : { id: row.id, title: row.title, startAt: row.startAt.getTime() };
+  if (!next || next.startAt <= from) return null;
+  const [hidden, zone] = await Promise.all([hiddenBy(userId), timeZoneOf(userId)]);
+  return {
+    ringAt: next.startAt - lead,
+    at: next.startAt,
+    muted: hidden.has(eventId),
+    message: {
+      title: next.title,
+      // An all-day event's day is the event's own; a time reads best in the member's zone.
+      body: row.allDay
+        ? `All day, ${formatDay(next.startAt, row.timeZone)}`
+        : `Starts at ${formatTime(next.startAt, zone ?? row.timeZone)}`,
+      url: "/",
+      tag: `event:${next.id}`,
+    },
+  };
+}
+
+/** The first occurrence of the series that starts later than `from`. */
+async function nextOccurrence(
+  row: EventRow,
+  from: number,
+): Promise<{ id: string; title: string; startAt: number } | null> {
+  const own = (await exceptionsOf([row.id])).get(row.id) ?? [];
+  const next = expandSeries(
+    seriesOf(row),
+    own.map(toExceptionInput),
+    from,
+    from + ALARM_HORIZON_MS,
+  ).find((window) => window.startAt > from);
+  if (!next) return null;
+  const changed = own.find((e) => e.originalStartAt.getTime() === next.originalStartAt);
+  return {
+    id: `${row.id}:${next.originalStartAt}`,
+    title: changed?.title ?? row.title,
+    startAt: next.startAt,
+  };
+}
+
+function formatTime(ms: number, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(ms);
+}
+
+function formatDay(ms: number, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(ms);
+}
+
 /** Shows an event shared with the caller in one of their Matron calendars, or (null) their calendar for shared events. */
 export async function placeEvent(
   principal: Principal,
@@ -401,6 +533,8 @@ export async function updateEvent(
     await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
     await writeShares(id, sharedWith, attendees, placed);
   }
+  // Its times, or who sees it, may have changed under someone's alarm.
+  await rearmAlarms("event", [id]);
   log.info("event updated", { eventId: id, userId: principal.userId });
   return withShares(principal, row!);
 }
@@ -452,6 +586,7 @@ export async function editOccurrence(
     updatedAt: new Date(),
   };
   await writeException(id, originalStartAt, values);
+  await rearmAlarms("event", [id]);
   log.info("occurrence changed", {
     eventId: id,
     originalStartAt,
@@ -549,6 +684,7 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
     db.delete(calendarEventHidden).where(eq(calendarEventHidden.eventId, id)),
     db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
   ]);
+  await dropAlarms("event", [id]);
   log.info("event removed", { eventId: id, userId: principal.userId });
 }
 

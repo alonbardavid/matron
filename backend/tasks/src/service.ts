@@ -3,9 +3,20 @@ import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
+import { endOfDay } from "@backend/commons/time";
 import { getDb } from "@backend/db-models/db";
 import { task, taskShare } from "@backend/db-models/tasks";
 import { knownUserIds } from "@backend/household/users";
+import {
+  alarmMinutesOf,
+  dropAlarms,
+  forgetAlarm,
+  rearmAlarms,
+  setAlarm,
+  type AlarmRing,
+} from "@backend/notifications/alarms";
+import { timeZoneOf } from "@backend/notifications/service";
+import type { Alarm } from "@shared/contract/app/notifications";
 import type { Task, TaskCreate, TaskUpdate } from "@shared/contract/app/tasks";
 import { taskPermissions } from "./permissions";
 
@@ -96,6 +107,8 @@ export async function updateTask(
     await db.delete(taskShare).where(eq(taskShare.taskId, id));
     await writeShares(id, sharedWith, assignees);
   }
+  // Its due day, or who sees it, may have changed under someone's alarm.
+  await rearmAlarms("task", [id]);
   log.info("task updated", { taskId: id, userId: principal.userId });
   return toTask(row!, await sharesOf([id]).then((m) => m.get(id) ?? []));
 }
@@ -109,7 +122,65 @@ export async function removeTask(principal: Principal, id: string): Promise<void
   const db = getDb();
   await db.delete(taskShare).where(eq(taskShare.taskId, id));
   await db.delete(task).where(eq(task.id, id));
+  await dropAlarms("task", [id]);
   log.info("task removed", { taskId: id, userId: principal.userId });
+}
+
+/** The caller's own alarm on the task. */
+export async function getTaskAlarm(principal: Principal, id: string): Promise<Alarm> {
+  await getTask(principal, id);
+  return { minutesBefore: await alarmMinutesOf("task", id, principal.userId) };
+}
+
+/**
+ * Sets, changes or (null) removes the caller's own alarm on a task they see: a
+ * reminder that long before its due day ends. Others are unaffected.
+ */
+export async function setTaskAlarm(
+  principal: Principal,
+  id: string,
+  minutesBefore: Alarm["minutesBefore"],
+): Promise<Alarm> {
+  await getTask(principal, id);
+  await setAlarm("task", id, principal.userId, minutesBefore);
+  return { minutesBefore };
+}
+
+/**
+ * The member's ring on the task when it is later than `after`, for their
+ * alarm's object: before the due day ends, in the zone of their latest
+ * subscribed device. Null when they set no alarm, or the task is done, has no
+ * due day or is past; a task that is gone, or no longer theirs to see, loses
+ * the alarm. It acts for no one: an alarm rings on its own.
+ */
+export async function nextTaskRing(
+  taskId: string,
+  userId: string,
+  after: number,
+): Promise<AlarmRing | null> {
+  const minutes = await alarmMinutesOf("task", taskId, userId);
+  if (minutes === null) return null;
+  const row = await getDb().select().from(task).where(eq(task.id, taskId)).get();
+  const shares = row ? ((await sharesOf([taskId])).get(taskId) ?? []) : [];
+  if (!row || !(row.creatorId === userId || shares.some((s) => s.userId === userId))) {
+    await forgetAlarm("task", taskId, userId);
+    return null;
+  }
+  if (row.completedAt || !row.dueDate) return null;
+  const at = endOfDay(row.dueDate, (await timeZoneOf(userId)) ?? "UTC");
+  const ringAt = at - minutes * 60_000;
+  if (ringAt <= after) return null;
+  return {
+    ringAt,
+    at,
+    muted: false,
+    message: {
+      title: row.title,
+      body: "Due today",
+      url: "/tasks",
+      tag: `task:${row.id}`,
+    },
+  };
 }
 
 /** The task, when the caller created it or was given it. */

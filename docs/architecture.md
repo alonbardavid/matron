@@ -49,6 +49,24 @@ planner and the builder's agent turns have their own. `models/gateway.ts` reache
 household's stored provider key applies, and a `@cf/` slug is Workers AI through the AI binding.
 A Preview holds the token too, so its assistant takes the same route.
 
+## Reminders
+
+`apps/frontend/public/site.webmanifest` and `sw.js` make the SPA installable; the service
+worker handles no fetch, only `push` and `notificationclick`. `frontend/notifications` holds
+the install prompt, the device's subscription and the settings card. A subscription is a row
+in `push_subscription` (`backend/notifications/src/service.ts`), with the device's time zone.
+
+A member's alarm on an event or a task is a row in `alarm` (`backend/notifications/src/alarms.ts`):
+how many minutes before. Each has a Durable Object of its own, an Agents SDK agent
+(`alarm-object.ts`) holding one schedule: the next ring. A ring works out again what is due,
+pushes it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`) and schedules the one after. The feature a thing
+belongs to works out its rings (`nextEventRing` in `backend/calendar`, `nextTaskRing` in
+`backend/tasks`), decides who may set an alarm, and arms it again when the thing changes
+(`rearmAlarms`), so `backend/notifications` knows neither events nor tasks. The one class
+every alarm runs as, `AlarmObject` in `apps/backend/src/alarm-object.ts`, names each
+kind's rings.
+
 ## Building
 
 - `POST /api/arch/sessions` creates a session row; the chat is a WebSocket to the session's
