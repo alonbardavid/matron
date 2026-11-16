@@ -11,7 +11,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import dayjs from "dayjs";
+import { format, isSameDay } from "date-fns";
 import type { Calendar, CalendarEvent } from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
@@ -49,17 +49,15 @@ interface EventViewProps {
 
 /** When the event is, in words: one day, a span of days, or hours within a day. */
 export function describeWhen(allDay: boolean, startAt: number, endAt: number): string {
-  const start = dayjs(startAt);
-  const end = dayjs(endAt);
-  const sameDay = start.isSame(end, "day");
+  const sameDay = isSameDay(startAt, endAt);
   if (allDay) {
     return sameDay
-      ? start.format("dddd, MMMM D")
-      : `${start.format("MMM D")} – ${end.format("MMM D, YYYY")}`;
+      ? format(startAt, "EEEE, MMMM d")
+      : `${format(startAt, "MMM d")} – ${format(endAt, "MMM d, yyyy")}`;
   }
   return sameDay
-    ? `${start.format("dddd, MMMM D")} ⋅ ${start.format("HH:mm")} – ${end.format("HH:mm")}`
-    : `${start.format("MMM D, HH:mm")} – ${end.format("MMM D, HH:mm")}`;
+    ? `${format(startAt, "EEEE, MMMM d")} ⋅ ${format(startAt, "HH:mm")} – ${format(endAt, "HH:mm")}`
+    : `${format(startAt, "MMM d, HH:mm")} – ${format(endAt, "MMM d, HH:mm")}`;
 }
 
 /** One line of the view: an icon in the gutter, the content beside it. */

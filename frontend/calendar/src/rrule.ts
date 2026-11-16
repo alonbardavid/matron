@@ -1,4 +1,4 @@
-import dayjs from "dayjs";
+import { format } from "date-fns";
 import { RRule } from "rrule";
 
 /**
@@ -31,16 +31,16 @@ const UNTIL = /(?:^|;)UNTIL=(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?
 
 /** The draft for a start, before any rule: repeating on the start's own weekday or day. */
 export function defaultDraft(startAt: number): RepeatDraft {
-  const start = dayjs(startAt);
-  const nth = Math.ceil(start.date() / 7);
+  const start = new Date(startAt);
+  const nth = Math.ceil(start.getDate() / 7);
   return {
     freq: "NONE",
     interval: 1,
-    weekdays: [start.day()],
+    weekdays: [start.getDay()],
     monthMode: "day",
-    monthDays: [start.date()],
+    monthDays: [start.getDate()],
     nth: nth > 4 ? -1 : nth,
-    nthWeekday: start.day(),
+    nthWeekday: start.getDay(),
     ends: "never",
     until: null,
     count: 10,
@@ -106,11 +106,12 @@ export function parseRule(rule: string | null, startAt: number): RepeatDraft {
     out.ends = "on";
     // A UTC instant is the day it falls on here; a day is that day.
     out.until = hh
-      ? dayjs(
+      ? format(
           z
             ? Date.UTC(+y!, +m! - 1, +d!, +hh, +mm!, +ss!)
             : new Date(+y!, +m! - 1, +d!, +hh, +mm!, +ss!),
-        ).format("YYYY-MM-DD")
+          "yyyy-MM-dd",
+        )
       : `${y}-${m}-${d}`;
   } else if (parts.has("COUNT")) {
     out.ends = "after";

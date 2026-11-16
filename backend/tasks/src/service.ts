@@ -1,9 +1,10 @@
+import { tz } from "@date-fns/tz";
+import { addDays, parseISO } from "date-fns";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
-import { endOfDay } from "@backend/commons/time";
 import { getDb } from "@backend/db-models/db";
 import { task, taskShare } from "@backend/db-models/tasks";
 import { knownUserIds } from "@backend/household/users";
@@ -167,7 +168,9 @@ export async function nextTaskRing(
     return null;
   }
   if (row.completedAt || !row.dueDate) return null;
-  const at = endOfDay(row.dueDate, (await timeZoneOf(userId)) ?? "UTC");
+  // The due day ends at the next day's midnight, where the member is.
+  const zone = (await timeZoneOf(userId)) ?? "UTC";
+  const at = addDays(parseISO(row.dueDate, { in: tz(zone) }), 1).getTime();
   const ringAt = at - minutes * 60_000;
   if (ringAt <= after) return null;
   return {

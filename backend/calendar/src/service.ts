@@ -1,3 +1,5 @@
+import { TZDate } from "@date-fns/tz";
+import { format } from "date-fns";
 import { and, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
@@ -338,8 +340,8 @@ export async function nextEventRing(
       title: next.title,
       // An all-day event's day is the event's own; a time reads best in the member's zone.
       body: row.allDay
-        ? `All day, ${formatDay(next.startAt, row.timeZone)}`
-        : `Starts at ${formatTime(next.startAt, zone ?? row.timeZone)}`,
+        ? `All day, ${format(new TZDate(next.startAt, row.timeZone), "EEE, MMM d")}`
+        : `Starts at ${format(new TZDate(next.startAt, zone ?? row.timeZone), "HH:mm")}`,
       url: "/",
       tag: `event:${next.id}`,
     },
@@ -365,24 +367,6 @@ async function nextOccurrence(
     title: changed?.title ?? row.title,
     startAt: next.startAt,
   };
-}
-
-function formatTime(ms: number, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(ms);
-}
-
-function formatDay(ms: number, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  }).format(ms);
 }
 
 /** Shows an event shared with the caller in one of their Matron calendars, or (null) their calendar for shared events. */

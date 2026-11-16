@@ -13,7 +13,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { DateInput, DateTimePicker } from "@mantine/dates";
-import dayjs from "dayjs";
+import { parseISO, setHours } from "date-fns";
 import type {
   Calendar,
   CalendarEvent,
@@ -189,10 +189,10 @@ export function EventModal({
   const toggleAllDay = (allDay: boolean) => {
     setDraft((prev) => {
       const startAt = prev.allDay
-        ? dayjs(prev.start).hour(9).valueOf()
+        ? setHours(parseISO(prev.start), 9).getTime()
         : fromDateTimeString(prev.start);
       const endAt = prev.allDay
-        ? dayjs(prev.end).hour(10).valueOf()
+        ? setHours(parseISO(prev.end), 10).getTime()
         : fromDateTimeString(prev.end);
       return {
         ...prev,
@@ -248,7 +248,7 @@ export function EventModal({
   };
 
   const startForRule = draft.allDay
-    ? dayjs(draft.start).valueOf()
+    ? parseISO(draft.start).getTime()
     : fromDateTimeString(draft.start);
   const editable = !imported && !readOnly;
   // A Google event has only its sharing to change here, and that is its creator's.

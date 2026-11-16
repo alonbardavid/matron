@@ -1,4 +1,6 @@
 import { env, waitUntil } from "cloudflare:workers";
+import { TZDate, tz } from "@date-fns/tz";
+import { parseISO } from "date-fns";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
@@ -12,7 +14,6 @@ import {
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import { fromWallClock } from "@backend/commons/time";
 import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import {
   calendar,
@@ -735,10 +736,7 @@ export function dateList(line: string, timeZone: string): number[] {
       const [, y, mo, d, h, mi, se, z] = m;
       if (!h) return midnight(`${y}-${mo}-${d}`, timeZone);
       if (z) return Date.UTC(+y!, +mo! - 1, +d!, +h, +mi!, +se!);
-      return fromWallClock(
-        { year: +y!, month: +mo!, day: +d!, hour: +h, minute: +mi!, second: +se! },
-        zone,
-      );
+      return new TZDate(+y!, +mo! - 1, +d!, +h, +mi!, +se!, zone).getTime();
     })
     .filter(Number.isFinite);
 }
@@ -823,11 +821,7 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
 }
 
 function midnight(day: string, timeZone: string): number {
-  const [year, month, date] = day.split("-").map(Number);
-  return fromWallClock(
-    { year: year!, month: month!, day: date!, hour: 0, minute: 0, second: 0 },
-    timeZone,
-  );
+  return parseISO(day, { in: tz(timeZone) }).getTime();
 }
 
 /**

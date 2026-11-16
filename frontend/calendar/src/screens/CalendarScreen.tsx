@@ -18,7 +18,15 @@ import {
   type ScheduleEventData,
   type WeekViewProps,
 } from "@mantine/schedule";
-import dayjs from "dayjs";
+import {
+  addDays,
+  addHours,
+  format,
+  isSameMonth,
+  parseISO,
+  startOfHour,
+  startOfWeek,
+} from "date-fns";
 import type { Occurrence } from "@shared/contract/app/calendar";
 import type { Task } from "@shared/contract/app/tasks";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
@@ -66,14 +74,14 @@ function quarterSpan(startAt: number, endAt: number): { start: Date; end: Date }
 
 /** What the phone's toolbar calls the shown date: the day, the week's span or the month. */
 function dateLabel(date: string, view: View): string {
-  const day = dayjs(date);
-  if (view === "day") return day.format("ddd, MMM D");
+  const day = parseISO(date);
+  if (view === "day") return format(day, "EEE, MMM d");
   if (view === "week") {
-    const start = day.subtract((day.day() + 6) % 7, "day"); // the week starts on Monday
-    const end = start.add(6, "day");
-    return `${start.format("MMM D")} – ${end.format(end.month() === start.month() ? "D" : "MMM D")}`;
+    const start = startOfWeek(day, { weekStartsOn: 1 }); // the week starts on Monday
+    const end = addDays(start, 6);
+    return `${format(start, "MMM d")} – ${format(end, isSameMonth(end, start) ? "d" : "MMM d")}`;
   }
-  return day.format("MMMM YYYY");
+  return format(day, "MMMM yyyy");
 }
 
 interface Opening {
@@ -196,8 +204,8 @@ export function CalendarScreen() {
   const openNextHour = () =>
     openNew({
       allDay: false,
-      startAt: dayjs().add(1, "hour").startOf("hour").valueOf(),
-      endAt: dayjs().add(2, "hour").startOf("hour").valueOf(),
+      startAt: startOfHour(addHours(new Date(), 1)).getTime(),
+      endAt: startOfHour(addHours(new Date(), 2)).getTime(),
     });
 
   const save = async (values: EventSubmit) => {
