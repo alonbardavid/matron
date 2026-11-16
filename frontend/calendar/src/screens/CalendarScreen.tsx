@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Box,
@@ -43,6 +43,7 @@ import {
   toDayString,
 } from "../times";
 import { useTimeGrid } from "../timeGrid";
+import { enableTouchDrag } from "../touchDrag";
 import {
   useCalendars,
   useEvent,
@@ -161,6 +162,7 @@ export function CalendarScreen() {
   const taskActions = useTaskActions();
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const { viewportRef, maxHeight } = useTimeGrid();
+  useEffect(enableTouchDrag, []);
   const scrollAreaProps = { viewportRef, mah: maxHeight };
 
   // What this device's filters leave on the calendar.
