@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { alarmSchema } from "./notifications";
 import { dayString } from "./tasks";
 
 /**
@@ -19,6 +20,22 @@ export const rruleString = z
     "An RRULE such as FREQ=WEEKLY;BYDAY=MO",
   );
 
+/**
+ * What Google gave for a location picked from its suggestions. A location
+ * typed and not picked has none.
+ */
+export const locationMetadataSchema = z.object({
+  /** Google's place id. */
+  id: z.string().min(1).max(300),
+  name: z.string().max(500),
+  address: z.string().max(500),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  /** The place on Google Maps. */
+  mapsUrl: z.string().url().max(1000),
+});
+export type LocationMetadata = z.infer<typeof locationMetadataSchema>;
+
 /** One occurrence of a series cancelled or changed, keyed by when it was due. */
 export const occurrenceExceptionSchema = z.object({
   originalStartAt: z.number(),
@@ -26,6 +43,8 @@ export const occurrenceExceptionSchema = z.object({
   title: z.string().nullable(),
   description: z.string().nullable(),
   location: z.string().nullable(),
+  /** What Google gave for this occurrence's own location. */
+  locationMetadata: locationMetadataSchema.nullable(),
   startAt: z.number().nullable(),
   endAt: z.number().nullable(),
 });
@@ -82,86 +101,13 @@ export type Calendar = z.infer<typeof calendarSchema>;
 const calendarName = z.string().trim().min(1, "Give the calendar a name").max(80);
 
 /**
- * A label the household tags events with, such as "School" or "Medical",
- * shared by every member. An event shows its labels as coloured bars along
- * its side.
- */
-export const labelSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  color: z.string(),
-  creatorId: z.string(),
-});
-export type Label = z.infer<typeof labelSchema>;
-
-const labelName = z.string().trim().min(1, "Give the label a name").max(40);
-const labelIds = z.array(z.string()).max(20);
-
-/**
- * Something attached to an event: a file uploaded here (its `url` serves it)
- * or a link. Ones imported from Google are links with the source `google`,
- * changed there; those added here are removed by whoever may edit the event.
- */
-export const attachmentSchema = z.object({
-  id: z.string(),
-  kind: z.enum(["file", "link"]),
-  title: z.string(),
-  url: z.string(),
-  mimeType: z.string().nullable(),
-  source: calendarSourceSchema,
-  createdBy: z.string().nullable(),
-});
-export type Attachment = z.infer<typeof attachmentSchema>;
-
-/** What may be uploaded to an event: pictures, PDFs, plain text and office documents. */
-export const ATTACHMENT_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/heic",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-] as const;
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-export const MAX_ATTACHMENTS_PER_EVENT = 20;
-
-/**
  * What someone an event is shared with may do: see it; edit it (times,
- * details, repetition, single occurrences, labels, attachments); or manage it
- * too (who it is shared with and at what level, who attends, removing it).
+ * details, repetition, single occurrences); or manage it too (who it is
+ * shared with and at what level, who attends, removing it).
  */
 export const SHARE_PERMISSIONS = ["view", "edit", "manage"] as const;
 export const sharePermissionSchema = z.enum(SHARE_PERMISSIONS);
 export type SharePermission = z.infer<typeof sharePermissionSchema>;
-
-/** A guest's answer to an event: as in iCalendar, and Google Calendar. */
-export const EVENT_RESPONSES = [
-  "needs_action",
-  "accepted",
-  "tentative",
-  "declined",
-] as const;
-export const eventResponseSchema = z.enum(EVENT_RESPONSES);
-export type EventResponse = z.infer<typeof eventResponseSchema>;
-
-/** A guest of an imported event at its source, matched to a member by email where one is. */
-export const externalGuestSchema = z.object({
-  email: z.string(),
-  name: z.string().nullable(),
-  response: eventResponseSchema,
-  organizer: z.boolean(),
-  /** The household member with this email, if any. */
-  userId: z.string().nullable(),
-});
-export type ExternalGuest = z.infer<typeof externalGuestSchema>;
 
 /** An event as stored: a single one, or the series a recurrence generates. */
 export const calendarEventSchema = z.object({
@@ -170,7 +116,8 @@ export const calendarEventSchema = z.object({
   description: z.string(),
   /** Where it happens, as written; empty when not given. */
   location: z.string(),
-  attachments: z.array(attachmentSchema),
+  /** What Google gave for `location` when it was picked from its suggestions; null when it was typed. */
+  locationMetadata: locationMetadataSchema.nullable(),
   creatorId: z.string(),
   allDay: z.boolean(),
   /** Milliseconds since the epoch; an all-day event starts at midnight in `timeZone` and ends at the next. */
@@ -186,28 +133,22 @@ export const calendarEventSchema = z.object({
   sharedWith: z.array(z.string()),
   /** User ids attending; by default everyone the event is shared with, and the creator. */
   attendees: z.array(z.string()),
-  /** Each attendee's answer, by user id. */
-  replies: z.record(z.string(), eventResponseSchema),
   /** What each member it is shared with may do, by user id. */
   permissions: z.record(z.string(), sharePermissionSchema),
   /**
-   * What the caller may do with it: `edit` its details, occurrences, labels
-   * and attachments; `manage` who it is shared with and who attends, and remove it.
+   * What the caller may do with it: `edit` its details and occurrences;
+   * `manage` who it is shared with and who attends, and remove it.
    */
   can: z.object({ edit: z.boolean(), manage: z.boolean() }),
-  /** For an imported event: its guests at the source and their answers, read-only. */
-  externalGuests: z.array(externalGuestSchema),
   /** The creator's calendar it belongs to. */
   calendarId: z.string(),
   /** The calendar it shows in for the caller: theirs for an event shared with them, or the shared calendar it came through. */
   shownIn: z.string(),
   /** `read` when the caller sees it only through a calendar shared with them. */
   access: z.enum(["edit", "read"]),
-  /** Ids of the household labels on it, on every occurrence of a series. */
-  labelIds: z.array(z.string()),
   /** Whether the caller hid it from their own calendar. */
   hidden: z.boolean(),
-  /** The calendar's source. An imported event is changed there; in Matron only who it is shared with and its labels change. */
+  /** The calendar's source. An imported event is changed there; in Matron only who it is shared with changes. */
   source: calendarSourceSchema,
   /** An imported occurrence of an event that repeats at its source. */
   repeatsAtSource: z.boolean(),
@@ -230,6 +171,7 @@ export const occurrenceSchema = z.object({
   title: z.string(),
   /** Where this occurrence happens; empty when not given. */
   location: z.string(),
+  locationMetadata: locationMetadataSchema.nullable(),
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
@@ -242,12 +184,8 @@ export const occurrenceSchema = z.object({
   /** The caller's colour for that calendar. */
   color: z.string(),
   source: calendarSourceSchema,
-  /** Ids of the event's labels. */
-  labelIds: z.array(z.string()),
   /** Whether the caller hid the event; listed all the same, for the calendar to show or leave out. */
   hidden: z.boolean(),
-  /** The caller's own answer when they attend; null otherwise. */
-  response: eventResponseSchema.nullable(),
   /** Whether the caller may move or resize it: an event made in Matron they may change. */
   editable: z.boolean(),
 });
@@ -262,6 +200,8 @@ export const calendarEventCreateSchema = z.object({
   title,
   description: description.optional(),
   location: location.optional(),
+  /** What Google gave for `location`; goes with it, and is cleared by a `location` without it. */
+  locationMetadata: locationMetadataSchema.nullable().optional(),
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
@@ -273,8 +213,6 @@ export const calendarEventCreateSchema = z.object({
   attendees: userIds.optional(),
   /** What members it is shared with may do, by user id; edit for anyone not named. */
   permissions: z.record(z.string(), sharePermissionSchema).optional(),
-  /** Household labels to tag it with. */
-  labelIds: labelIds.optional(),
 });
 export type CalendarEventCreate = z.infer<typeof calendarEventCreateSchema>;
 
@@ -286,10 +224,29 @@ export const occurrenceUpdateSchema = z.object({
   title: title.optional(),
   description: description.optional(),
   location: location.optional(),
+  locationMetadata: locationMetadataSchema.nullable().optional(),
   startAt: z.number().optional(),
   endAt: z.number().optional(),
 });
 export type OccurrenceUpdate = z.infer<typeof occurrenceUpdateSchema>;
+
+/** A place Google suggests for what was typed as an event's location. */
+export const placeSuggestionSchema = z.object({
+  id: z.string(),
+  /** The place in full, which the location becomes when it is picked. */
+  text: z.string(),
+  /** Its name, and where it is: "Café Noir", "Ahad Ha'Am St 43, Tel Aviv". */
+  main: z.string(),
+  secondary: z.string(),
+});
+export type PlaceSuggestion = z.infer<typeof placeSuggestionSchema>;
+
+export const placeSuggestionsSchema = z.object({
+  /** Whether the household set up Google Places in App settings; without it nothing is suggested. */
+  available: z.boolean(),
+  places: z.array(placeSuggestionSchema),
+});
+export type PlaceSuggestions = z.infer<typeof placeSuggestionsSchema>;
 
 /** What a member allows when they link their Google account for the import: reading their calendars. */
 export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
@@ -385,32 +342,6 @@ export const calendarsContract = {
     .output(z.object({ ok: z.literal(true) })),
 };
 
-/** The household's labels: every member sees and uses them; whoever made one, or an owner, changes it. */
-export const labelsContract = {
-  list: oc
-    .route({ method: "GET", path: "/api/app/calendar/labels" })
-    .output(z.array(labelSchema)),
-  create: oc
-    .route({ method: "POST", path: "/api/app/calendar/labels" })
-    .input(z.object({ name: labelName, color: colorString }))
-    .output(labelSchema),
-  update: oc
-    .route({ method: "PUT", path: "/api/app/calendar/labels/{id}" })
-    .input(
-      z.object({
-        id: z.string(),
-        name: labelName.optional(),
-        color: colorString.optional(),
-      }),
-    )
-    .output(labelSchema),
-  /** Removes the label from the household and from every event it was on. */
-  remove: oc
-    .route({ method: "DELETE", path: "/api/app/calendar/labels/{id}" })
-    .input(z.object({ id: z.string() }))
-    .output(z.object({ ok: z.literal(true) })),
-};
-
 export const calendarContract = {
   /** What is on the calendar between two instants, series expanded into occurrences. */
   occurrences: oc
@@ -459,51 +390,6 @@ export const calendarContract = {
     .route({ method: "DELETE", path: "/api/app/calendar/events/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
-  /** Uploads a file to the event (every occurrence). */
-  attachFile: oc
-    .route({ method: "POST", path: "/api/app/calendar/events/{id}/attachments/files" })
-    .input(z.object({ id: z.string(), file: z.file() }))
-    .output(calendarEventSchema),
-  /** Attaches a link to the event (every occurrence). */
-  attachLink: oc
-    .route({ method: "POST", path: "/api/app/calendar/events/{id}/attachments/links" })
-    .input(
-      z.object({
-        id: z.string(),
-        url: z
-          .string()
-          .trim()
-          .max(2000)
-          .url("A web address")
-          .refine(
-            (value) => /^https?:\/\//i.test(value),
-            "A web address (http or https)",
-          ),
-        title: z.string().trim().max(200).optional(),
-      }),
-    )
-    .output(calendarEventSchema),
-  /** Removes something attached here; imported attachments change at their source. */
-  detach: oc
-    .route({
-      method: "DELETE",
-      path: "/api/app/calendar/events/{id}/attachments/{attachmentId}",
-    })
-    .input(z.object({ id: z.string(), attachmentId: z.string() }))
-    .output(calendarEventSchema),
-  /**
-   * The caller answers an event they were given or made: yes, maybe or no,
-   * for every occurrence. Yes and maybe make them an attendee.
-   */
-  reply: oc
-    .route({ method: "PUT", path: "/api/app/calendar/events/{id}/reply" })
-    .input(
-      z.object({
-        id: z.string(),
-        response: z.enum(["accepted", "tentative", "declined"]),
-      }),
-    )
-    .output(calendarEventSchema),
   /** The caller stops being given an event someone shared with them. */
   leave: oc
     .route({ method: "DELETE", path: "/api/app/calendar/events/{id}/share" })
@@ -519,7 +405,36 @@ export const calendarContract = {
     .route({ method: "PUT", path: "/api/app/calendar/events/{id}/placement" })
     .input(z.object({ id: z.string(), calendarId: z.string().nullable() }))
     .output(calendarEventSchema),
+  /** The caller's own alarm on the event: how long before each occurrence starts they are reminded. */
+  alarm: oc
+    .route({ method: "GET", path: "/api/app/calendar/events/{id}/alarm" })
+    .input(z.object({ id: z.string() }))
+    .output(alarmSchema),
+  /** Sets, changes or (null) removes the caller's own alarm on the event. */
+  setAlarm: oc
+    .route({ method: "PUT", path: "/api/app/calendar/events/{id}/alarm" })
+    .input(alarmSchema.extend({ id: z.string() }))
+    .output(alarmSchema),
   calendars: calendarsContract,
-  labels: labelsContract,
+  /**
+   * Places for a location being typed. `session` is the same for one dialog's
+   * typing, so Google bills it as one search.
+   */
+  places: oc
+    .route({ method: "GET", path: "/api/app/calendar/places" })
+    .input(
+      z.object({
+        query: z.string().trim().min(1).max(200),
+        session: z.string().min(1).max(64),
+      }),
+    )
+    .output(placeSuggestionsSchema),
+  /** What Google gives for the place picked from the suggestions; it ends the dialog's search. */
+  placeDetails: oc
+    .route({ method: "GET", path: "/api/app/calendar/places/{id}" })
+    .input(
+      z.object({ id: z.string().min(1).max(300), session: z.string().min(1).max(64) }),
+    )
+    .output(locationMetadataSchema),
   google: googleCalendarContract,
 };

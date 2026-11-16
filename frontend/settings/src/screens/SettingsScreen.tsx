@@ -13,7 +13,6 @@ import { useMe } from "@frontend/auth/useMe";
 import { AvatarEditor } from "@frontend/auth/widgets/AvatarEditor";
 import { CalendarsCard } from "@frontend/calendar/widgets/CalendarsCard";
 import { GoogleCalendarCard } from "@frontend/calendar/widgets/GoogleCalendarCard";
-import { LabelsCard } from "@frontend/calendar/widgets/LabelsCard";
 import { Card } from "@frontend/ds/Card";
 import { useForm } from "@frontend/ds/forms/context";
 import { FormGeneralErrors } from "@frontend/ds/forms/FormGeneralErrors";
@@ -21,6 +20,7 @@ import { FormPasswordInput, FormTextInput } from "@frontend/ds/forms/FormInputs"
 import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
 import { StandardForm } from "@frontend/ds/forms/StandardForm";
 import { Page } from "@frontend/ds/Page";
+import { RemindersCard } from "@frontend/notifications/widgets/RemindersCard";
 
 const profileSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(80),
@@ -45,7 +45,7 @@ const SCHEMES = [
   { value: "auto", label: "System" },
 ];
 
-/** Your own account: name, password, calendars and appearance. The email is fixed. */
+/** Your own account: name, password, calendars, appearance and reminders. The email is fixed. */
 export function SettingsScreen() {
   const { me } = useMe();
   const queryClient = useQueryClient();
@@ -117,7 +117,6 @@ export function SettingsScreen() {
         </Stack>
       </Card>
       <CalendarsCard />
-      <LabelsCard />
       <GoogleCalendarCard />
       <Card>
         <Stack gap="sm">
@@ -130,6 +129,7 @@ export function SettingsScreen() {
           />
         </Stack>
       </Card>
+      <RemindersCard />
     </Page>
   );
 }

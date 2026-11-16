@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Box,
@@ -18,8 +18,17 @@ import {
   type ScheduleEventData,
   type WeekViewProps,
 } from "@mantine/schedule";
-import dayjs from "dayjs";
-import type { Label, Occurrence } from "@shared/contract/app/calendar";
+import {
+  addDays,
+  addHours,
+  format,
+  isSameMonth,
+  parseISO,
+  startOfDay,
+  startOfHour,
+  startOfWeek,
+} from "date-fns";
+import type { Occurrence } from "@shared/contract/app/calendar";
 import type { Task } from "@shared/contract/app/tasks";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
 import { useTaskActions, useTasks } from "@frontend/tasks/useTasks";
@@ -33,24 +42,24 @@ import {
   localTimeZone,
   toDayString,
 } from "../times";
+import { useTimeGrid } from "../timeGrid";
+import { enableTouchDrag } from "../touchDrag";
 import {
   useCalendars,
   useEvent,
   useEventActions,
-  useLabels,
   useMoveEvent,
   useOccurrences,
 } from "../useCalendar";
+import { useCalendarDisplay, type View } from "../display";
+import { CalendarItem } from "../widgets/CalendarItem";
 import { FiltersButton } from "../widgets/FiltersButton";
-import { InlineLabelBars, LabelledEvent, labelsOf } from "../widgets/LabelBars";
 import {
   EventModal,
   type EventSubmit,
   type OpenedOccurrence,
 } from "../widgets/EventModal";
 import classes from "./CalendarScreen.module.css";
-
-type View = "day" | "week" | "month" | "year";
 
 const VIEW_OPTIONS = [
   { value: "day", label: "Day" },
@@ -73,14 +82,14 @@ function quarterSpan(startAt: number, endAt: number): { start: Date; end: Date }
 
 /** What the phone's toolbar calls the shown date: the day, the week's span or the month. */
 function dateLabel(date: string, view: View): string {
-  const day = dayjs(date);
-  if (view === "day") return day.format("ddd, MMM D");
+  const day = parseISO(date);
+  if (view === "day") return format(day, "EEE, MMM d");
   if (view === "week") {
-    const start = day.subtract((day.day() + 6) % 7, "day"); // the week starts on Monday
-    const end = start.add(6, "day");
-    return `${start.format("MMM D")} – ${end.format(end.month() === start.month() ? "D" : "MMM D")}`;
+    const start = startOfWeek(day, { weekStartsOn: 1 }); // the week starts on Monday
+    const end = addDays(start, 6);
+    return `${format(start, "MMM d")} – ${format(end, isSameMonth(end, start) ? "d" : "MMM d")}`;
   }
-  return day.format("MMMM YYYY");
+  return format(day, "MMMM yyyy");
 }
 
 interface Opening {
@@ -95,11 +104,8 @@ type ItemPayload =
       kind: "event";
       eventId: string;
       occurrence: OpenedOccurrence | null;
-      labels: Label[];
       hidden: boolean;
       location: string;
-      /** The caller said they are not going: drawn crossed out. */
-      declined: boolean;
       /** Whether the caller may drag it to move or resize it. */
       editable: boolean;
       allDay: boolean;
@@ -113,13 +119,13 @@ function payloadOf(item: ScheduleEventData): ItemPayload | undefined {
 }
 
 /**
- * An item drawn with its labels as bars down its side, in every view: a hidden
- * event faded, a completed task crossed out.
+ * An item as the schedule draws it, in every view: a hidden event faded, a
+ * completed task crossed out.
  */
-const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
+const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
   const payload = payloadOf(item);
   return (
-    <LabelledEvent
+    <CalendarItem
       {...props}
       // The tooltip names the place too.
       title={
@@ -127,12 +133,8 @@ const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, pr
           ? `${item.title} · ${payload.location}`
           : props.title
       }
-      labels={payload?.kind === "event" ? payload.labels : []}
       muted={payload?.kind === "event" && payload.hidden}
-      struck={
-        (payload?.kind === "task" && payload.task.completedAt !== null) ||
-        (payload?.kind === "event" && payload.declined)
-      }
+      struck={payload?.kind === "task" && payload.task.completedAt !== null}
     />
   );
 };
@@ -140,10 +142,13 @@ const renderLabelledEvent: NonNullable<WeekViewProps["renderEvent"]> = (item, pr
 /** Day, week and month views of the household's calendar. */
 export function CalendarScreen() {
   const narrow = useMediaQuery("(max-width: 48em)");
-  const [date, setDate] = useState(() => toDayString(Date.now()));
-  // A phone starts on the day, a wider screen on the week.
-  const [view, setView] = useState<View | null>(null);
-  const shownView: View = view ?? (narrow ? "day" : "week");
+  // Until a view is chosen, a phone starts on the day, a wider screen on the week.
+  const {
+    view: shownView,
+    setView,
+    date,
+    setDate,
+  } = useCalendarDisplay(narrow ? "day" : "week");
   const window = useMemo(() => loadWindow(date), [date]);
   const occurrences = useOccurrences(window.from, window.to);
   const [opening, setOpening] = useState<Opening | null>(null);
@@ -158,26 +163,22 @@ export function CalendarScreen() {
     editOccurrence,
     cancelOccurrence,
     hide,
-    attachFile,
-    attachLink,
-    detach,
-    reply,
     leave,
   } = useEventActions();
   const calendars = useCalendars();
-  const labels = useLabels();
   const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
   const tasks = useTasks();
   const taskActions = useTaskActions();
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const { viewportRef, maxHeight } = useTimeGrid();
+  useEffect(enableTouchDrag, []);
+  const scrollAreaProps = { viewportRef, mah: maxHeight };
 
   // What this device's filters leave on the calendar.
   const shown = (occurrences.data ?? []).filter(
     (item) =>
       (filters.showHidden || !item.hidden) &&
-      !filters.hiddenCalendars.includes(item.calendarId) &&
-      (filters.labels.length === 0 ||
-        item.labelIds.some((id) => filters.labels.includes(id))),
+      !filters.hiddenCalendars.includes(item.calendarId),
   );
   // The day and the week draw a block over whole quarters of an hour.
   const timeGrid = shownView === "day" || shownView === "week";
@@ -196,10 +197,8 @@ export function CalendarScreen() {
     payload: {
       kind: "event",
       eventId: item.eventId,
-      labels: labelsOf(item.labelIds, labels.data ?? []),
       hidden: item.hidden,
       location: item.location,
-      declined: item.response === "declined",
       editable: item.editable,
       allDay: item.allDay,
       startAt: item.startAt,
@@ -245,11 +244,11 @@ export function CalendarScreen() {
   const openNextHour = () =>
     openNew({
       allDay: false,
-      startAt: dayjs().add(1, "hour").startOf("hour").valueOf(),
-      endAt: dayjs().add(2, "hour").startOf("hour").valueOf(),
+      startAt: startOfHour(addHours(new Date(), 1)).getTime(),
+      endAt: startOfHour(addHours(new Date(), 2)).getTime(),
     });
 
-  const save = async ({ pendingFiles, pendingLinks, ...values }: EventSubmit) => {
+  const save = async (values: EventSubmit) => {
     if (opening?.eventId && event.data?.source === "google") {
       // An imported event is Google's; only who it is shared with is Matron's.
       await update.mutateAsync({
@@ -257,20 +256,12 @@ export function CalendarScreen() {
         sharedWith: values.sharedWith,
         attendees: values.attendees,
         permissions: values.permissions,
-        labelIds: values.labelIds,
       });
       return;
     }
     const input = { ...values, timeZone: localTimeZone() };
-    if (opening?.eventId) {
-      await update.mutateAsync({ id: opening.eventId, ...input });
-      return;
-    }
-    const made = await create.mutateAsync(input);
-    // What was attached before the event existed goes on now.
-    for (const file of pendingFiles) await attachFile.mutateAsync({ id: made.id, file });
-    for (const link of pendingLinks)
-      await attachLink.mutateAsync({ id: made.id, url: link.url, title: link.title });
+    if (opening?.eventId) await update.mutateAsync({ id: opening.eventId, ...input });
+    else await create.mutateAsync(input);
   };
 
   const moveEvent = useMoveEvent(window.from, window.to);
@@ -308,7 +299,7 @@ export function CalendarScreen() {
     let startAt: number;
     let endAt: number;
     if (payload.allDay) {
-      startAt = dayjs(newStart).startOf("day").valueOf();
+      startAt = startOfDay(parseISO(newStart)).getTime();
       endAt = startAt + (payload.endAt - payload.startAt);
     } else if (kind === "move") {
       startAt = payload.startAt + startShift;
@@ -344,7 +335,6 @@ export function CalendarScreen() {
       onChange={setFilters}
       onReset={resetFilters}
       calendars={calendars.data ?? []}
-      labels={labels.data ?? []}
     />
   );
 
@@ -358,6 +348,8 @@ export function CalendarScreen() {
             onChange={setPickingDate}
             position="bottom-start"
             shadow="md"
+            trapFocus
+            returnFocus
           >
             <Popover.Target>
               <UnstyledButton
@@ -431,9 +423,6 @@ export function CalendarScreen() {
                 }}
               >
                 {children}
-                <InlineLabelBars
-                  labels={payload?.kind === "event" ? payload.labels : []}
-                />
               </UnstyledButton>
             );
           }}
@@ -481,25 +470,23 @@ export function CalendarScreen() {
           // Each view takes its own class names; the Schedule passes none down.
           // The phone's toolbar above stands in for each view's own header.
           dayViewProps={{
-            startTime: "06:00",
-            endTime: "23:00",
+            scrollAreaProps,
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
-            renderEvent: renderLabelledEvent,
+            renderEvent: renderItem,
           }}
           weekViewProps={{
-            renderEvent: renderLabelledEvent,
+            renderEvent: renderItem,
             classNames: classes,
-            startTime: "06:00",
-            endTime: "23:00",
+            scrollAreaProps,
             withWeekNumber: false,
             highlightToday: true,
             withHeader: !narrow,
             // The bubble with the time would cover a phone's narrow label column.
             withCurrentTimeBubble: !narrow,
           }}
-          monthViewProps={{ withHeader: !narrow, renderEvent: renderLabelledEvent }}
+          monthViewProps={{ withHeader: !narrow, renderEvent: renderItem }}
         />
       )}
       <EventModal
@@ -553,43 +540,10 @@ export function CalendarScreen() {
               }
             : undefined
         }
-        onAttachFiles={
-          opening?.eventId
-            ? async (files) => {
-                for (const file of files)
-                  await attachFile.mutateAsync({ id: opening.eventId!, file });
-              }
-            : undefined
-        }
-        onAttachLink={
-          opening?.eventId
-            ? async (link) => {
-                await attachLink.mutateAsync({
-                  id: opening.eventId!,
-                  url: link.url,
-                  title: link.title,
-                });
-              }
-            : undefined
-        }
-        onDetach={
-          opening?.eventId
-            ? async (attachmentId) => {
-                await detach.mutateAsync({ id: opening.eventId!, attachmentId });
-              }
-            : undefined
-        }
         onLeave={
           opening?.eventId
             ? async () => {
                 await leave.mutateAsync({ id: opening.eventId! });
-              }
-            : undefined
-        }
-        onReply={
-          opening?.eventId
-            ? async (response) => {
-                await reply.mutateAsync({ id: opening.eventId!, response });
               }
             : undefined
         }

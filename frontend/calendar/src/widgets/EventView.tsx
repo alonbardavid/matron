@@ -3,46 +3,34 @@ import {
   ActionIcon,
   Alert,
   Anchor,
-  Badge,
   Box,
   Button,
-  ColorSwatch,
-  Divider,
   Group,
   Select,
   Stack,
   Text,
   Title,
 } from "@mantine/core";
-import dayjs from "dayjs";
-import type {
-  Calendar,
-  CalendarEvent,
-  EventResponse,
-} from "@shared/contract/app/calendar";
+import { format, isSameDay } from "date-fns";
+import type { Calendar, CalendarEvent } from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { useMe } from "@frontend/auth/useMe";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import {
+  IconBell,
   IconCalendar,
   IconEyeOff,
-  IconFile,
-  IconLink,
   IconMapPin,
-  IconPaperclip,
   IconNotes,
   IconPencil,
   IconRepeat,
-  IconTag,
   IconUsers,
   IconX,
 } from "@frontend/ds/icons";
 import { isLink, mapsUrl } from "../places";
 import { describeRule } from "../rrule";
-import { ExternalGuestsList, ReplyControl, ResponseBadge, summary } from "./GuestReplies";
-import { useLabels } from "../useCalendar";
-import { labelsOf } from "./LabelBars";
+import { EventAlarm } from "./EventAlarm";
 
 interface EventViewProps {
   event: CalendarEvent;
@@ -58,11 +46,6 @@ interface EventViewProps {
   onPlace?: (calendarId: string) => void;
   /** Absent when nothing about the event is the caller's to change. */
   onEdit?: () => void;
-  /** The caller's own answer, when theirs to give: going, maybe or not. */
-  reply?: {
-    value: EventResponse | null;
-    onChange: (response: Exclude<EventResponse, "needs_action">) => void;
-  };
   /** For an event someone shared with the caller: stop having it. */
   onLeave?: () => Promise<void>;
   /** Hides the event from the caller's own calendar, or shows it again. */
@@ -72,17 +55,15 @@ interface EventViewProps {
 
 /** When the event is, in words: one day, a span of days, or hours within a day. */
 export function describeWhen(allDay: boolean, startAt: number, endAt: number): string {
-  const start = dayjs(startAt);
-  const end = dayjs(endAt);
-  const sameDay = start.isSame(end, "day");
+  const sameDay = isSameDay(startAt, endAt);
   if (allDay) {
     return sameDay
-      ? start.format("dddd, MMMM D")
-      : `${start.format("MMM D")} – ${end.format("MMM D, YYYY")}`;
+      ? format(startAt, "EEEE, MMMM d")
+      : `${format(startAt, "MMM d")} – ${format(endAt, "MMM d, yyyy")}`;
   }
   return sameDay
-    ? `${start.format("dddd, MMMM D")} ⋅ ${start.format("HH:mm")} – ${end.format("HH:mm")}`
-    : `${start.format("MMM D, HH:mm")} – ${end.format("MMM D, HH:mm")}`;
+    ? `${format(startAt, "EEEE, MMMM d")} ⋅ ${format(startAt, "HH:mm")} – ${format(endAt, "HH:mm")}`
+    : `${format(startAt, "MMM d, HH:mm")} – ${format(endAt, "MMM d, HH:mm")}`;
 }
 
 /** One line of the view: an icon in the gutter, the content beside it. */
@@ -108,14 +89,12 @@ export function EventView({
   placeIn,
   onPlace,
   onEdit,
-  reply,
   onLeave,
   onHide,
   onClose,
 }: EventViewProps) {
   const { nameOf, avatarUrlOf } = useHouseholdMembers();
   const { me } = useMe();
-  const labels = labelsOf(event.labelIds, useLabels().data ?? []);
   const repeats = event.rrule
     ? describeRule(event.rrule)
     : event.repeatsAtSource
@@ -193,32 +172,13 @@ export function EventView({
         </Title>
         <Text size="sm">{describeWhen(event.allDay, startAt, endAt)}</Text>
       </Row>
-      {labels.length > 0 && (
-        <Row icon={<IconTag size={18} />}>
-          <Group gap={6}>
-            {labels.map((label) => (
-              <Badge
-                key={label.id}
-                variant="light"
-                color={label.color}
-                leftSection={
-                  <ColorSwatch color={label.color} size={8} withShadow={false} />
-                }
-                styles={{ root: { textTransform: "none" } }}
-              >
-                {label.name}
-              </Badge>
-            ))}
-          </Group>
-        </Row>
-      )}
       {event.location && (
         <Row icon={<IconMapPin size={18} />}>
           <Text size="sm" style={{ overflowWrap: "anywhere" }}>
             {event.location}
           </Text>
           <Anchor
-            href={mapsUrl(event.location)}
+            href={mapsUrl(event.location, event.locationMetadata)}
             target="_blank"
             rel="noopener noreferrer"
             size="xs"
@@ -239,59 +199,13 @@ export function EventView({
           </Text>
         </Row>
       )}
-      {event.attachments.length > 0 && (
-        <Row icon={<IconPaperclip size={18} />}>
-          <Stack gap={4}>
-            {event.attachments.map((attachment) => (
-              <Group key={attachment.id} gap="xs" wrap="nowrap">
-                {attachment.kind === "file" ? (
-                  <IconFile size={14} />
-                ) : (
-                  <IconLink size={14} />
-                )}
-                <Anchor
-                  href={attachment.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="sm"
-                  truncate
-                  style={{ minWidth: 0 }}
-                >
-                  {attachment.title}
-                </Anchor>
-                {attachment.source === "google" && (
-                  <Badge variant="light" color="gray" size="xs">
-                    Google
-                  </Badge>
-                )}
-              </Group>
-            ))}
-          </Stack>
-        </Row>
-      )}
       {(event.attendees.length > 0 || alsoSharedWith.length > 0) && (
         <Row icon={<IconUsers size={18} />}>
           <Stack gap={6}>
-            {event.attendees.length > 0 && (
-              <Text size="xs" c="dimmed">
-                {summary(
-                  event.attendees.map((id) => event.replies[id] ?? "needs_action"),
-                )}
-              </Text>
-            )}
             {event.attendees.map((id) => (
-              <Group
-                key={id}
-                gap="xs"
-                wrap="nowrap"
-                role="listitem"
-                aria-label={nameOf(id)}
-              >
+              <Group key={id} gap="xs" wrap="nowrap">
                 <UserAvatar size="sm" name={nameOf(id)} avatarUrl={avatarUrlOf(id)} />
-                <Text size="sm" style={{ flex: 1 }} truncate>
-                  {nameOf(id)}
-                </Text>
-                <ResponseBadge response={event.replies[id] ?? "needs_action"} />
+                <Text size="sm">{nameOf(id)}</Text>
               </Group>
             ))}
             {alsoSharedWith.length > 0 && (
@@ -302,11 +216,9 @@ export function EventView({
           </Stack>
         </Row>
       )}
-      {event.externalGuests.length > 0 && (
-        <Row icon={<IconUsers size={18} />}>
-          <ExternalGuestsList guests={event.externalGuests} />
-        </Row>
-      )}
+      <Row icon={<IconBell size={18} />}>
+        <EventAlarm eventId={event.id} />
+      </Row>
       <Row icon={<IconCalendar size={18} />}>
         <Text size="sm">{calendar?.name ?? "Calendar"}</Text>
         <Text size="xs" c="dimmed">
@@ -329,12 +241,6 @@ export function EventView({
           />
         )}
       </Row>
-      {reply && (
-        <>
-          <Divider />
-          <ReplyControl value={reply.value} onChange={reply.onChange} />
-        </>
-      )}
       {onLeave && (
         <Group justify="flex-end">
           <ConfirmButton

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Button, Group, Text } from "@mantine/core";
 import type { Branch } from "@shared/contract/arch/branches";
+import { useNavigate } from "react-router-dom";
+import { withBranch } from "@frontend/api/branch";
 import { useMe } from "@frontend/auth/useMe";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { useBranchActions, type OnOutOfDate } from "../useBranchActions";
@@ -29,14 +31,41 @@ function BranchMeta({ branch }: { branch: Branch }) {
   );
 }
 
+/** Merge, or Update when main moved since the branch took it in. */
+export function MergeButton({
+  branch,
+  onOutOfDate,
+}: {
+  branch: Branch;
+  onOutOfDate?: OnOutOfDate;
+}) {
+  const { merge, outOfDate, requestMainPull } = useBranchActions(branch, onOutOfDate);
+  return outOfDate ? (
+    <Button size="xs" color="yellow" onClick={requestMainPull}>
+      Update
+    </Button>
+  ) : (
+    <Button
+      size="xs"
+      color="sage"
+      disabled={branch.status !== "ready"}
+      loading={merge.isPending}
+      onClick={() => merge.mutate()}
+    >
+      {branch.status === "merging" ? "Merging" : "Merge"}
+    </Button>
+  );
+}
+
 /**
  * What can be done with the branch: chat with its builder, try it, abandon it,
- * and for owners merge it or update it with main. An archived branch keeps only its chat.
+ * review it once it is ready, and for owners merge it or update it with main. An archived branch
+ * keeps only its chat.
  */
 function BranchActions({ branch, current, onOutOfDate, onChat }: BranchRowProps) {
-  const { me, can, isOwner } = useMe();
-  const { merge, switching, outOfDate, requestMainPull, abandonAndLeave } =
-    useBranchActions(branch, onOutOfDate);
+  const { me, can, isOwner, canReview } = useMe();
+  const navigate = useNavigate();
+  const { switching, abandonAndLeave } = useBranchActions(branch, onOutOfDate);
   const isCurrent = branch.id === current;
   const archived = branch.archivedAt !== null;
   const mine = me !== null && branch.userId === me.id;
@@ -86,23 +115,18 @@ function BranchActions({ branch, current, onOutOfDate, onChat }: BranchRowProps)
           Abandon
         </ConfirmButton>
       )}
-      {!archived &&
-        can("merge") &&
-        (outOfDate ? (
-          <Button size="xs" color="yellow" onClick={requestMainPull}>
-            Update
-          </Button>
-        ) : (
-          <Button
-            size="xs"
-            color="sage"
-            disabled={branch.status !== "ready"}
-            loading={merge.isPending}
-            onClick={() => merge.mutate()}
-          >
-            {branch.status === "merging" ? "Merging" : "Merge"}
-          </Button>
-        ))}
+      {!archived && canReview && branch.status === "ready" && (
+        <Button
+          size="xs"
+          variant="default"
+          onClick={() => navigate(withBranch(`/branches/${branch.id}/review`))}
+        >
+          Review
+        </Button>
+      )}
+      {!archived && can("merge") && (
+        <MergeButton branch={branch} onOutOfDate={onOutOfDate} />
+      )}
     </>
   );
 }

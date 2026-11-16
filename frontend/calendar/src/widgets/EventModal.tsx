@@ -14,28 +14,22 @@ import {
   TextInput,
 } from "@mantine/core";
 import { DateInput, DateTimePicker } from "@mantine/dates";
-import dayjs from "dayjs";
+import { parseISO, setHours } from "date-fns";
 import type {
   Calendar,
   CalendarEvent,
-  EventResponse,
   OccurrenceUpdate,
+  LocationMetadata,
   SharePermission,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
+import { Form } from "@frontend/ds/forms/Form";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { EventView } from "./EventView";
-import { IconMapPin } from "@frontend/ds/icons";
 import { isLink, mapsUrl } from "../places";
-import {
-  AttachmentsField,
-  attachmentProblem,
-  type AttachmentItem,
-  type LinkDraft,
-} from "./AttachmentsField";
-import { LabelPicker } from "./LabelPicker";
+import { LocationInput } from "./LocationInput";
 import { SharePermissions } from "./SharePermissions";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
@@ -53,8 +47,9 @@ export interface EventDraft {
   attendees: string[];
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
-  labelIds: string[];
   location: string;
+  /** What Google gave for the location when it was picked from its suggestions; null when typed. */
+  locationMetadata: LocationMetadata | null;
   permissions: Record<string, SharePermission>;
 }
 
@@ -62,6 +57,7 @@ export interface EventSubmit {
   title: string;
   description: string;
   location: string;
+  locationMetadata: LocationMetadata | null;
   allDay: boolean;
   startAt: number;
   endAt: number;
@@ -70,12 +66,8 @@ export interface EventSubmit {
   sharedWith?: string[];
   attendees?: string[];
   calendarId?: string;
-  labelIds: string[];
   /** What each member it is shared with may do; sent only by whoever manages it. */
   permissions?: Record<string, SharePermission>;
-  /** For a new event: files and links to attach once it is saved. */
-  pendingFiles: File[];
-  pendingLinks: LinkDraft[];
 }
 
 /** The occurrence of a series that was opened. */
@@ -110,12 +102,6 @@ interface EventModalProps {
   onPlace?: (calendarId: string) => Promise<void>;
   /** Hides the event from the caller's own calendar, or shows it again. */
   onHide?: (hidden: boolean) => Promise<void>;
-  /** For an existing event: attach at once, or remove one attached here. */
-  onAttachFiles?: (files: File[]) => Promise<void>;
-  onAttachLink?: (link: LinkDraft) => Promise<void>;
-  onDetach?: (attachmentId: string) => Promise<void>;
-  /** The caller's own answer: going, maybe or not. */
-  onReply?: (response: Exclude<EventResponse, "needs_action">) => Promise<void>;
   /** Stops the event someone shared with the caller being theirs. */
   onLeave?: () => Promise<void>;
 }
@@ -143,6 +129,10 @@ function draftOf(
     title: occurrence?.title ?? event?.title ?? "",
     description: own?.description ?? event?.description ?? "",
     location: own?.location ?? event?.location ?? "",
+    locationMetadata:
+      own && own.location !== null
+        ? own.locationMetadata
+        : (event?.locationMetadata ?? null),
     allDay,
     start: allDay ? toDayString(startAt) : toDateTimeString(startAt),
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
@@ -150,7 +140,6 @@ function draftOf(
     sharedWith: event?.sharedWith ?? [],
     attendees: event?.attendees ?? [],
     calendarId: event?.calendarId ?? null,
-    labelIds: event?.labelIds ?? [],
     permissions: event?.permissions ?? {},
   };
 }
@@ -171,10 +160,6 @@ export function EventModal({
   onEditOccurrence,
   onCancelOccurrence,
   onHide,
-  onAttachFiles,
-  onAttachLink,
-  onDetach,
-  onReply,
   onLeave,
 }: EventModalProps) {
   const { me } = useMe();
@@ -183,8 +168,6 @@ export function EventModal({
   const [draft, setDraft] = useState<EventDraft>(() => draftOf(event, initial, null));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // A new event's attachments wait for it to be saved.
-  const [pending, setPending] = useState<AttachmentItem[]>([]);
   // An occurrence of a series opens on itself; anything else on the whole event.
   const series = Boolean(event?.rrule && occurrence);
   useEffect(() => {
@@ -193,7 +176,6 @@ export function EventModal({
       setScope(start);
       setDraft(draftOf(event, initial, start === "one" ? occurrence : null));
       setError(null);
-      setPending([]);
     }
   }, [opened, loading, event, initial, occurrence]);
   const eventId = event?.id;
@@ -222,15 +204,6 @@ export function EventModal({
     event.creatorId !== me?.id &&
     event.sharedWith.includes(me?.id ?? "");
   const shownCalendar = event ? calendars.find((c) => c.id === event.shownIn) : undefined;
-  // Whoever made it or was given it answers it; an event imported to your own
-  // calendar is answered at its source.
-  const iMadeIt = !!event && event.creatorId === me?.id;
-  const canReply =
-    !!event &&
-    !readOnly &&
-    (event.sharedWith.includes(me?.id ?? "") || (iMadeIt && !imported));
-  const myResponse =
-    event && me ? (event.replies[me.id] ?? (iMadeIt ? "accepted" : null)) : null;
   const writable = calendars.filter((c) => c.access === "owner" && c.source === "matron");
   const defaultCalendar = writable.find((c) => c.isDefault) ?? writable[0];
   // Moving between calendars is the creator's, among their own Matron calendars.
@@ -242,10 +215,10 @@ export function EventModal({
   const toggleAllDay = (allDay: boolean) => {
     setDraft((prev) => {
       const startAt = prev.allDay
-        ? dayjs(prev.start).hour(9).valueOf()
+        ? setHours(parseISO(prev.start), 9).getTime()
         : fromDateTimeString(prev.start);
       const endAt = prev.allDay
-        ? dayjs(prev.end).hour(10).valueOf()
+        ? setHours(parseISO(prev.end), 10).getTime()
         : fromDateTimeString(prev.end);
       return {
         ...prev,
@@ -279,6 +252,7 @@ export function EventModal({
           title: draft.title.trim(),
           description: draft.description.trim(),
           location: draft.location.trim(),
+          locationMetadata: draft.locationMetadata,
           ...span,
         });
         onClose();
@@ -288,6 +262,7 @@ export function EventModal({
         title: draft.title.trim(),
         description: draft.description.trim(),
         location: draft.location.trim(),
+        locationMetadata: draft.locationMetadata,
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
@@ -298,13 +273,6 @@ export function EventModal({
           permissions: draft.permissions,
         }),
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
-        labelIds: draft.labelIds,
-        pendingFiles: pending.flatMap((item) =>
-          item.state === "pending-file" ? [item.file] : [],
-        ),
-        pendingLinks: pending.flatMap((item) =>
-          item.state === "pending-link" ? [item.link] : [],
-        ),
       });
       onClose();
     } catch (err) {
@@ -314,60 +282,12 @@ export function EventModal({
     }
   };
 
-  // Attached ones act at once on a saved event; a new one keeps them until it is saved.
-  const attachmentItems: AttachmentItem[] = [
-    ...(event?.attachments ?? []).map((attachment): AttachmentItem => ({
-      state: "attached",
-      attachment,
-    })),
-    ...pending,
-  ];
-  const addFiles = async (files: File[]) => {
-    const problem = files.map(attachmentProblem).find(Boolean);
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    setError(null);
-    if (event && onAttachFiles) {
-      await onAttachFiles(files).catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Could not attach the file"),
-      );
-      return;
-    }
-    setPending((prev) => [
-      ...prev,
-      ...files.map((file): AttachmentItem => ({
-        state: "pending-file",
-        key: crypto.randomUUID(),
-        file,
-      })),
-    ]);
-  };
-  const addLink = async (link: LinkDraft) => {
-    if (event && onAttachLink) {
-      await onAttachLink(link).catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Could not add the link"),
-      );
-      return;
-    }
-    setPending((prev) => [
-      ...prev,
-      { state: "pending-link", key: crypto.randomUUID(), link },
-    ]);
-  };
-  const removeAttachment = async (item: AttachmentItem) => {
-    if (item.state === "attached") await onDetach?.(item.attachment.id);
-    else setPending((prev) => prev.filter((p) => p !== item));
-  };
-
   const startForRule = draft.allDay
-    ? dayjs(draft.start).valueOf()
+    ? parseISO(draft.start).getTime()
     : fromDateTimeString(draft.start);
   const editable = !imported && !readOnly && canEdit;
-  // A Google event changes here only in what is Matron's own: labels,
-  // attachments, and who it is shared with.
-  const changeable = !readOnly && canEdit;
+  // A Google event has only its sharing to change here, and that is its managers'.
+  const changeable = !readOnly && (imported ? canManage : canEdit);
   const viewing = mode === "view" && !!event && !loading;
   const shown = draftOf(event, initial, series ? occurrence : null);
 
@@ -411,14 +331,6 @@ export function EventModal({
                 }
               : undefined
           }
-          reply={
-            canReply && onReply
-              ? {
-                  value: myResponse,
-                  onChange: (response) => void onReply(response),
-                }
-              : undefined
-          }
           onHide={
             onHide &&
             (async (hidden) => {
@@ -429,7 +341,7 @@ export function EventModal({
           onClose={onClose}
         />
       ) : (
-        <Stack gap="sm">
+        <Form onSubmit={() => void save()}>
           {imported && (
             <Text size="sm" c="dimmed">
               {draft.title}: it changes in Google Calendar. Here you choose who sees it.
@@ -456,16 +368,15 @@ export function EventModal({
                 data-autofocus
               />
               <Stack gap={2}>
-                <TextInput
-                  label="Location"
-                  placeholder="Add a place or a link"
-                  leftSection={<IconMapPin size={16} />}
+                <LocationInput
                   value={draft.location}
-                  onChange={(e) => set("location", e.currentTarget.value)}
+                  onChange={(location, locationMetadata) =>
+                    setDraft((prev) => ({ ...prev, location, locationMetadata }))
+                  }
                 />
                 {draft.location.trim() && (
                   <Anchor
-                    href={mapsUrl(draft.location.trim())}
+                    href={mapsUrl(draft.location.trim(), draft.locationMetadata)}
                     target="_blank"
                     rel="noopener noreferrer"
                     size="xs"
@@ -540,21 +451,6 @@ export function EventModal({
                   startAt={startForRule}
                 />
               )}
-            </Stack>
-          )}
-          {!one && changeable && (
-            <Stack gap="sm">
-              <AttachmentsField
-                items={attachmentItems}
-                canEdit
-                onAddFiles={addFiles}
-                onAddLink={addLink}
-                onRemove={removeAttachment}
-              />
-              <LabelPicker
-                value={draft.labelIds}
-                onChange={(ids) => set("labelIds", ids)}
-              />
             </Stack>
           )}
           {!one && canManage && (
@@ -645,11 +541,11 @@ export function EventModal({
                 </ConfirmButton>
               )}
             </Group>
-            <Button loading={saving} onClick={() => void save()}>
+            <Button type="submit" loading={saving}>
               {event ? "Save" : "Add event"}
             </Button>
           </Group>
-        </Stack>
+        </Form>
       )}
     </Modal>
   );

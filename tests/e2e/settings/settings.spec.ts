@@ -28,9 +28,9 @@ test.describe("settings", () => {
 
     const assistantModel = page.getByRole("combobox", { name: "Assistant model" });
     await assistantModel.fill("@cf/moonshotai/kimi-k2.6");
-    // The suggestions open under the field, over the button.
+    // Escape closes the suggestions; Enter then submits the typed model.
     await assistantModel.press("Escape");
-    await page.getByRole("button", { name: "Save assistant model" }).click();
+    await assistantModel.press("Enter");
     await expect(page.getByText("Settings saved").nth(1)).toBeVisible();
 
     const settings = await page.request.get("/api/arch/settings");

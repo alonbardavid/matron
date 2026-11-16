@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { alarmSchema } from "./notifications";
 
 /** A calendar day, `YYYY-MM-DD`. */
 export const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
@@ -58,4 +59,14 @@ export const tasksContract = {
     .route({ method: "DELETE", path: "/api/app/tasks/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
+  /** The caller's own alarm on the task: how long before its due day ends they are reminded. */
+  alarm: oc
+    .route({ method: "GET", path: "/api/app/tasks/{id}/alarm" })
+    .input(z.object({ id: z.string() }))
+    .output(alarmSchema),
+  /** Sets, changes or (null) removes the caller's own alarm on the task. */
+  setAlarm: oc
+    .route({ method: "PUT", path: "/api/app/tasks/{id}/alarm" })
+    .input(alarmSchema.extend({ id: z.string() }))
+    .output(alarmSchema),
 };

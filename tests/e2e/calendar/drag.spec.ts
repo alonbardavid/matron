@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 import { signIn } from "../helpers";
 import { MEMBER, OWNER } from "../users";
 
@@ -14,6 +14,9 @@ function dayAt(hour: number, days = 0): number {
     hour,
   ).getTime();
 }
+
+/** A day of this week other specs leave empty (they use today): tomorrow, or yesterday on a Sunday, the week's last. */
+const OWN_DAY = new Date().getDay() === 0 ? -1 : 1;
 
 async function addEvent(page: Page, data: Record<string, unknown>) {
   const created = await page.request.post("/api/app/calendar/events", {
@@ -45,14 +48,19 @@ async function hourHeight(page: Page): Promise<number> {
 }
 
 test.describe("drag to move and resize", () => {
+  test.beforeEach(async ({ page }) => {
+    // The week view opens with now in its middle: here, the events' morning.
+    await page.clock.setFixedTime(new Date(dayAt(10) + 30 * 60_000));
+  });
+
   test("an event moves later by dragging and grows from its bottom edge", async ({
     page,
   }) => {
     await signIn(page, OWNER);
     const event = await addEvent(page, {
       title: "Haircut",
-      startAt: dayAt(10),
-      endAt: dayAt(11),
+      startAt: dayAt(10, OWN_DAY),
+      endAt: dayAt(11, OWN_DAY),
     });
     await page.reload();
     const block = onCalendar(page, "Haircut");
@@ -69,10 +77,16 @@ test.describe("drag to move and resize", () => {
     await expect
       .poll(
         async () =>
-          (await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.startAt,
+          (await occurrencesOf(page, event.id, dayAt(0, OWN_DAY), dayAt(24, OWN_DAY)))[0]
+            ?.startAt,
       )
-      .toBe(dayAt(12));
-    const [moved] = await occurrencesOf(page, event.id, dayAt(0), dayAt(24));
+      .toBe(dayAt(12, OWN_DAY));
+    const [moved] = await occurrencesOf(
+      page,
+      event.id,
+      dayAt(0, OWN_DAY),
+      dayAt(24, OWN_DAY),
+    );
     expect(moved!.endAt - moved!.startAt).toBe(HOUR);
 
     // Stretch it by an hour from its bottom edge.
@@ -89,9 +103,11 @@ test.describe("drag to move and resize", () => {
     await page.mouse.up();
     await expect
       .poll(
-        async () => (await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.endAt,
+        async () =>
+          (await occurrencesOf(page, event.id, dayAt(0, OWN_DAY), dayAt(24, OWN_DAY)))[0]
+            ?.endAt,
       )
-      .toBe(dayAt(14));
+      .toBe(dayAt(14, OWN_DAY));
   });
 
   test("an event off the quarter hour keeps its minutes when moved", async ({ page }) => {
@@ -185,5 +201,108 @@ test.describe("drag to move and resize", () => {
     } finally {
       await context.close();
     }
+  });
+});
+
+/** A finger on the page: down at a point, moved by steps, and lifted; held first when `holdMs` is given. */
+async function fingerDrag(
+  page: Page,
+  from: { x: number; y: number },
+  dy: number,
+  holdMs = 0,
+) {
+  const cdp = await page.context().newCDPSession(page);
+  const { x } = from;
+  let { y } = from;
+  const touch = (type: "touchStart" | "touchMove" | "touchEnd") =>
+    cdp.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: type === "touchEnd" ? [] : [{ x, y }],
+    });
+  await touch("touchStart");
+  if (holdMs) await page.waitForTimeout(holdMs);
+  for (let i = 0; i < 20; i++) {
+    y += dy / 20;
+    await touch("touchMove");
+    await page.waitForTimeout(16);
+  }
+  await touch("touchEnd");
+}
+
+test.describe("drag with a finger", () => {
+  // A phone: touch only, with a phone's browser.
+  const { defaultBrowserType: _browser, ...phone } = devices["Pixel 7"];
+  test.use(phone);
+  test.beforeEach(async ({ page }) => {
+    // The day view opens with now in its middle: here, the events' evening, clear of the others'.
+    await page.clock.setFixedTime(new Date(dayAt(19) + 30 * 60_000));
+  });
+
+  test("an event held moves where it is dragged; one stretched from its edge grows", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    const event = await addEvent(page, {
+      title: "Physio",
+      startAt: dayAt(18),
+      endAt: dayAt(19),
+    });
+    await page.reload();
+    const block = onCalendar(page, "Physio");
+    await expect(block).toBeVisible();
+    const hour = await hourHeight(page);
+
+    const box = (await block.boundingBox())!;
+    await fingerDrag(
+      page,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+      2 * hour,
+      500,
+    );
+    await expect
+      .poll(
+        async () =>
+          (await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.startAt,
+      )
+      .toBe(dayAt(20));
+
+    const moved = (await block.boundingBox())!;
+    await fingerDrag(
+      page,
+      { x: moved.x + moved.width / 2, y: moved.y + moved.height - 1 },
+      hour,
+    );
+    await expect
+      .poll(
+        async () => (await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.endAt,
+      )
+      .toBe(dayAt(22));
+  });
+
+  test("a quick swipe over an event scrolls the day and leaves the event", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    const event = await addEvent(page, {
+      title: "Piano",
+      startAt: dayAt(17),
+      endAt: dayAt(18),
+    });
+    await page.reload();
+    const block = onCalendar(page, "Piano");
+    await expect(block).toBeVisible();
+    const before = (await block.boundingBox())!;
+    await fingerDrag(
+      page,
+      { x: before.x + before.width / 2, y: before.y + before.height / 2 },
+      150,
+    );
+    await expect
+      .poll(async () => (await block.boundingBox())!.y)
+      .toBeGreaterThan(before.y + 50);
+    await page.waitForTimeout(500);
+    expect((await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.startAt).toBe(
+      dayAt(17),
+    );
   });
 });

@@ -9,7 +9,7 @@
  * agent's CLI in the checkout.
  */
 
-export type RunMode = "build" | "continue" | "merge" | "abandon";
+export type RunMode = "build" | "continue" | "merge" | "abandon" | "revert";
 
 export type BuilderRun = {
   mode: RunMode;
@@ -20,6 +20,7 @@ export type BuilderRun = {
     previewName: string;
     databaseName: string;
     baseCommit: string;
+    createdAt: number;
   };
   repository: { remote: string; token: string };
   cloudflare: {
@@ -48,7 +49,8 @@ export type StepName =
   | "deploy-preview"
   | "merge-main"
   | "deploy-production"
-  | "cleanup";
+  | "cleanup"
+  | "revert";
 
 /** A file the user attached to a message for the agent: written to the attachments folder, named in the prompt. */
 export interface BuilderFile {
@@ -64,8 +66,39 @@ export type AgentPrompt =
   | { kind: "continue"; message: string; sync: string; files?: BuilderFile[] }
   | { kind: "fix"; command: string; output: string };
 
+/** Mirrors BRACKET_KINDS in `shared/contract/src/arch/review.ts`, as does `prompts/outcome-schema.json`. */
+export const BRACKET_KINDS = [
+  "flow",
+  "schema",
+  "refactor",
+  "move",
+  "tests",
+  "config",
+  "docs",
+  "other",
+] as const;
+
+/**
+ * What the agent gives to prepare the owner's review of the whole branch,
+ * which the Worker keeps on the build session; mirrors `reviewReportSchema`
+ * on the Worker side.
+ */
+export type ReviewReport = {
+  summary: string;
+  brackets: {
+    title: string;
+    kind: (typeof BRACKET_KINDS)[number];
+    description: string;
+    ranges: { path: string; start: number; end: number; note: string }[];
+  }[];
+};
+
 /** What a step reads besides the run, when it needs more. */
-export type StepInput = { summary: string; reasoning: string; request: string };
+export type StepInput = {
+  summary: string;
+  reasoning: string;
+  request: string;
+};
 
 /** A harness turn's prompt: a step to run, or a turn of the coding agent. */
 export type TurnRequest =
@@ -85,6 +118,7 @@ export type AgentOutcome = {
   summary: string;
   reasoning: string;
   message: string;
+  reviewReport?: ReviewReport;
 };
 
 export type PrepareContinueResult = { sync: string };

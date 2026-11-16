@@ -60,6 +60,16 @@ export const calendarShare = sqliteTable(
   ],
 );
 
+/** What Google gave for a location picked from its suggestions (JSON). */
+export interface LocationMetadata {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  mapsUrl: string;
+}
+
 export const calendarEvent = sqliteTable(
   "calendar_event",
   {
@@ -68,6 +78,10 @@ export const calendarEvent = sqliteTable(
     description: text("description").notNull().default(""),
     /** Where it happens, as written: an address, a room, a link. */
     location: text("location").notNull().default(""),
+    /** What Google gave for `location` when it was picked; null when it was typed. */
+    locationMetadata: text("location_metadata", {
+      mode: "json",
+    }).$type<LocationMetadata>(),
     creatorId: text("creator_id").notNull(),
     allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
     startAt: timestamp("start_at").notNull(),
@@ -87,11 +101,6 @@ export const calendarEvent = sqliteTable(
     externalSeriesId: text("external_series_id"),
     /** For an imported event: where to open it at the source. */
     externalUrl: text("external_url"),
-    /**
-     * For an imported event: its guests at the source and their answers, as
-     * JSON (`[{ email, name, response, organizer }]`). Read-only here.
-     */
-    externalGuests: text("external_guests"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -104,19 +113,10 @@ export const calendarEvent = sqliteTable(
   ],
 );
 
-/** A guest's answer to an event: as in iCalendar's PARTSTAT, and Google's responseStatus. */
-export const EVENT_RESPONSES = [
-  "needs_action",
-  "accepted",
-  "tentative",
-  "declined",
-] as const;
-export type EventResponse = (typeof EVENT_RESPONSES)[number];
-
 /**
  * What someone an event is shared with may do: see it; edit it (its times,
- * details, repetition, single occurrences, labels and attachments); or manage
- * it too (who it is shared with and at what level, who attends, removing it).
+ * details, repetition and single occurrences); or manage it too (who it is
+ * shared with and at what level, who attends, removing it).
  */
 export const SHARE_PERMISSIONS = ["view", "edit", "manage"] as const;
 export type SharePermission = (typeof SHARE_PERMISSIONS)[number];
@@ -130,10 +130,6 @@ export const calendarEventShare = sqliteTable(
     attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
     /** What the member may do with it: view, edit it, or manage it (share it, remove it). */
     permission: text("permission", { enum: SHARE_PERMISSIONS }).notNull().default("edit"),
-    /** The member's own answer, which they give; whoever made the event starts as accepted. */
-    response: text("response", { enum: EVENT_RESPONSES })
-      .notNull()
-      .default("needs_action"),
     /** The recipient's own calendar it shows in; their calendar for shared events when null. */
     calendarId: text("calendar_id"),
     createdAt: createdAt(),
@@ -159,6 +155,9 @@ export const calendarEventException = sqliteTable(
     title: text("title"),
     description: text("description"),
     location: text("location"),
+    locationMetadata: text("location_metadata", {
+      mode: "json",
+    }).$type<LocationMetadata>(),
     startAt: timestamp("start_at"),
     endAt: timestamp("end_at"),
     /** For an imported change: the instance's id at the source. */
@@ -171,36 +170,6 @@ export const calendarEventException = sqliteTable(
       table.eventId,
       table.originalStartAt,
     ),
-  ],
-);
-
-/**
- * A label the household tags events with, such as "School" or "Medical": a
- * name and a colour, shared by every member. An event shows its labels as
- * coloured bars along its side.
- */
-export const calendarLabel = sqliteTable("calendar_label", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  /** A CSS hex colour, `#rrggbb`. */
-  color: text("color").notNull(),
-  creatorId: text("creator_id").notNull(),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
-
-/** A label on an event: on every occurrence of a series. */
-export const calendarEventLabel = sqliteTable(
-  "calendar_event_label",
-  {
-    id: text("id").primaryKey(),
-    eventId: text("event_id").notNull(),
-    labelId: text("label_id").notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    uniqueIndex("calendar_event_label_event_label").on(table.eventId, table.labelId),
-    index("calendar_event_label_label_idx").on(table.labelId),
   ],
 );
 
@@ -220,34 +189,6 @@ export const calendarEventHidden = sqliteTable(
     uniqueIndex("calendar_event_hidden_event_user").on(table.eventId, table.userId),
     index("calendar_event_hidden_user_idx").on(table.userId),
   ],
-);
-
-export const ATTACHMENT_KINDS = ["file", "link"] as const;
-export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
-
-/**
- * Something attached to an event, on every occurrence: a file uploaded here,
- * or a link. One imported from Google (a Drive file, say) is a link with the
- * source `google`, replaced on each sync; those added here stay.
- */
-export const calendarEventAttachment = sqliteTable(
-  "calendar_event_attachment",
-  {
-    id: text("id").primaryKey(),
-    eventId: text("event_id").notNull(),
-    kind: text("kind", { enum: ATTACHMENT_KINDS }).notNull(),
-    /** For a file: the uploaded file's id. */
-    fileId: text("file_id"),
-    /** For a link: where it points, https only. */
-    url: text("url"),
-    title: text("title").notNull(),
-    mimeType: text("mime_type"),
-    source: text("source", { enum: CALENDAR_SOURCES }).notNull().default("matron"),
-    /** Who added it here; null for an imported one. */
-    createdBy: text("created_by"),
-    createdAt: createdAt(),
-  },
-  (table) => [index("calendar_event_attachment_event_idx").on(table.eventId)],
 );
 
 export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const;

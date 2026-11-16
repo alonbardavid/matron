@@ -4,6 +4,7 @@ import type {
 } from "agents/harness/container";
 import { logger } from "@backend/commons/logger";
 import { getBuilderModel } from "@backend/arch-settings/service";
+import { reviewReportSchema, type ReviewReport } from "@shared/contract/arch/review";
 import type { AgentOutcome, StepInput, StepName, TurnRequest } from "./protocol";
 import { EventRelay, type Line } from "./event-relay";
 import type { Checkpoint } from "./state";
@@ -110,7 +111,16 @@ function toOutcome(value: unknown): AgentOutcome | null {
     summary: text("summary"),
     reasoning: text("reasoning"),
     message: text("message"),
+    reviewReport: toReview(record.reviewReport),
   };
+}
+
+/** What the agent prepared for the review, or undefined when it gave none worth keeping; a malformed one is dropped, never fatal. */
+function toReview(value: unknown): ReviewReport | undefined {
+  const parsed = reviewReportSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const review = parsed.data;
+  return review.summary.trim() || review.brackets.length ? review : undefined;
 }
 
 function parseJson(text: string): unknown {

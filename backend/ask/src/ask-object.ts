@@ -117,7 +117,6 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
     return householdTools({
       principal: this.principal,
       timeZone: this.state.timeZone,
-      branch: this.state.branch,
       db: this.env.DB,
     });
   }

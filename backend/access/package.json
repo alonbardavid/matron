@@ -8,12 +8,14 @@
   },
   "dependencies": {
     "@backend/arch-branches": "workspace:*",
+    "@backend/arch-review": "workspace:*",
     "@backend/arch-troubleshooting": "workspace:*",
     "@backend/arch-upstream": "workspace:*",
     "@backend/ask": "workspace:*",
     "@backend/calendar": "workspace:*",
     "@backend/commons": "workspace:*",
     "@backend/household": "workspace:*",
+    "@backend/notifications": "workspace:*",
     "@backend/tasks": "workspace:*",
     "better-auth": "^1.7.7"
   },

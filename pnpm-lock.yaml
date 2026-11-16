@@ -103,6 +103,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../../backend/household
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../../backend/notifications
       '@backend/tasks':
         specifier: workspace:*
         version: link:../../backend/tasks
@@ -186,6 +189,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../../frontend/ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../../frontend/notifications
       '@frontend/root':
         specifier: workspace:*
         version: link:../../frontend/root
@@ -259,6 +265,9 @@ importers:
       '@backend/arch-branches':
         specifier: workspace:*
         version: link:../arch-branches
+      '@backend/arch-review':
+        specifier: workspace:*
+        version: link:../arch-review
       '@backend/arch-troubleshooting':
         specifier: workspace:*
         version: link:../arch-troubleshooting
@@ -277,6 +286,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@backend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -305,6 +317,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@backend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -333,6 +348,9 @@ importers:
       '@backend/arch-repository':
         specifier: workspace:*
         version: link:../arch-repository
+      '@backend/arch-review':
+        specifier: workspace:*
+        version: link:../arch-review
       '@backend/arch-sessions':
         specifier: workspace:*
         version: link:../arch-sessions
@@ -473,6 +491,43 @@ importers:
       isomorphic-git:
         specifier: ^1.44.12
         version: 1.44.12
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
+  backend/arch-review:
+    dependencies:
+      '@backend/arch-branches':
+        specifier: workspace:*
+        version: link:../arch-branches
+      '@backend/arch-planner':
+        specifier: workspace:*
+        version: link:../arch-planner
+      '@backend/arch-repository':
+        specifier: workspace:*
+        version: link:../arch-repository
+      '@backend/arch-sessions':
+        specifier: workspace:*
+        version: link:../arch-sessions
+      '@backend/arch-settings':
+        specifier: workspace:*
+        version: link:../arch-settings
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      ai:
+        specifier: ^7.0.0
+        version: 7.0.162(zod@4.6.7)
+      diff:
+        specifier: 9.0.0
+        version: 9.0.0
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.7
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261008.1
@@ -687,12 +742,18 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
-      '@backend/files':
+      '@backend/notifications':
         specifier: workspace:*
-        version: link:../files
+        version: link:../notifications
+      '@date-fns/tz':
+        specifier: 1.5.0
+        version: 1.5.0
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      date-fns:
+        specifier: 4.4.0
+        version: 4.4.0
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
@@ -786,6 +847,34 @@ importers:
         specifier: ^5.20261008.1
         version: 5.20261029.1
 
+  backend/notifications:
+    dependencies:
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@backend/db-models':
+        specifier: workspace:*
+        version: link:../db-models
+      '@block65/webcrypto-web-push':
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      agents:
+        specifier: 0.32.0
+        version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.13
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
   backend/tasks:
     dependencies:
       '@backend/commons':
@@ -794,9 +883,18 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
+      '@backend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@date-fns/tz':
+        specifier: 1.5.0
+        version: 1.5.0
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      date-fns:
+        specifier: 4.4.0
+        version: 4.4.0
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
@@ -935,6 +1033,9 @@ importers:
       '@backend/arch-branches':
         specifier: workspace:*
         version: link:../../backend/arch-branches
+      '@backend/arch-review':
+        specifier: workspace:*
+        version: link:../../backend/arch-review
       '@backend/arch-troubleshooting':
         specifier: workspace:*
         version: link:../../backend/arch-troubleshooting
@@ -1106,6 +1207,9 @@ importers:
 
   frontend/calendar:
     dependencies:
+      '@date-fns/tz':
+        specifier: 1.5.0
+        version: 1.5.0
       '@frontend/api':
         specifier: workspace:*
         version: link:../api
@@ -1115,6 +1219,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@frontend/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -1142,9 +1249,15 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      date-fns:
+        specifier: 4.4.0
+        version: 4.4.0
       dayjs:
         specifier: 1.11.23
         version: 1.11.23
+      mobile-drag-drop:
+        specifier: 3.0.0-rc.0
+        version: 3.0.0-rc.0
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -1255,6 +1368,12 @@ importers:
       dayjs:
         specifier: 1.11.23
         version: 1.11.23
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
+      lowlight:
+        specifier: ^3.3.0
+        version: 3.3.0
       mantine-form-zod-resolver:
         specifier: ^1.3.0
         version: 1.3.0(@mantine/form@9.7.4(react@19.3.1))(zod@4.6.7)
@@ -1273,6 +1392,89 @@ importers:
       zod:
         specifier: ^4.1.0
         version: 4.6.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      vite:
+        specifier: ^7.1.0
+        version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
+
+  frontend/notifications:
+    dependencies:
+      '@frontend/api':
+        specifier: workspace:*
+        version: link:../api
+      '@frontend/ds':
+        specifier: workspace:*
+        version: link:../ds
+      '@mantine/core':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/notifications':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      '@tanstack/react-query':
+        specifier: ^5.96.2
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      vite:
+        specifier: ^7.1.0
+        version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
+
+  frontend/review:
+    dependencies:
+      '@frontend/api':
+        specifier: workspace:*
+        version: link:../api
+      '@frontend/ds':
+        specifier: workspace:*
+        version: link:../ds
+      '@mantine/core':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/hooks':
+        specifier: 9.7.4
+        version: 9.7.4(react@19.3.1)
+      '@mantine/notifications':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      '@tanstack/react-query':
+        specifier: ^5.96.2
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      diff:
+        specifier: 9.0.0
+        version: 9.0.0
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+      react-router-dom:
+        specifier: ^7.13.1
+        version: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -1310,6 +1512,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/review':
+        specifier: workspace:*
+        version: link:../review
       '@frontend/settings':
         specifier: workspace:*
         version: link:../settings
@@ -1368,6 +1573,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1420,6 +1628,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1441,6 +1652,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      date-fns:
+        specifier: 4.4.0
+        version: 4.4.0
       dayjs:
         specifier: 1.11.23
         version: 1.11.23
@@ -1885,6 +2099,10 @@ packages:
   '@better-fetch/fetch@1.3.3':
     resolution: {integrity: sha512-U6SlDt/GUWtK2JAxS/NhdoYTEim+EL1G5byz2TUj83KjLZBUpYzb5SmX0aXaCnbGkAjFKnV/o/0+cyXMbEcqqg==}
 
+  '@block65/webcrypto-web-push@2.0.0':
+    resolution: {integrity: sha512-BMrw8hABq5krABWPy3zFJvBC73HeRkyT/GTZ2AD7wqzo9hd9vO56MstBqjGMIxIw3e4lbRUbYxgihCcfhoTI2g==}
+    engines: {node: '>=22.0.0'}
+
   '@borewit/text-codec@0.2.3':
     resolution: {integrity: sha512-49CycTz1aAZmvFcwkeFyhud1HUmRIB5Tabf7ALV+VA4Iu85MTfz2cUwzPagMFAdVBvrWdkCxG67I30tUwwpKsw==}
 
@@ -2017,6 +2235,9 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@date-fns/tz@1.5.0':
+    resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
@@ -3579,6 +3800,9 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
+  date-fns@4.4.0:
+    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
+
   dayjs@1.11.23:
     resolution: {integrity: sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ==}
 
@@ -3635,6 +3859,10 @@ packages:
 
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
+    engines: {node: '>=0.3.1'}
+
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
     engines: {node: '>=0.3.1'}
 
   dom-helpers@5.2.1:
@@ -4019,6 +4247,14 @@ packages:
   hast-util-whitespace@3.0.0:
     resolution: {integrity: sha512-88JUN06ipLwsnv+dVn+OIYOvAuvBMy/Qoi6O7mQHxdPXpjy+Cd6xRkWwux7DKO+4sYILtLBRIKgsdpS2gQc7qw==}
 
+  highlight.js@11.11.2:
+    resolution: {integrity: sha512-oaXMACAU0kzOMXBjWpNcX+vlwSBCIAiZ9BHa7gA15NOTtT2L/l8OSZDuqS2XppOhZBPJ7hm4o8ep2kyuip2uEQ==}
+    engines: {node: '>=12.0.0'}
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
+
   hono@4.13.14:
     resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
     engines: {node: '>=16.9.0'}
@@ -4204,6 +4440,9 @@ packages:
   loose-envify@1.4.0:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
+
+  lowlight@3.3.0:
+    resolution: {integrity: sha512-0JNhgFoPvP6U6lE/UdVsSq99tn6DhjjpAj5MxG49ewd2mOBVtwWYIT8ClyABhq198aXXODMU6Ox8DrGy/CpTZQ==}
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
@@ -4408,6 +4647,9 @@ packages:
 
   mkdirp-classic@0.5.3:
     resolution: {integrity: sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A==}
+
+  mobile-drag-drop@3.0.0-rc.0:
+    resolution: {integrity: sha512-f8wIDTbBYLBW/+5sei1cqUE+StyDpf/LP+FRZELlVX6tmOOmELk84r3wh1z3woxCB9G5octhF06K5COvFjGgqg==}
 
   modern-tar@0.7.7:
     resolution: {integrity: sha512-t9VmxaqrmANnEOBhpSDI6HD192Ge48k8vmWqQQL7hSFEqHEYwZbbsu49+aKLWZeRvFs3j1pMhXOqqF4kPlvjkQ==}
@@ -5709,6 +5951,10 @@ snapshots:
 
   '@better-fetch/fetch@1.3.3': {}
 
+  '@block65/webcrypto-web-push@2.0.0':
+    dependencies:
+      uint8array-extras: 1.6.0
+
   '@borewit/text-codec@0.2.3': {}
 
   '@cacheable/memory@2.2.0':
@@ -5812,6 +6058,8 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  '@date-fns/tz@1.5.0': {}
 
   '@emnapi/runtime@1.11.3':
     dependencies:
@@ -7133,6 +7381,8 @@ snapshots:
 
   csstype@3.2.3: {}
 
+  date-fns@4.4.0: {}
+
   dayjs@1.11.23: {}
 
   debug@4.4.3:
@@ -7176,6 +7426,8 @@ snapshots:
   diff3@0.0.3: {}
 
   diff@8.0.4: {}
+
+  diff@9.0.0: {}
 
   dom-helpers@5.2.1:
     dependencies:
@@ -7562,6 +7814,10 @@ snapshots:
     dependencies:
       '@types/hast': 3.0.5
 
+  highlight.js@11.11.2: {}
+
+  highlight.js@11.12.0: {}
+
   hono@4.13.14: {}
 
   hookified@1.15.1: {}
@@ -7729,6 +7985,12 @@ snapshots:
   loose-envify@1.4.0:
     dependencies:
       js-tokens: 4.0.0
+
+  lowlight@3.3.0:
+    dependencies:
+      '@types/hast': 3.0.5
+      devlop: 1.1.0
+      highlight.js: 11.11.2
 
   lru-cache@5.1.1:
     dependencies:
@@ -8167,6 +8429,8 @@ snapshots:
 
   mkdirp-classic@0.5.3:
     optional: true
+
+  mobile-drag-drop@3.0.0-rc.0: {}
 
   modern-tar@0.7.7: {}
 

@@ -64,7 +64,7 @@ test.describe("what guests may do", () => {
         await as.get(`/api/app/calendar/events/${event.id}`)
       ).json()) as EventRow;
       expect(seen.can).toEqual({ edit: false, manage: false });
-      // Viewing: no changes, no stopping, no single occurrences; answering and hiding are theirs.
+      // Viewing: no changes, no stopping, no single occurrences; hiding is theirs.
       const save = (title: string, extra: Record<string, unknown> = {}) =>
         as.put(`/api/app/calendar/events/${event.id}`, {
           // As the dialog saves: with who it is shared with, unchanged.
@@ -90,8 +90,8 @@ test.describe("what guests may do", () => {
       ).toBe(403);
       expect(
         (
-          await as.put(`/api/app/calendar/events/${event.id}/reply`, {
-            data: { response: "tentative" },
+          await as.put(`/api/app/calendar/events/${event.id}/hidden`, {
+            data: { hidden: false },
           })
         ).ok(),
       ).toBe(true);
@@ -114,14 +114,6 @@ test.describe("what guests may do", () => {
       expect((await as.delete(`/api/app/calendar/events/${event.id}`)).status()).toBe(
         403,
       );
-      // Their answer and level survived the owner's change of level.
-      const after = (await (
-        await as.get(`/api/app/calendar/events/${event.id}`)
-      ).json()) as {
-        replies: Record<string, string>;
-      };
-      expect(after.replies[ids.member]).toBe("tentative");
-
       // Managing: who attends, and removing it.
       await page.request.put(`/api/app/calendar/events/${event.id}`, {
         data: { permissions: { [ids.member]: "manage" } },

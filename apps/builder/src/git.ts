@@ -166,6 +166,40 @@ export async function deleteRemoteBranch(ctx: GitContext, branch: string): Promi
   await must(ctx, ["push", "--quiet", "origin", "--delete", branch]);
 }
 
+/**
+ * Moves the checked-out branch back to `commit`, one of its own earlier
+ * commits: the index and the working tree become that commit's, and the
+ * commits after it are no longer on the branch.
+ */
+export async function revertTo(ctx: GitContext, commit: string): Promise<void> {
+  const contained = await git(ctx, ["merge-base", "--is-ancestor", commit, "HEAD"]);
+  if (contained.code !== 0) {
+    throw new BuilderError(
+      `The branch does not contain ${commit}, so it cannot go back to it`,
+      tail(combined(contained)),
+    );
+  }
+  await must(ctx, ["reset", "--quiet", "--hard", commit]);
+}
+
+/**
+ * Pushes the checked-out commit as `branch`, which goes back with it. Refused
+ * when the remote branch is no longer at `expected`: someone moved it meanwhile.
+ */
+export async function pushRevert(
+  ctx: GitContext,
+  branch: string,
+  expected: string,
+): Promise<void> {
+  await must(ctx, [
+    "push",
+    "--quiet",
+    `--force-with-lease=refs/heads/${branch}:${expected}`,
+    "origin",
+    `HEAD:refs/heads/${branch}`,
+  ]);
+}
+
 export async function revParse(ctx: GitContext, ref = "HEAD"): Promise<string> {
   return (await must(ctx, ["rev-parse", ref])).stdout.trim();
 }

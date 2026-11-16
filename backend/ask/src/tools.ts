@@ -7,11 +7,9 @@ import {
   getEvent,
   listOccurrences,
   removeEvent,
-  replyToEvent,
   stopRecurrence,
   updateEvent,
 } from "@backend/calendar/service";
-import { listLabels } from "@backend/calendar/labels";
 import type { Principal } from "@backend/commons/principal";
 import { listHouseholdUsers } from "@backend/household/users";
 import { createTask, listTasks, removeTask, updateTask } from "@backend/tasks/service";
@@ -34,8 +32,6 @@ export interface ToolContext {
   principal: Principal;
   /** The user's IANA zone, for events made without one. */
   timeZone: string;
-  /** The branch the conversation runs on, where files removed with an event live. */
-  branch: string;
   db: D1Database;
 }
 
@@ -85,12 +81,6 @@ export function householdTools(ctx: ToolContext): ToolSet {
       inputSchema: z.object({ from: z.number(), to: z.number() }),
       execute: ({ from, to }) => listOccurrences(principal, from, to),
     }),
-    list_labels: tool({
-      description:
-        "The household's event labels (ids, names, colours); events take them as labelIds.",
-      inputSchema: z.object({}),
-      execute: () => listLabels(principal),
-    }),
     get_event: tool({
       description:
         "One event in full, including its recurrence and who it is shared with.",
@@ -129,15 +119,6 @@ export function householdTools(ctx: ToolContext): ToolSet {
       execute: ({ id, originalStartAt }) =>
         cancelOccurrence(principal, id, originalStartAt),
     }),
-    reply_to_event: tool({
-      description:
-        "Answer an event the user made or was given, for every occurrence: accepted (going), tentative (maybe) or declined.",
-      inputSchema: z.object({
-        id: z.string(),
-        response: z.enum(["accepted", "tentative", "declined"]),
-      }),
-      execute: ({ id, response }) => replyToEvent(principal, id, response),
-    }),
     stop_recurrence: tool({
       description: "Stop a repeating event from a day on; earlier occurrences stay.",
       inputSchema: z.object({ id: z.string(), from: dayString }),
@@ -148,7 +129,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
         "Remove an event, and every repetition of it. Ask the user first unless they clearly asked for it.",
       inputSchema: z.object({ id: z.string() }),
       execute: async ({ id }) => {
-        await removeEvent(principal, id, ctx.branch);
+        await removeEvent(principal, id);
         return { ok: true };
       },
     }),

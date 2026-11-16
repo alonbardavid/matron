@@ -85,6 +85,22 @@
   justify-content: flex-end;
 }
 
+/* The days and the all-day row stay at the top while the hours scroll under them. */
+.weekViewAllDaySlots {
+  position: sticky;
+  top: var(--week-view-week-day-height);
+  z-index: 3;
+  background-color: var(--mantine-color-body);
+}
+
+.dayViewSlotLabel[data-all-day],
+.dayViewAllDay {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background-color: var(--mantine-color-body);
+}
+
 .weekViewDaySlot {
   padding: 0.0625rem;
 }
@@ -166,5 +182,29 @@
   .dayView.dayView {
     --day-view-slot-labels-width: 2.75rem;
     --text-pad: 0.03125rem;
+  }
+}
+
+/*
+ * On a touch screen an event is held to pick it up, so a long press neither
+ * selects its text nor opens a menu; its edges show their handles, with room
+ * for a finger, as there is no hover to reveal them.
+ */
+@media (pointer: coarse) {
+  .weekView [data-event-id],
+  .dayView [data-event-id] {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .weekView [data-event-id] > [data-edge],
+  .dayView [data-event-id] > [data-edge] {
+    opacity: 0.5;
+  }
+
+  .weekView [data-event-id] > [data-edge]::before,
+  .dayView [data-event-id] > [data-edge]::before {
+    inset: -0.625rem -0.75rem;
   }
 }

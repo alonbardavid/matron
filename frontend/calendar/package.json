@@ -7,9 +7,11 @@
     "clean": "rm -rf *.tsbuildinfo"
   },
   "dependencies": {
+    "@date-fns/tz": "1.5.0",
     "@frontend/api": "workspace:*",
     "@frontend/auth": "workspace:*",
     "@frontend/ds": "workspace:*",
+    "@frontend/notifications": "workspace:*",
     "@frontend/tasks": "workspace:*",
     "@mantine/core": "9.7.4",
     "@mantine/dates": "9.7.4",
@@ -19,7 +21,9 @@
     "@mantine/schedule": "9.7.4",
     "@shared/contract": "workspace:*",
     "@tanstack/react-query": "^5.96.2",
+    "date-fns": "4.4.0",
     "dayjs": "1.11.23",
+    "mobile-drag-drop": "3.0.0-rc.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.13.1",

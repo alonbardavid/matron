@@ -12,7 +12,12 @@ import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cssVariablesResolver, theme } from "@frontend/ds/theme";
+import { captureInstallPrompt } from "@frontend/notifications/installPrompt";
+import { registerServiceWorker } from "@frontend/notifications/pushDevice";
 import { App } from "@frontend/root/App";
+
+captureInstallPrompt();
+registerServiceWorker();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

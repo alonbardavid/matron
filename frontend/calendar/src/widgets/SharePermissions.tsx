@@ -29,8 +29,8 @@ export function SharePermissions({
   return (
     <Stack gap={4}>
       <Text size="xs" c="dimmed">
-        Edit: times, details, repetition, labels and attachments. Manage: also who it is
-        shared with, who attends, and removing it.
+        Edit: times, details and repetition. Manage: also who it is shared with, who
+        attends, and removing it.
       </Text>
       {people.map((userId) => (
         <Group key={userId} gap="xs" wrap="nowrap">

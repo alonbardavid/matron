@@ -5,11 +5,20 @@ import { OWNER } from "../users";
 interface EventRow {
   id: string;
   location: string;
-  attachments: { id: string; kind: string; title: string; url: string; source: string }[];
   exceptions: { originalStartAt: number; location: string | null }[];
 }
 
-test.describe("location and attachments", () => {
+/** Location metadata as Google's place details give it, kept with the event it was picked for. */
+const LOCATION_METADATA = {
+  id: "p1",
+  name: "Leisure Centre",
+  address: "Mill Road, Cambridge CB1 2AD, UK",
+  latitude: 52.1983,
+  longitude: 0.1427,
+  mapsUrl: "https://maps.google.com/?cid=123",
+};
+
+test.describe("location", () => {
   test("an event has a location, one occurrence its own", async ({ page }) => {
     await signIn(page, OWNER);
     const start = Date.UTC(2031, 8, 2, 17);
@@ -42,83 +51,7 @@ test.describe("location and attachments", () => {
     ]);
   });
 
-  test("files and links attach to an event, and come off again", async ({ page }) => {
-    await signIn(page, OWNER);
-    const start = Date.UTC(2031, 8, 3, 9);
-    const event = (await (
-      await page.request.post("/api/app/calendar/events", {
-        data: {
-          title: "School trip",
-          allDay: false,
-          startAt: start,
-          endAt: start + 3_600_000,
-          timeZone: "UTC",
-        },
-      })
-    ).json()) as EventRow;
-
-    // Only web addresses.
-    const bad = await page.request.post(
-      `/api/app/calendar/events/${event.id}/attachments/links`,
-      { data: { url: "javascript:alert(1)" } },
-    );
-    expect(bad.status()).toBe(400);
-    const linked = await page.request.post(
-      `/api/app/calendar/events/${event.id}/attachments/links`,
-      { data: { url: "https://example.com/permission-slip" } },
-    );
-    expect(linked.ok()).toBeTruthy();
-    expect(((await linked.json()) as EventRow).attachments[0]).toMatchObject({
-      kind: "link",
-      title: "example.com",
-      url: "https://example.com/permission-slip",
-      source: "matron",
-    });
-
-    // Only the types an event takes.
-    const script = await page.request.post(
-      `/api/app/calendar/events/${event.id}/attachments/files`,
-      {
-        multipart: {
-          file: {
-            name: "x.html",
-            mimeType: "text/html",
-            buffer: Buffer.from("<script>"),
-          },
-        },
-      },
-    );
-    expect(script.status()).toBe(400);
-    const uploaded = await page.request.post(
-      `/api/app/calendar/events/${event.id}/attachments/files`,
-      {
-        multipart: {
-          file: {
-            name: "packing list.txt",
-            mimeType: "text/plain",
-            buffer: Buffer.from("sandwiches, water"),
-          },
-        },
-      },
-    );
-    expect(uploaded.ok()).toBeTruthy();
-    const file = ((await uploaded.json()) as EventRow).attachments.find(
-      (a) => a.kind === "file",
-    )!;
-    expect(file.title).toBe("packing list.txt");
-    const served = await page.request.get(file.url);
-    expect(await served.text()).toBe("sandwiches, water");
-
-    const detached = await page.request.delete(
-      `/api/app/calendar/events/${event.id}/attachments/${file.id}`,
-    );
-    expect(((await detached.json()) as EventRow).attachments.map((a) => a.kind)).toEqual([
-      "link",
-    ]);
-    expect((await page.request.get(file.url)).status()).toBe(404);
-  });
-
-  test("a new event takes a location and a link before it is saved", async ({ page }) => {
+  test("a new event takes a location", async ({ page }) => {
     await signIn(page, OWNER);
     await page.getByRole("button", { name: "New event" }).click();
     const dialog = page.getByRole("dialog");
@@ -128,15 +61,6 @@ test.describe("location and attachments", () => {
       "href",
       /maps\/search\/\?api=1&query=Leisure%20Centre%2C%20Mill%20Road/,
     );
-    await dialog.getByRole("button", { name: "Add link" }).click();
-    await page.getByRole("textbox", { name: "Link" }).fill("https://example.com/gala");
-    await page
-      .getByRole("textbox", { name: "Title", exact: true })
-      .last()
-      .fill("Timetable");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Add link" })).toBeHidden();
-    await expect(dialog.getByText("added when saved")).toBeVisible();
     await dialog.getByRole("button", { name: "Add event" }).click();
     await expect(dialog).toBeHidden();
     // Wherever "the next hour" fell, put it where the week view shows it.
@@ -154,21 +78,143 @@ test.describe("location and attachments", () => {
     await page.reload();
 
     await page.locator("[data-event-id]", { hasText: "Swimming gala" }).first().click();
-    // It opens as it reads: where, and what is attached.
+    // It opens as it reads: where it is.
     await expect(dialog.getByText("Leisure Centre, Mill Road")).toBeVisible();
     await expect(dialog.getByRole("link", { name: "Open in Maps" })).toBeVisible();
-    await expect(dialog.getByRole("link", { name: "Timetable" })).toHaveAttribute(
-      "href",
-      "https://example.com/gala",
-    );
     await dialog.getByRole("button", { name: "Edit event" }).click();
     await expect(dialog.getByLabel("Location")).toHaveValue("Leisure Centre, Mill Road");
-    // A file attaches at once to a saved event.
-    await dialog.locator('input[type="file"]').setInputFiles({
-      name: "map.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("%PDF-1.4"),
+  });
+
+  test("a location keeps the metadata it was picked with, until it is typed over", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    const start = Date.UTC(2031, 9, 7, 9);
+    const created = await page.request.post("/api/app/calendar/events", {
+      data: {
+        title: "Dentist",
+        location: "Smile Clinic, High St",
+        locationMetadata: LOCATION_METADATA,
+        allDay: false,
+        startAt: start,
+        endAt: start + 3_600_000,
+        timeZone: "UTC",
+        rrule: "FREQ=WEEKLY;COUNT=2",
+      },
     });
-    await expect(dialog.getByRole("link", { name: "map.pdf" })).toBeVisible();
+    const event = (await created.json()) as EventRow & { locationMetadata: unknown };
+    expect(event.locationMetadata).toEqual(LOCATION_METADATA);
+    const update = (data: object) =>
+      page.request
+        .put(`/api/app/calendar/events/${event.id}`, { data })
+        .then(
+          (r) => r.json() as Promise<{ location: string; locationMetadata: unknown }>,
+        );
+    // Changing anything but the location keeps its metadata.
+    expect((await update({ title: "Dentist (Sam)" })).locationMetadata).toEqual(
+      LOCATION_METADATA,
+    );
+    // An occurrence of its own keeps its own metadata; the others the series'.
+    const second = start + 7 * 86_400_000;
+    const other = { ...LOCATION_METADATA, id: "p2", name: "Town Hall" };
+    await page.request.put(`/api/app/calendar/events/${event.id}/occurrences/${second}`, {
+      data: { location: "Town Hall", locationMetadata: other },
+    });
+    const list = (await (
+      await page.request.get(
+        `/api/app/calendar/occurrences?from=${start - 1}&to=${start + 14 * 86_400_000}`,
+      )
+    ).json()) as { eventId: string; locationMetadata: { id: string } | null }[];
+    expect(
+      list.filter((o) => o.eventId === event.id).map((o) => o.locationMetadata?.id),
+    ).toEqual(["p1", "p2"]);
+    // A location typed has no metadata.
+    const typed = await update({ location: "Smile Clinic, room 4" });
+    expect(typed).toMatchObject({
+      location: "Smile Clinic, room 4",
+      locationMetadata: null,
+    });
+  });
+
+  test("Google suggests places for a location once the household set up Places", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    // Local dev holds no Places key: nothing is suggested, and Google is not asked.
+    const none = await page.request.get(
+      "/api/app/calendar/places?query=Mill%20Road&session=s1",
+    );
+    expect(await none.json()).toEqual({ available: false, places: [] });
+    expect(
+      (await page.request.get("/api/app/calendar/places/p1?session=s1")).status(),
+    ).toBe(503);
+
+    // With a key, the Worker answers with Google's places; stand in for it here.
+    const asked: URL[] = [];
+    await page.route("**/api/app/calendar/places?**", async (route) => {
+      asked.push(new URL(route.request().url()));
+      await route.fulfill({
+        json: {
+          available: true,
+          places: [
+            {
+              id: LOCATION_METADATA.id,
+              text: "Leisure Centre, Mill Road, Cambridge, UK",
+              main: "Leisure Centre",
+              secondary: "Mill Road, Cambridge, UK",
+            },
+          ],
+        },
+      });
+    });
+    const detailed: URL[] = [];
+    await page.route(
+      `**/api/app/calendar/places/${LOCATION_METADATA.id}?**`,
+      async (route) => {
+        detailed.push(new URL(route.request().url()));
+        await route.fulfill({ json: LOCATION_METADATA });
+      },
+    );
+    await page.getByRole("button", { name: "New event" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Title").fill("Swim club");
+    const location = dialog.getByLabel("Location");
+    await location.pressSequentially("Leisure");
+    const option = page.getByRole("option", { name: /Leisure Centre/ });
+    await expect(option).toContainText("Mill Road, Cambridge, UK");
+    await option.click();
+    await expect(location).toHaveValue("Leisure Centre, Mill Road, Cambridge, UK");
+    // The pick asks for its metadata in the same search the suggestions were, and
+    // the picked text is not looked up again.
+    await expect.poll(() => detailed.length).toBe(1);
+    await page.waitForTimeout(500);
+    expect(asked.map((url) => url.searchParams.get("query"))).toEqual(["Leisure"]);
+    expect(detailed[0]!.searchParams.get("session")).toBe(
+      asked[0]!.searchParams.get("session"),
+    );
+    // The location opens as Google has it.
+    await expect(dialog.getByRole("link", { name: "Open in Maps" })).toHaveAttribute(
+      "href",
+      LOCATION_METADATA.mapsUrl,
+    );
+    await dialog.getByRole("button", { name: "Add event" }).click();
+    await expect(dialog).toBeHidden();
+    const now = Date.now();
+    const listed = (await (
+      await page.request.get(
+        `/api/app/calendar/occurrences?from=${now - 86_400_000}&to=${now + 2 * 86_400_000}`,
+      )
+    ).json()) as { title: string; location: string; locationMetadata: unknown }[];
+    expect(listed.find((o) => o.title === "Swim club")).toMatchObject({
+      location: "Leisure Centre, Mill Road, Cambridge, UK",
+      locationMetadata: LOCATION_METADATA,
+    });
+
+    // A link is not looked up.
+    await page.getByRole("button", { name: "New event" }).click();
+    const before = asked.length;
+    await dialog.getByLabel("Location").fill("https://meet.example.com/abc");
+    await page.waitForTimeout(500);
+    expect(asked.length).toBe(before);
   });
 });

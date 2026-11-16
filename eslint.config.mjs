@@ -30,6 +30,11 @@ export default defineConfig(
     },
   },
   {
+    // The service worker is plain script, served as is.
+    files: ["apps/frontend/public/sw.js"],
+    languageOptions: { globals: { self: "readonly" } },
+  },
+  {
     files: ["backend/**/*.ts", "apps/backend/**/*.ts"],
     rules: {
       "no-console": "error",

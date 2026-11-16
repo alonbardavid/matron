@@ -32,6 +32,7 @@ export interface BranchRow {
   type: BranchType;
   status: BranchStatus;
   archivedAt: Date | null;
+  createdAt: Date;
 }
 
 /**
