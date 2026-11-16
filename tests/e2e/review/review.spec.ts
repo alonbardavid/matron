@@ -65,7 +65,7 @@ test.describe("branch review", () => {
       page.getByRole("checkbox", { name: "Viewed", exact: true }),
     ).toBeChecked();
     // A line's rail marks its change; a shift-click takes in every change since the last click.
-    await tree.getByRole("button", { name: /0007_task_lists\.sql/ }).click();
+    await tree.getByRole("button", { name: /20261101120000_task_lists\.sql/ }).click();
     await expect(page.getByRole("article")).toContainText("CREATE INDEX");
     await page.getByRole("checkbox", { name: /^Mark line 1 viewed/ }).click();
     await page
@@ -126,7 +126,9 @@ test.describe("branch review", () => {
     await expect(replaced).toHaveCount(0);
 
     // A new file opens unified.
-    await page.goto(`${REVIEW_PATH}?tab=files&file=migrations%2F0007_task_lists.sql`);
+    await page.goto(
+      `${REVIEW_PATH}?tab=files&file=migrations%2F20261101120000_task_lists.sql`,
+    );
     await expect(diff).toContainText("ALTER TABLE");
     await expect(layoutSwitch.getByRole("radio", { name: "Unified" })).toBeChecked();
   });

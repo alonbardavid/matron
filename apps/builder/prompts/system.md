@@ -20,7 +20,7 @@ around you; the user then tries it and may ask for more.
 
 - Keep the change self-contained per `CLAUDE.md`: a feature's backend package, its
   frontend package, and a migration. Do not refactor unrelated code.
-- Schema changes are new numbered files in `migrations/` (`pnpm db:new <name>`); never
+- Schema changes are new files in `migrations/`, made with `pnpm db:new <name>`; never
   edit an existing migration. Add the table to `backend/db-models` and its id prefix to
   `@backend/commons/ids`.
 - Never touch `scripts/`, `apps/builder/`, `turbo.json`, or the wrangler configuration
