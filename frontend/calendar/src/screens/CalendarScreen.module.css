@@ -85,6 +85,22 @@
   justify-content: flex-end;
 }
 
+/* The days and the all-day row stay at the top while the hours scroll under them. */
+.weekViewAllDaySlots {
+  position: sticky;
+  top: var(--week-view-week-day-height);
+  z-index: 3;
+  background-color: var(--mantine-color-body);
+}
+
+.dayViewSlotLabel[data-all-day],
+.dayViewAllDay {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background-color: var(--mantine-color-body);
+}
+
 .weekViewDaySlot {
   padding: 0.0625rem;
 }

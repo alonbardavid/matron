@@ -39,9 +39,10 @@ import {
   fromDateTimeString,
   loadWindow,
   localTimeZone,
-  toDayString,
 } from "../times";
+import { useTimeGrid } from "../timeGrid";
 import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import { useCalendarDisplay, type View } from "../display";
 import { CalendarItem } from "../widgets/CalendarItem";
 import { FiltersButton } from "../widgets/FiltersButton";
 import {
@@ -50,8 +51,6 @@ import {
   type OpenedOccurrence,
 } from "../widgets/EventModal";
 import classes from "./CalendarScreen.module.css";
-
-type View = "day" | "week" | "month" | "year";
 
 const VIEW_OPTIONS = [
   { value: "day", label: "Day" },
@@ -129,10 +128,13 @@ const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
 /** Day, week and month views of the household's calendar. */
 export function CalendarScreen() {
   const narrow = useMediaQuery("(max-width: 48em)");
-  const [date, setDate] = useState(() => toDayString(Date.now()));
-  // A phone starts on the day, a wider screen on the week.
-  const [view, setView] = useState<View | null>(null);
-  const shownView: View = view ?? (narrow ? "day" : "week");
+  // Until a view is chosen, a phone starts on the day, a wider screen on the week.
+  const {
+    view: shownView,
+    setView,
+    date,
+    setDate,
+  } = useCalendarDisplay(narrow ? "day" : "week");
   const window = useMemo(() => loadWindow(date), [date]);
   const occurrences = useOccurrences(window.from, window.to);
   const [opening, setOpening] = useState<Opening | null>(null);
@@ -145,6 +147,8 @@ export function CalendarScreen() {
   const tasks = useTasks();
   const taskActions = useTaskActions();
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const { viewportRef, maxHeight } = useTimeGrid();
+  const scrollAreaProps = { viewportRef, mah: maxHeight };
 
   // What this device's filters leave on the calendar.
   const shown = (occurrences.data ?? []).filter(
@@ -367,8 +371,7 @@ export function CalendarScreen() {
           // Each view takes its own class names; the Schedule passes none down.
           // The phone's toolbar above stands in for each view's own header.
           dayViewProps={{
-            startTime: "06:00",
-            endTime: "23:00",
+            scrollAreaProps,
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
@@ -377,8 +380,7 @@ export function CalendarScreen() {
           weekViewProps={{
             renderEvent: renderItem,
             classNames: classes,
-            startTime: "06:00",
-            endTime: "23:00",
+            scrollAreaProps,
             withWeekNumber: false,
             highlightToday: true,
             withHeader: !narrow,
