@@ -25,7 +25,8 @@ in place, never append history.
   `contract.ts`; `src/contract.ts` combines both for the frontend.
 - `frontend/<feature>` — `src/screens/` (routed pages) and `src/widgets/` (embeddable pieces);
   `frontend/ds` is the design system (theme, palette, forms, Markdown).
-- `migrations` — numbered D1 migrations; `pnpm db:new <name>` adds one.
+- `migrations` — D1 migrations, each named by when it was written
+  (`YYYYMMDDHHmmss_name.sql`, UTC); `pnpm db:new <name>` adds one.
 
 ## Rules
 

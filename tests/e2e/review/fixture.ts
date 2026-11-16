@@ -124,7 +124,9 @@ export const REVIEW = {
       title: "The list column",
       kind: "schema",
       description: "Tasks get a nullable `list` column, indexed.",
-      ranges: [{ path: "migrations/0007_task_lists.sql", start: 1, end: 3, note: "" }],
+      ranges: [
+        { path: "migrations/20261101120000_task_lists.sql", start: 1, end: 3, note: "" },
+      ],
     },
   ],
   commits: [
@@ -154,7 +156,7 @@ export const REVIEW = {
       omitted: null,
     },
     {
-      path: "migrations/0007_task_lists.sql",
+      path: "migrations/20261101120000_task_lists.sql",
       status: "added",
       before: null,
       after: MIGRATION,
