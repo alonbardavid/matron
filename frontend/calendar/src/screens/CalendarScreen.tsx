@@ -97,6 +97,7 @@ type ItemPayload =
       eventId: string;
       occurrence: OpenedOccurrence | null;
       hidden: boolean;
+      location: string;
     }
   | { kind: "task"; task: Task };
 
@@ -113,6 +114,12 @@ const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
   return (
     <CalendarItem
       {...props}
+      // The tooltip names the place too.
+      title={
+        payload?.kind === "event" && payload.location
+          ? `${item.title} · ${payload.location}`
+          : props.title
+      }
       muted={payload?.kind === "event" && payload.hidden}
       struck={payload?.kind === "task" && payload.task.completedAt !== null}
     />
@@ -163,6 +170,7 @@ export function CalendarScreen() {
       kind: "event",
       eventId: item.eventId,
       hidden: item.hidden,
+      location: item.location,
       occurrence:
         item.originalStartAt === null
           ? null

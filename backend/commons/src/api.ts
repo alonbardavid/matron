@@ -11,6 +11,8 @@ export interface ApiContext {
   principal: Principal | null;
   /** "main" or a branch id. */
   branch: string;
+  /** The request's coordinates as Cloudflare reads its IP; each absent when Cloudflare gives none. */
+  coordinates?: { latitude?: string; longitude?: string };
   /** The response's headers, from the handler's ResponseHeadersPlugin. */
   resHeaders?: Headers;
 }

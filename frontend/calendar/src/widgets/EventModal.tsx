@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Anchor,
   Button,
   Group,
   Loader,
@@ -18,6 +19,7 @@ import type {
   Calendar,
   CalendarEvent,
   OccurrenceUpdate,
+  LocationMetadata,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
@@ -25,6 +27,8 @@ import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { Form } from "@frontend/ds/forms/Form";
 import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from "../times";
 import { EventView } from "./EventView";
+import { isLink, mapsUrl } from "../places";
+import { LocationInput } from "./LocationInput";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -41,11 +45,16 @@ export interface EventDraft {
   attendees: string[];
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
+  location: string;
+  /** What Google gave for the location when it was picked from its suggestions; null when typed. */
+  locationMetadata: LocationMetadata | null;
 }
 
 export interface EventSubmit {
   title: string;
   description: string;
+  location: string;
+  locationMetadata: LocationMetadata | null;
   allDay: boolean;
   startAt: number;
   endAt: number;
@@ -112,6 +121,11 @@ function draftOf(
   return {
     title: occurrence?.title ?? event?.title ?? "",
     description: own?.description ?? event?.description ?? "",
+    location: own?.location ?? event?.location ?? "",
+    locationMetadata:
+      own && own.location !== null
+        ? own.locationMetadata
+        : (event?.locationMetadata ?? null),
     allDay,
     start: allDay ? toDayString(startAt) : toDateTimeString(startAt),
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
@@ -225,6 +239,8 @@ export function EventModal({
         await onEditOccurrence(occurrence.originalStartAt, {
           title: draft.title.trim(),
           description: draft.description.trim(),
+          location: draft.location.trim(),
+          locationMetadata: draft.locationMetadata,
           ...span,
         });
         onClose();
@@ -233,6 +249,8 @@ export function EventModal({
       await onSave({
         title: draft.title.trim(),
         description: draft.description.trim(),
+        location: draft.location.trim(),
+        locationMetadata: draft.locationMetadata,
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
@@ -324,6 +342,25 @@ export function EventModal({
                 onChange={(e) => set("title", e.currentTarget.value)}
                 data-autofocus
               />
+              <Stack gap={2}>
+                <LocationInput
+                  value={draft.location}
+                  onChange={(location, locationMetadata) =>
+                    setDraft((prev) => ({ ...prev, location, locationMetadata }))
+                  }
+                />
+                {draft.location.trim() && (
+                  <Anchor
+                    href={mapsUrl(draft.location.trim(), draft.locationMetadata)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="xs"
+                    w="fit-content"
+                  >
+                    {isLink(draft.location) ? "Open link" : "Open in Maps"}
+                  </Anchor>
+                )}
+              </Stack>
               {pickCalendar && !one && (
                 <Select
                   label="Calendar"

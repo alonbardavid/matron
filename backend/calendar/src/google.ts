@@ -469,6 +469,7 @@ interface ImportedException {
   cancelled: boolean;
   title: string | null;
   description: string | null;
+  location: string | null;
   startAt: Date | null;
   endAt: Date | null;
   externalId: string | null;
@@ -747,6 +748,7 @@ function cancelledAt(originalStartAt: number): ImportedException {
     cancelled: true,
     title: null,
     description: null,
+    location: null,
     startAt: null,
     endAt: null,
     externalId: null,
@@ -775,6 +777,7 @@ function exceptionOf(
       cancelled: false,
       title: values.title,
       description: values.description,
+      location: values.location,
       startAt: values.startAt,
       endAt: values.endAt,
       externalId: instance.id,
@@ -805,13 +808,10 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
   if (!Number.isFinite(startAt) || !Number.isFinite(endAt)) return null;
   // Matron's events end after they start; Google allows zero-length ones.
   endAt = Math.max(endAt, startAt + 60_000);
-  const location = event.location?.trim();
-  const description = [location && `Location: ${location}`, event.description?.trim()]
-    .filter(Boolean)
-    .join("\n\n");
   return {
     title: (event.summary?.trim() || "(No title)").slice(0, 200),
-    description: description.slice(0, 5000),
+    description: (event.description?.trim() ?? "").slice(0, 5000),
+    location: (event.location?.trim() ?? "").slice(0, 500),
     allDay,
     startAt: new Date(startAt),
     endAt: new Date(endAt),
