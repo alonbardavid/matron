@@ -359,8 +359,7 @@ export function CalendarScreen() {
           // Each view takes its own class names; the Schedule passes none down.
           // The phone's toolbar above stands in for each view's own header.
           dayViewProps={{
-            startTime: "06:00",
-            endTime: "23:00",
+            startScrollTime: "06:00:00",
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
@@ -369,8 +368,7 @@ export function CalendarScreen() {
           weekViewProps={{
             renderEvent: renderItem,
             classNames: classes,
-            startTime: "06:00",
-            endTime: "23:00",
+            startScrollTime: "06:00:00",
             withWeekNumber: false,
             highlightToday: true,
             withHeader: !narrow,
