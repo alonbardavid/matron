@@ -41,6 +41,8 @@ export default async function globalSetup(): Promise<void> {
     "DELETE FROM google_calendar_connection",
     "DELETE FROM google_calendar_watch",
     "DELETE FROM ask_session",
+    "DELETE FROM push_subscription",
+    "DELETE FROM alarm",
     "DELETE FROM settings",
     "DELETE FROM file",
     "DELETE FROM user",

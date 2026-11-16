@@ -20,6 +20,8 @@ export const ENTITY_PREFIXES = {
   GOOGLE_CALENDAR_WATCH: "GW",
   ASK_SESSION: "AS",
   FILE: "FL",
+  PUSH_SUBSCRIPTION: "PS",
+  ALARM: "AL",
 } as const satisfies Record<string, Uppercase<string>>;
 
 export type Entity = keyof typeof ENTITY_PREFIXES;

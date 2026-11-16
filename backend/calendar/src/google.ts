@@ -1,4 +1,6 @@
 import { env, waitUntil } from "cloudflare:workers";
+import { TZDate, tz } from "@date-fns/tz";
+import { parseISO } from "date-fns";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
@@ -23,6 +25,7 @@ import {
   googleCalendarWatch,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
+import { dropAlarms, rearmAlarms } from "@backend/notifications/alarms";
 import {
   CALENDAR_COLORS,
   GOOGLE_CALENDAR_SCOPE,
@@ -49,7 +52,7 @@ import {
   type GoogleEvent,
 } from "./google-api";
 import { calendarPermissions } from "./permissions";
-import { canonicalRule, expandSeries, fromWallClock } from "./recurrence";
+import { canonicalRule, expandSeries } from "./recurrence";
 
 const log = logger("calendar/google");
 
@@ -545,6 +548,14 @@ async function mirrorCalendar(
     }
   }
 
+  const known = new Set(
+    (
+      await db
+        .select({ externalId: calendarEvent.externalId })
+        .from(calendarEvent)
+        .where(eq(calendarEvent.calendarId, cal.id))
+    ).map((event) => event.externalId),
+  );
   const writes: BatchItem<"sqlite">[] = [...rows.values()].map(({ externalId, values }) =>
     db
       .insert(calendarEvent)
@@ -576,6 +587,24 @@ async function mirrorCalendar(
     .where(
       and(eq(calendarEvent.calendarId, cal.id), lt(calendarEvent.startAt, new Date(to))),
     );
+
+  // Whoever imported an event attends it, as an event's creator does by
+  // default; only on arrival, so taking themselves off it holds.
+  const attending: BatchItem<"sqlite">[] = present
+    .filter((event) => rows.has(event.externalId ?? "") && !known.has(event.externalId))
+    .map((event) =>
+      db
+        .insert(calendarEventShare)
+        .values({
+          id: newEntityId("CALENDAR_EVENT_SHARE"),
+          eventId: event.id,
+          userId: cal.ownerId,
+          attendee: true,
+        })
+        .onConflictDoNothing(),
+    );
+  for (const chunk of chunks(attending, WRITE_CHUNK))
+    await db.batch(chunk as [BatchItem<"sqlite">]);
 
   // Each series' exceptions in the window are what Google sent this time.
   for (const event of present) {
@@ -612,6 +641,13 @@ async function mirrorCalendar(
       db.delete(calendarEvent).where(inArray(calendarEvent.id, ids)),
     ]);
   }
+  // What Google sent may have moved an event under someone's alarm.
+  const left = new Set(gone);
+  await dropAlarms("event", gone);
+  await rearmAlarms(
+    "event",
+    present.map((event) => event.id).filter((id) => !left.has(id)),
+  );
 }
 
 /** Replaces a series' exceptions due in [from, to) with those Google sent; ones outside stay. */
@@ -701,10 +737,7 @@ export function dateList(line: string, timeZone: string): number[] {
       const [, y, mo, d, h, mi, se, z] = m;
       if (!h) return midnight(`${y}-${mo}-${d}`, timeZone);
       if (z) return Date.UTC(+y!, +mo! - 1, +d!, +h, +mi!, +se!);
-      return fromWallClock(
-        { year: +y!, month: +mo!, day: +d!, hour: +h, minute: +mi!, second: +se! },
-        zone,
-      );
+      return new TZDate(+y!, +mo! - 1, +d!, +h, +mi!, +se!, zone).getTime();
     })
     .filter(Number.isFinite);
 }
@@ -788,11 +821,7 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
 }
 
 function midnight(day: string, timeZone: string): number {
-  const [year, month, date] = day.split("-").map(Number);
-  return fromWallClock(
-    { year: year!, month: month!, day: date!, hour: 0, minute: 0, second: 0 },
-    timeZone,
-  );
+  return parseISO(day, { in: tz(timeZone) }).getTime();
 }
 
 /**

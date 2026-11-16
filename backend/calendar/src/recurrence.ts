@@ -1,3 +1,5 @@
+import { TZDate } from "@date-fns/tz";
+import { format, parseISO, subDays } from "date-fns";
 import { RRule, type Options } from "rrule";
 
 /**
@@ -41,17 +43,9 @@ export interface OccurrenceWindow {
   changed: boolean;
 }
 
-interface WallClock {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-  weekday: number;
-}
-
 const DAY_MS = 86_400_000;
+/** A calendar day as Matron writes one. */
+const DAY = "yyyy-MM-dd";
 /** Frequencies Matron expands; finer ones would make a series of thousands a day. */
 const FREQUENCIES = new Set([RRule.YEARLY, RRule.MONTHLY, RRule.WEEKLY, RRule.DAILY]);
 const UNTIL_PATTERN =
@@ -111,23 +105,17 @@ export function canonicalRule(rule: string, timeZone: string, allDay: boolean): 
   let value: string;
   if (allDay) {
     // A timed UNTIL on an all-day series: the day it falls on in the zone.
-    const clock =
-      hh && z ? wallClock(Date.UTC(+y!, +m! - 1, +d!, +hh, +mm!, +ss!), timeZone) : null;
-    value = clock ? compactDay(clock) : `${y}${m}${d}`;
+    value =
+      hh && z
+        ? format(
+            new TZDate(Date.UTC(+y!, +m! - 1, +d!, +hh, +mm!, +ss!), timeZone),
+            "yyyyMMdd",
+          )
+        : `${y}${m}${d}`;
   } else if (!hh) {
-    value = utcStamp(
-      fromWallClock(
-        { year: +y!, month: +m!, day: +d!, hour: 23, minute: 59, second: 59 },
-        timeZone,
-      ),
-    );
+    value = utcStamp(new TZDate(+y!, +m! - 1, +d!, 23, 59, 59, timeZone));
   } else if (!z) {
-    value = utcStamp(
-      fromWallClock(
-        { year: +y!, month: +m!, day: +d!, hour: +hh, minute: +mm!, second: +ss! },
-        timeZone,
-      ),
-    );
+    value = utcStamp(new TZDate(+y!, +m! - 1, +d!, +hh, +mm!, +ss!, timeZone));
   } else {
     return text;
   }
@@ -187,7 +175,7 @@ export function expandSeries(
         startAt: start,
         endAt: end,
         originalStartAt,
-        day: dayKey(wallClock(originalStartAt, timeZone)),
+        day: format(new TZDate(originalStartAt, timeZone), DAY),
         changed: exception !== undefined,
       });
     }
@@ -265,111 +253,35 @@ function floatingUntil(rule: string, timeZone: string): Date | null {
 
 /** The instant's wall clock in the zone, written as if it were UTC. */
 function floating(ms: number, timeZone: string): number {
-  const c = wallClock(ms, timeZone);
-  return Date.UTC(c.year, c.month - 1, c.day, c.hour, c.minute, c.second);
+  const at = new TZDate(ms, timeZone);
+  return Date.UTC(
+    at.getFullYear(),
+    at.getMonth(),
+    at.getDate(),
+    at.getHours(),
+    at.getMinutes(),
+    at.getSeconds(),
+  );
 }
 
 function fromFloating(date: Date, timeZone: string): number {
-  return fromWallClock(
-    {
-      year: date.getUTCFullYear(),
-      month: date.getUTCMonth() + 1,
-      day: date.getUTCDate(),
-      hour: date.getUTCHours(),
-      minute: date.getUTCMinutes(),
-      second: date.getUTCSeconds(),
-    },
+  return new TZDate(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
     timeZone,
-  );
+  ).getTime();
 }
 
-function utcStamp(ms: number): string {
-  return new Date(ms)
-    .toISOString()
-    .replace(/[-:]/g, "")
-    .replace(/\.\d{3}/, "");
-}
-
-function compactDay(clock: { year: number; month: number; day: number }): string {
-  return dayKey(clock).replace(/-/g, "");
-}
-
-const formatters = new Map<string, Intl.DateTimeFormat>();
-
-function formatter(timeZone: string): Intl.DateTimeFormat {
-  let f = formatters.get(timeZone);
-  if (!f) {
-    f = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      second: "numeric",
-      weekday: "short",
-    });
-    formatters.set(timeZone, f);
-  }
-  return f;
-}
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-/** The wall clock in `timeZone` at the instant `ms`. */
-export function wallClock(ms: number, timeZone: string): WallClock {
-  const parts = Object.fromEntries(
-    formatter(timeZone)
-      .formatToParts(new Date(ms))
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    year: Number(parts.year),
-    month: Number(parts.month),
-    day: Number(parts.day),
-    hour: Number(parts.hour) % 24,
-    minute: Number(parts.minute),
-    second: Number(parts.second),
-    weekday: WEEKDAYS.indexOf(parts.weekday ?? ""),
-  };
-}
-
-/** The instant at which `timeZone` reads the given wall clock; a skipped hour rolls forward. */
-export function fromWallClock(
-  clock: Omit<WallClock, "weekday">,
-  timeZone: string,
-): number {
-  const asUtc = Date.UTC(
-    clock.year,
-    clock.month - 1,
-    clock.day,
-    clock.hour,
-    clock.minute,
-    clock.second,
-  );
-  // The zone's offset at roughly that instant, refined once more.
-  let guess = asUtc - offsetAt(asUtc, timeZone);
-  guess = asUtc - offsetAt(guess, timeZone);
-  return guess;
-}
-
-function offsetAt(ms: number, timeZone: string): number {
-  const c = wallClock(ms, timeZone);
-  return Date.UTC(c.year, c.month - 1, c.day, c.hour, c.minute, c.second) - ms;
-}
-
-export function dayKey(clock: { year: number; month: number; day: number }): string {
-  return `${clock.year}-${String(clock.month).padStart(2, "0")}-${String(clock.day).padStart(2, "0")}`;
+/** The instant as iCalendar writes one in UTC: `20271231T225959Z`. */
+function utcStamp(at: Date): string {
+  return format(new TZDate(at.getTime(), "UTC"), "yyyyMMdd'T'HHmmss'Z'");
 }
 
 /** The day before `day` (`YYYY-MM-DD`), as the last day a stopped series may still occur on. */
 export function dayBefore(day: string): string {
-  const [y, m, d] = day.split("-").map(Number);
-  const date = new Date(Date.UTC(y!, m! - 1, d!) - DAY_MS);
-  return dayKey({
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
-  });
+  return format(subDays(parseISO(day), 1), DAY);
 }

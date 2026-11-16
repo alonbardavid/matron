@@ -6,6 +6,7 @@ import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { Form } from "@frontend/ds/forms/Form";
+import { TaskAlarm } from "./TaskAlarm";
 
 export interface TaskValues {
   title: string;
@@ -44,7 +45,11 @@ function valuesOf(task: Task | null): TaskValues {
     : EMPTY;
 }
 
-/** New or existing task: title, notes, due day, who it is shared with and assigned to. */
+/**
+ * New or existing task: title, notes, due day, who it is shared with and
+ * assigned to. A saved task with a due day also offers the caller's own
+ * reminder, which is set at once and not with the form.
+ */
 export function TaskModal({ opened, onClose, task, onSave, onRemove }: TaskModalProps) {
   const { me } = useMe();
   const [values, setValues] = useState<TaskValues>(valuesOf(task));
@@ -116,6 +121,7 @@ export function TaskModal({ opened, onClose, task, onSave, onRemove }: TaskModal
           value={values.dueDate}
           onChange={(value) => set("dueDate", value)}
         />
+        {task?.dueDate && task.completedAt === null && <TaskAlarm taskId={task.id} />}
         <PeoplePicker
           label="Shared with"
           placeholder="Only you"

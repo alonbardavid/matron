@@ -8,6 +8,7 @@ import { conversationPermissions, databasePermissions } from "@backend/ask/permi
 import { calendarPermissions, eventPermissions } from "@backend/calendar/permissions";
 import type { Role } from "@backend/commons/principal";
 import { householdPermissions, memberPermissions } from "@backend/household/permissions";
+import { pushPermissions } from "@backend/notifications/permissions";
 import { taskPermissions } from "@backend/tasks/permissions";
 import type { Permissions } from "@backend/commons/permissions";
 
@@ -24,6 +25,7 @@ const features: Permissions<string, string>[] = [
   taskPermissions,
   eventPermissions,
   calendarPermissions,
+  pushPermissions,
   conversationPermissions,
   databasePermissions,
   troubleshootingPermissions,
