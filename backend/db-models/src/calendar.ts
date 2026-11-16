@@ -177,34 +177,6 @@ export const calendarEventHidden = sqliteTable(
   ],
 );
 
-export const ATTACHMENT_KINDS = ["file", "link"] as const;
-export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
-
-/**
- * Something attached to an event, on every occurrence: a file uploaded here,
- * or a link. One imported from Google (a Drive file, say) is a link with the
- * source `google`, replaced on each sync; those added here stay.
- */
-export const calendarEventAttachment = sqliteTable(
-  "calendar_event_attachment",
-  {
-    id: text("id").primaryKey(),
-    eventId: text("event_id").notNull(),
-    kind: text("kind", { enum: ATTACHMENT_KINDS }).notNull(),
-    /** For a file: the uploaded file's id. */
-    fileId: text("file_id"),
-    /** For a link: where it points, https only. */
-    url: text("url"),
-    title: text("title").notNull(),
-    mimeType: text("mime_type"),
-    source: text("source", { enum: CALENDAR_SOURCES }).notNull().default("matron"),
-    /** Who added it here; null for an imported one. */
-    createdBy: text("created_by"),
-    createdAt: createdAt(),
-  },
-  (table) => [index("calendar_event_attachment_event_idx").on(table.eventId)],
-);
-
 export const GOOGLE_CONNECTION_STATUSES = ["active", "needs_reconnect"] as const;
 export type GoogleConnectionStatus = (typeof GOOGLE_CONNECTION_STATUSES)[number];
 

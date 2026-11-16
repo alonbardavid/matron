@@ -17,7 +17,6 @@ import {
   calendar,
   calendarEvent,
   calendarEventException,
-  calendarEventAttachment,
   calendarEventHidden,
   calendarEventShare,
   googleCalendarConnection,
@@ -49,12 +48,6 @@ import {
   watchEvents,
   type GoogleEvent,
 } from "./google-api";
-import {
-  importedAttachmentsOf,
-  importedAttachmentWrites,
-  importedLinks,
-  type ImportedAttachment,
-} from "./attachments";
 import { calendarPermissions } from "./permissions";
 import { canonicalRule, expandSeries, fromWallClock } from "./recurrence";
 
@@ -466,8 +459,6 @@ type EventValues = NonNullable<ReturnType<typeof eventValues>>;
 interface ImportedRow {
   externalId: string;
   values: EventValues & { rrule: string | null; externalSeriesId: string | null };
-  /** The event's attachments at Google (Drive files and the like), as links. */
-  attachments: ImportedAttachment[];
 }
 
 interface ImportedException {
@@ -516,7 +507,6 @@ async function mirrorCalendar(
       rows.set(event.id, {
         externalId: event.id,
         values: { ...values, rrule: null, externalSeriesId: seriesId },
-        attachments: attachmentsOf(event),
       });
     }
   };
@@ -534,7 +524,6 @@ async function mirrorCalendar(
       rows.set(event.id, {
         externalId: event.id,
         values: { ...values, rrule: rule.rrule, externalSeriesId: null },
-        attachments: attachmentsOf(event),
       });
       exceptions.set(event.id, [
         ...rule.exdates.map((at) => cancelledAt(at)),
@@ -588,22 +577,6 @@ async function mirrorCalendar(
       and(eq(calendarEvent.calendarId, cal.id), lt(calendarEvent.startAt, new Date(to))),
     );
 
-  // Each imported event's attachments are what Google sent this time; those added
-  // here stay. Only events whose attachments changed are written.
-  const synced = present.flatMap((event) => {
-    const imported = event.externalId ? rows.get(event.externalId) : undefined;
-    return imported ? [{ id: event.id, attachments: imported.attachments }] : [];
-  });
-  const before = await importedAttachmentsOf(synced.map((event) => event.id));
-  const attachmentWrites = synced
-    .filter(
-      (event) =>
-        JSON.stringify(event.attachments) !== JSON.stringify(before.get(event.id) ?? []),
-    )
-    .flatMap((event) => importedAttachmentWrites(event.id, event.attachments));
-  for (const chunk of chunks(attachmentWrites as BatchItem<"sqlite">[], WRITE_CHUNK))
-    await db.batch(chunk as [BatchItem<"sqlite">]);
-
   // Each series' exceptions in the window are what Google sent this time.
   for (const event of present) {
     const imported = event.externalId ? exceptions.get(event.externalId) : undefined;
@@ -632,9 +605,6 @@ async function mirrorCalendar(
   for (const ids of chunks(gone, ID_CHUNK)) {
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
-      db
-        .delete(calendarEventAttachment)
-        .where(inArray(calendarEventAttachment.eventId, ids)),
       db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, ids)),
       db
         .delete(calendarEventException)
@@ -815,23 +785,6 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
     timeZone,
     externalUrl: event.htmlLink?.startsWith("https://") ? event.htmlLink : null,
   };
-}
-
-/** A Google event's attachments (Drive files and the like) as links to open at Google. */
-function attachmentsOf(event: GoogleEvent): ImportedAttachment[] {
-  return importedLinks(
-    (event.attachments ?? []).flatMap((item) =>
-      item.fileUrl
-        ? [
-            {
-              url: item.fileUrl,
-              title: item.title ?? "",
-              mimeType: item.mimeType ?? null,
-            },
-          ]
-        : [],
-    ),
-  );
 }
 
 function midnight(day: string, timeZone: string): number {

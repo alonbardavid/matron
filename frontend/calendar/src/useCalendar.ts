@@ -57,31 +57,7 @@ export function useEventActions() {
       onError: (err) => notifyError(err, "Could not change the event"),
     }),
   );
-  const attachFile = useMutation(
-    orpc.calendar.attachFile.mutationOptions({ onSuccess: refresh }),
-  );
-  const attachLink = useMutation(
-    orpc.calendar.attachLink.mutationOptions({ onSuccess: refresh }),
-  );
-  const detach = useMutation(
-    orpc.calendar.detach.mutationOptions({
-      onSuccess: refresh,
-      onError: (err) => notifyError(err, "Could not remove the attachment"),
-    }),
-  );
-  return {
-    create,
-    update,
-    stop,
-    remove,
-    place,
-    editOccurrence,
-    cancelOccurrence,
-    hide,
-    attachFile,
-    attachLink,
-    detach,
-  };
+  return { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide };
 }
 
 /** The caller's own calendars. */

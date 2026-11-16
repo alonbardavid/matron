@@ -32,8 +32,6 @@ export interface ToolContext {
   principal: Principal;
   /** The user's IANA zone, for events made without one. */
   timeZone: string;
-  /** The branch the conversation runs on, where files removed with an event live. */
-  branch: string;
   db: D1Database;
 }
 
@@ -131,7 +129,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
         "Remove an event, and every repetition of it. Ask the user first unless they clearly asked for it.",
       inputSchema: z.object({ id: z.string() }),
       execute: async ({ id }) => {
-        await removeEvent(principal, id, ctx.branch);
+        await removeEvent(principal, id);
         return { ok: true };
       },
     }),

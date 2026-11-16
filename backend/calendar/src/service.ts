@@ -15,7 +15,6 @@ import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
 import {
   CALENDAR_COLORS,
-  type Attachment,
   type CalendarEvent,
   type CalendarEventCreate,
   type CalendarEventUpdate,
@@ -40,14 +39,6 @@ import {
   ruleEndingOn,
   type ExceptionInput,
 } from "./recurrence";
-import {
-  attachFile,
-  attachLink,
-  attachmentsOfEvents,
-  detach,
-  dropAttachments,
-  type AttachmentUpload,
-} from "./attachments";
 import { eventPermissions } from "./permissions";
 
 const log = logger("calendar/service");
@@ -220,48 +211,6 @@ export async function getEvent(principal: Principal, id: string): Promise<Calend
     .get();
   if (!row) throw new DomainError("NOT_FOUND", "Event not found");
   return withShares(principal, row);
-}
-
-/**
- * Uploads a file to the event. Whoever may change the event attaches to it,
- * one imported from Google too: what is attached here is Matron's own.
- */
-export async function attachFileToEvent(
-  principal: Principal,
-  branch: string,
-  id: string,
-  upload: AttachmentUpload,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "update");
-  requireEditable(await getEvent(principal, id));
-  await attachFile(principal, branch, id, upload);
-  return getEvent(principal, id);
-}
-
-/** Attaches a link to the event, for whoever may change it. */
-export async function attachLinkToEvent(
-  principal: Principal,
-  id: string,
-  url: string,
-  title: string | undefined,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "update");
-  requireEditable(await getEvent(principal, id));
-  await attachLink(principal, id, url, title);
-  return getEvent(principal, id);
-}
-
-/** Removes something attached here, for whoever may change the event. */
-export async function detachFromEvent(
-  principal: Principal,
-  branch: string,
-  id: string,
-  attachmentId: string,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "update");
-  requireEditable(await getEvent(principal, id));
-  await detach(principal, branch, id, attachmentId);
-  return getEvent(principal, id);
 }
 
 /** Hides the event, every occurrence, from the caller's own calendar; or shows it again. Others are unaffected. */
@@ -600,12 +549,7 @@ async function writeException(
     });
 }
 
-/** Removes the event; the files uploaded to it go too when the branch is known. */
-export async function removeEvent(
-  principal: Principal,
-  id: string,
-  branch: string | null = null,
-): Promise<void> {
+export async function removeEvent(principal: Principal, id: string): Promise<void> {
   eventPermissions.require(principal, "remove");
   const current = await getEvent(principal, id);
   requireEditable(current);
@@ -618,9 +562,8 @@ export async function removeEvent(
     db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
     db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
     db.delete(calendarEventHidden).where(eq(calendarEventHidden.eventId, id)),
+    db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
   ]);
-  await dropAttachments([id], branch);
-  await db.delete(calendarEvent).where(eq(calendarEvent.id, id));
   log.info("event removed", { eventId: id, userId: principal.userId });
 }
 
@@ -641,7 +584,7 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions, hidden, attachments] = await Promise.all([
+  const [shares, calendars, viewer, exceptions, hidden] = await Promise.all([
     sharesOf([row.id]),
     calendarsById([row.calendarId]),
     viewerOf(principal),
@@ -656,7 +599,6 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
         ),
       )
       .get(),
-    attachmentsOfEvents([row.id]),
   ]);
   const list = shares.get(row.id) ?? [];
   const placement = placementOf(
@@ -665,11 +607,14 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     list.find((share) => share.userId === principal.userId),
   );
   if (!placement) throw new DomainError("NOT_FOUND", "Event not found");
-  return toEvent(row, list, calendars.get(row.calendarId), placement, {
-    exceptions: exceptions.get(row.id) ?? [],
-    hidden: hidden !== undefined,
-    attachments: attachments.get(row.id) ?? [],
-  });
+  return toEvent(
+    row,
+    list,
+    calendars.get(row.calendarId),
+    placement,
+    exceptions.get(row.id) ?? [],
+    hidden !== undefined,
+  );
 }
 
 function checkTimes(startAt: number, endAt: number): void {
@@ -811,11 +756,8 @@ function toEvent(
   shares: ShareRow[],
   cal: CalendarRow | undefined,
   placement: Placement,
-  extra: {
-    exceptions: ExceptionRow[];
-    hidden: boolean;
-    attachments: Attachment[];
-  },
+  exceptions: ExceptionRow[],
+  hidden: boolean,
 ): CalendarEvent {
   return {
     id: row.id,
@@ -823,20 +765,19 @@ function toEvent(
     description: row.description,
     location: row.location,
     place: row.place,
-    attachments: extra.attachments,
     creatorId: row.creatorId,
     allDay: row.allDay,
     startAt: row.startAt.getTime(),
     endAt: row.endAt.getTime(),
     timeZone: row.timeZone,
     rrule: row.rrule,
-    exceptions: extra.exceptions.map(toException),
+    exceptions: exceptions.map(toException),
     sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
     attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
     calendarId: row.calendarId,
     shownIn: placement.shownIn,
     access: placement.access,
-    hidden: extra.hidden,
+    hidden,
     source: cal?.source ?? "matron",
     repeatsAtSource: row.externalSeriesId !== null,
     externalUrl: row.externalUrl,
