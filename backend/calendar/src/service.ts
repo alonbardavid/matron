@@ -9,7 +9,7 @@ import {
   calendarEventException,
   calendarEventHidden,
   calendarEventShare,
-  type StoredPlace,
+  type LocationMetadata,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
@@ -165,7 +165,7 @@ export async function listOccurrences(
           originalStartAt: null,
           title: row.title,
           location: row.location,
-          place: row.place,
+          locationMetadata: row.locationMetadata,
           startAt: row.startAt.getTime(),
           endAt: row.endAt.getTime(),
           recurring: row.externalSeriesId !== null,
@@ -314,7 +314,7 @@ export async function createEvent(
       title: input.title,
       description: input.description ?? "",
       location: input.location ?? "",
-      place: (input.location && input.place) || null,
+      locationMetadata: (input.location && input.locationMetadata) || null,
       creatorId: principal.userId,
       allDay: input.allDay,
       startAt: new Date(input.startAt),
@@ -377,7 +377,7 @@ export async function updateEvent(
       ...(changes.description !== undefined && { description: changes.description }),
       ...(changes.location !== undefined && {
         location: changes.location,
-        place: (changes.location && changes.place) || null,
+        locationMetadata: (changes.location && changes.locationMetadata) || null,
       }),
       ...(changes.allDay !== undefined && { allDay: changes.allDay }),
       startAt: new Date(startAt),
@@ -457,8 +457,14 @@ export async function editOccurrence(
     title: changes.title ?? existing?.title ?? null,
     description: changes.description ?? existing?.description ?? null,
     ...(changes.location !== undefined
-      ? { location: changes.location, place: (changes.location && changes.place) || null }
-      : { location: existing?.location ?? null, place: existing?.place ?? null }),
+      ? {
+          location: changes.location,
+          locationMetadata: (changes.location && changes.locationMetadata) || null,
+        }
+      : {
+          location: existing?.location ?? null,
+          locationMetadata: existing?.locationMetadata ?? null,
+        }),
     // Kept only when they differ from the series' own times.
     startAt: startAt === originalStartAt ? null : new Date(startAt),
     endAt: endAt === originalStartAt + duration ? null : new Date(endAt),
@@ -486,7 +492,7 @@ export async function cancelOccurrence(
     title: null,
     description: null,
     location: null,
-    place: null,
+    locationMetadata: null,
     startAt: null,
     endAt: null,
     updatedAt: new Date(),
@@ -737,18 +743,18 @@ function toException(row: ExceptionRow): OccurrenceException {
     title: row.title,
     description: row.description,
     location: row.location,
-    place: row.place,
+    locationMetadata: row.locationMetadata,
   };
 }
 
-/** An occurrence's location: its own when it changed it, with the place picked for it; else the series'. */
+/** An occurrence's location: its own when it changed it, with its metadata; else the series'. */
 function locationOf(
   row: EventRow,
   own: ExceptionRow | undefined,
-): { location: string; place: StoredPlace | null } {
+): { location: string; locationMetadata: LocationMetadata | null } {
   return own && own.location !== null
-    ? { location: own.location, place: own.place }
-    : { location: row.location, place: row.place };
+    ? { location: own.location, locationMetadata: own.locationMetadata }
+    : { location: row.location, locationMetadata: row.locationMetadata };
 }
 
 function toEvent(
@@ -764,7 +770,7 @@ function toEvent(
     title: row.title,
     description: row.description,
     location: row.location,
-    place: row.place,
+    locationMetadata: row.locationMetadata,
     creatorId: row.creatorId,
     allDay: row.allDay,
     startAt: row.startAt.getTime(),
@@ -791,7 +797,7 @@ interface OccurrenceFields {
   originalStartAt: number | null;
   title: string;
   location: string;
-  place: StoredPlace | null;
+  locationMetadata: LocationMetadata | null;
   startAt: number;
   endAt: number;
   recurring: boolean;

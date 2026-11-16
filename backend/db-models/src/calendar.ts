@@ -60,8 +60,8 @@ export const calendarShare = sqliteTable(
   ],
 );
 
-/** A place picked from Google's suggestions for a location, as Google gave it (JSON). */
-export interface StoredPlace {
+/** What Google gave for a location picked from its suggestions (JSON). */
+export interface LocationMetadata {
   id: string;
   name: string;
   address: string;
@@ -78,8 +78,10 @@ export const calendarEvent = sqliteTable(
     description: text("description").notNull().default(""),
     /** Where it happens, as written: an address, a room, a link. */
     location: text("location").notNull().default(""),
-    /** The place `location` was picked as; null when it was typed. */
-    place: text("place", { mode: "json" }).$type<StoredPlace>(),
+    /** What Google gave for `location` when it was picked; null when it was typed. */
+    locationMetadata: text("location_metadata", {
+      mode: "json",
+    }).$type<LocationMetadata>(),
     creatorId: text("creator_id").notNull(),
     allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
     startAt: timestamp("start_at").notNull(),
@@ -143,7 +145,9 @@ export const calendarEventException = sqliteTable(
     title: text("title"),
     description: text("description"),
     location: text("location"),
-    place: text("place", { mode: "json" }).$type<StoredPlace>(),
+    locationMetadata: text("location_metadata", {
+      mode: "json",
+    }).$type<LocationMetadata>(),
     startAt: timestamp("start_at"),
     endAt: timestamp("end_at"),
     /** For an imported change: the instance's id at the source. */

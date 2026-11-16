@@ -8,8 +8,8 @@ interface EventRow {
   exceptions: { originalStartAt: number; location: string | null }[];
 }
 
-/** A place as Google's details give it, kept with the event it was picked for. */
-const PLACE = {
+/** Location metadata as Google's place details give it, kept with the event it was picked for. */
+const LOCATION_METADATA = {
   id: "p1",
   name: "Leisure Centre",
   address: "Mill Road, Cambridge CB1 2AD, UK",
@@ -85,7 +85,7 @@ test.describe("location", () => {
     await expect(dialog.getByLabel("Location")).toHaveValue("Leisure Centre, Mill Road");
   });
 
-  test("a location keeps the place it was picked as, until it is typed over", async ({
+  test("a location keeps the metadata it was picked with, until it is typed over", async ({
     page,
   }) => {
     await signIn(page, OWNER);
@@ -94,7 +94,7 @@ test.describe("location", () => {
       data: {
         title: "Dentist",
         location: "Smile Clinic, High St",
-        place: PLACE,
+        locationMetadata: LOCATION_METADATA,
         allDay: false,
         startAt: start,
         endAt: start + 3_600_000,
@@ -102,32 +102,38 @@ test.describe("location", () => {
         rrule: "FREQ=WEEKLY;COUNT=2",
       },
     });
-    const event = (await created.json()) as EventRow & { place: unknown };
-    expect(event.place).toEqual(PLACE);
+    const event = (await created.json()) as EventRow & { locationMetadata: unknown };
+    expect(event.locationMetadata).toEqual(LOCATION_METADATA);
     const update = (data: object) =>
       page.request
         .put(`/api/app/calendar/events/${event.id}`, { data })
-        .then((r) => r.json() as Promise<{ location: string; place: unknown }>);
-    // Changing anything but the location keeps the place.
-    expect((await update({ title: "Dentist (Sam)" })).place).toEqual(PLACE);
-    // An occurrence of its own keeps the place picked for it; the others the series'.
+        .then(
+          (r) => r.json() as Promise<{ location: string; locationMetadata: unknown }>,
+        );
+    // Changing anything but the location keeps its metadata.
+    expect((await update({ title: "Dentist (Sam)" })).locationMetadata).toEqual(
+      LOCATION_METADATA,
+    );
+    // An occurrence of its own keeps its own metadata; the others the series'.
     const second = start + 7 * 86_400_000;
-    const other = { ...PLACE, id: "p2", name: "Town Hall" };
+    const other = { ...LOCATION_METADATA, id: "p2", name: "Town Hall" };
     await page.request.put(`/api/app/calendar/events/${event.id}/occurrences/${second}`, {
-      data: { location: "Town Hall", place: other },
+      data: { location: "Town Hall", locationMetadata: other },
     });
     const list = (await (
       await page.request.get(
         `/api/app/calendar/occurrences?from=${start - 1}&to=${start + 14 * 86_400_000}`,
       )
-    ).json()) as { eventId: string; place: { id: string } | null }[];
-    expect(list.filter((o) => o.eventId === event.id).map((o) => o.place?.id)).toEqual([
-      "p1",
-      "p2",
-    ]);
-    // A location typed without a place has none.
+    ).json()) as { eventId: string; locationMetadata: { id: string } | null }[];
+    expect(
+      list.filter((o) => o.eventId === event.id).map((o) => o.locationMetadata?.id),
+    ).toEqual(["p1", "p2"]);
+    // A location typed has no metadata.
     const typed = await update({ location: "Smile Clinic, room 4" });
-    expect(typed).toMatchObject({ location: "Smile Clinic, room 4", place: null });
+    expect(typed).toMatchObject({
+      location: "Smile Clinic, room 4",
+      locationMetadata: null,
+    });
   });
 
   test("Google suggests places for a location once the household set up Places", async ({
@@ -152,7 +158,7 @@ test.describe("location", () => {
           available: true,
           places: [
             {
-              id: PLACE.id,
+              id: LOCATION_METADATA.id,
               text: "Leisure Centre, Mill Road, Cambridge, UK",
               main: "Leisure Centre",
               secondary: "Mill Road, Cambridge, UK",
@@ -162,10 +168,13 @@ test.describe("location", () => {
       });
     });
     const detailed: URL[] = [];
-    await page.route(`**/api/app/calendar/places/${PLACE.id}?**`, async (route) => {
-      detailed.push(new URL(route.request().url()));
-      await route.fulfill({ json: PLACE });
-    });
+    await page.route(
+      `**/api/app/calendar/places/${LOCATION_METADATA.id}?**`,
+      async (route) => {
+        detailed.push(new URL(route.request().url()));
+        await route.fulfill({ json: LOCATION_METADATA });
+      },
+    );
     await page.getByRole("button", { name: "New event" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Title").fill("Swim club");
@@ -175,18 +184,18 @@ test.describe("location", () => {
     await expect(option).toContainText("Mill Road, Cambridge, UK");
     await option.click();
     await expect(location).toHaveValue("Leisure Centre, Mill Road, Cambridge, UK");
-    // The pick asks for the place in the same search the suggestions were, and
-    // the place's text is not looked up again.
+    // The pick asks for its metadata in the same search the suggestions were, and
+    // the picked text is not looked up again.
     await expect.poll(() => detailed.length).toBe(1);
     await page.waitForTimeout(500);
     expect(asked.map((url) => url.searchParams.get("query"))).toEqual(["Leisure"]);
     expect(detailed[0]!.searchParams.get("session")).toBe(
       asked[0]!.searchParams.get("session"),
     );
-    // The place opens as Google has it.
+    // The location opens as Google has it.
     await expect(dialog.getByRole("link", { name: "Open in Maps" })).toHaveAttribute(
       "href",
-      PLACE.mapsUrl,
+      LOCATION_METADATA.mapsUrl,
     );
     await dialog.getByRole("button", { name: "Add event" }).click();
     await expect(dialog).toBeHidden();
@@ -195,10 +204,10 @@ test.describe("location", () => {
       await page.request.get(
         `/api/app/calendar/occurrences?from=${now - 86_400_000}&to=${now + 2 * 86_400_000}`,
       )
-    ).json()) as { title: string; location: string; place: unknown }[];
+    ).json()) as { title: string; location: string; locationMetadata: unknown }[];
     expect(listed.find((o) => o.title === "Swim club")).toMatchObject({
       location: "Leisure Centre, Mill Road, Cambridge, UK",
-      place: PLACE,
+      locationMetadata: LOCATION_METADATA,
     });
 
     // A link is not looked up.

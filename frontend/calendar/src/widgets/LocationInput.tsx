@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Autocomplete, Stack, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Place } from "@shared/contract/app/calendar";
+import type { LocationMetadata } from "@shared/contract/app/calendar";
 import { notifyError } from "@frontend/api/errors";
 import { orpc } from "@frontend/api/orpc";
 import { IconMapPin } from "@frontend/ds/icons";
@@ -13,9 +13,9 @@ const MIN_QUERY = 3;
 
 /**
  * An event's location, with places Google suggests as it is typed when the
- * household set up Google Places. Picking one brings the place as Google has
- * it (its id, address, coordinates and Maps link); typing anything else makes
- * the location the text alone. A link is not looked up.
+ * household set up Google Places. Picking one brings its location metadata as
+ * Google has it (the place id, address, coordinates and Maps link); typing
+ * anything else makes the location the text alone. A link is not looked up.
  * One dialog's typing is one search for Google's billing, ended by a pick.
  */
 export function LocationInput({
@@ -23,13 +23,13 @@ export function LocationInput({
   onChange,
 }: {
   value: string;
-  onChange: (location: string, place: Place | null) => void;
+  onChange: (location: string, locationMetadata: LocationMetadata | null) => void;
 }) {
   const queryClient = useQueryClient();
   const [session, setSession] = useState(() => crypto.randomUUID());
-  // The text of the place just picked, which is not looked up again.
+  // The text of the suggestion just picked, which is not looked up again.
   const [picked, setPicked] = useState<string | null>(null);
-  // What the field holds now, so a place that arrives after more typing is dropped.
+  // What the field holds now, so metadata that arrives after more typing is dropped.
   const current = useRef(value);
   const [typed] = useDebouncedValue(value.trim(), 250);
   const ask = typed.length >= MIN_QUERY && !isLink(typed) && typed !== picked?.trim();
@@ -41,20 +41,20 @@ export function LocationInput({
     placeholderData: keepPreviousData,
   });
   const places = ask ? (suggestions.data?.places ?? []) : [];
-  const byText = new Map(places.map((place) => [place.text, place]));
+  const byText = new Map(places.map((suggestion) => [suggestion.text, suggestion]));
 
   const pick = async (text: string) => {
     const suggestion = byText.get(text);
     if (!suggestion) return;
     setPicked(text);
     try {
-      const place = await queryClient.fetchQuery(
+      const locationMetadata = await queryClient.fetchQuery(
         orpc.calendar.placeDetails.queryOptions({
           input: { id: suggestion.id, session },
           staleTime: Infinity,
         }),
       );
-      if (current.current === text) onChange(text, place);
+      if (current.current === text) onChange(text, locationMetadata);
     } catch (err) {
       notifyError(err, "Could not get the place from Google");
     }
@@ -83,13 +83,13 @@ export function LocationInput({
         void pick(text);
       }}
       renderOption={({ option }) => {
-        const place = byText.get(option.value);
+        const suggestion = byText.get(option.value);
         return (
           <Stack gap={0}>
-            <Text size="sm">{place?.main ?? option.value}</Text>
-            {place?.secondary && (
+            <Text size="sm">{suggestion?.main ?? option.value}</Text>
+            {suggestion?.secondary && (
               <Text size="xs" c="dimmed">
-                {place.secondary}
+                {suggestion.secondary}
               </Text>
             )}
           </Stack>

@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
-import type { Place, PlaceSuggestions } from "@shared/contract/app/calendar";
+import type { LocationMetadata, PlaceSuggestions } from "@shared/contract/app/calendar";
 import { calendarPermissions } from "./permissions";
 
 /**
@@ -79,7 +79,7 @@ export async function suggestPlaces(
 export async function placeDetails(
   principal: Principal,
   input: { id: string; session: string },
-): Promise<Place> {
+): Promise<LocationMetadata> {
   calendarPermissions.require(principal, "view");
   const key = placesKey();
   if (!key) throw new DomainError("SERVICE_UNAVAILABLE", "Google Places is not set up");

@@ -20,10 +20,10 @@ export const rruleString = z
   );
 
 /**
- * A place picked from Google's suggestions for a location, as Google gave it.
- * A location typed and not picked has none.
+ * What Google gave for a location picked from its suggestions. A location
+ * typed and not picked has none.
  */
-export const placeSchema = z.object({
+export const locationMetadataSchema = z.object({
   /** Google's place id. */
   id: z.string().min(1).max(300),
   name: z.string().max(500),
@@ -33,7 +33,7 @@ export const placeSchema = z.object({
   /** The place on Google Maps. */
   mapsUrl: z.string().url().max(1000),
 });
-export type Place = z.infer<typeof placeSchema>;
+export type LocationMetadata = z.infer<typeof locationMetadataSchema>;
 
 /** One occurrence of a series cancelled or changed, keyed by when it was due. */
 export const occurrenceExceptionSchema = z.object({
@@ -42,8 +42,8 @@ export const occurrenceExceptionSchema = z.object({
   title: z.string().nullable(),
   description: z.string().nullable(),
   location: z.string().nullable(),
-  /** The place picked for this occurrence's own location. */
-  place: placeSchema.nullable(),
+  /** What Google gave for this occurrence's own location. */
+  locationMetadata: locationMetadataSchema.nullable(),
   startAt: z.number().nullable(),
   endAt: z.number().nullable(),
 });
@@ -106,8 +106,8 @@ export const calendarEventSchema = z.object({
   description: z.string(),
   /** Where it happens, as written; empty when not given. */
   location: z.string(),
-  /** The place `location` was picked as from Google's suggestions; null when it was typed. */
-  place: placeSchema.nullable(),
+  /** What Google gave for `location` when it was picked from its suggestions; null when it was typed. */
+  locationMetadata: locationMetadataSchema.nullable(),
   creatorId: z.string(),
   allDay: z.boolean(),
   /** Milliseconds since the epoch; an all-day event starts at midnight in `timeZone` and ends at the next. */
@@ -154,7 +154,7 @@ export const occurrenceSchema = z.object({
   title: z.string(),
   /** Where this occurrence happens; empty when not given. */
   location: z.string(),
-  place: placeSchema.nullable(),
+  locationMetadata: locationMetadataSchema.nullable(),
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
@@ -181,8 +181,8 @@ export const calendarEventCreateSchema = z.object({
   title,
   description: description.optional(),
   location: location.optional(),
-  /** The place the location was picked as; goes with `location`, and is cleared by one without it. */
-  place: placeSchema.nullable().optional(),
+  /** What Google gave for `location`; goes with it, and is cleared by a `location` without it. */
+  locationMetadata: locationMetadataSchema.nullable().optional(),
   allDay: z.boolean(),
   startAt: z.number(),
   endAt: z.number(),
@@ -203,7 +203,7 @@ export const occurrenceUpdateSchema = z.object({
   title: title.optional(),
   description: description.optional(),
   location: location.optional(),
-  place: placeSchema.nullable().optional(),
+  locationMetadata: locationMetadataSchema.nullable().optional(),
   startAt: z.number().optional(),
   endAt: z.number().optional(),
 });
@@ -393,12 +393,12 @@ export const calendarContract = {
       }),
     )
     .output(placeSuggestionsSchema),
-  /** The place picked from the suggestions, from Google; it ends the dialog's search. */
+  /** What Google gives for the place picked from the suggestions; it ends the dialog's search. */
   placeDetails: oc
     .route({ method: "GET", path: "/api/app/calendar/places/{id}" })
     .input(
       z.object({ id: z.string().min(1).max(300), session: z.string().min(1).max(64) }),
     )
-    .output(placeSchema),
+    .output(locationMetadataSchema),
   google: googleCalendarContract,
 };

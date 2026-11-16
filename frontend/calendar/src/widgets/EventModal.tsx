@@ -19,7 +19,7 @@ import type {
   Calendar,
   CalendarEvent,
   OccurrenceUpdate,
-  Place,
+  LocationMetadata,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
@@ -46,15 +46,15 @@ export interface EventDraft {
   /** One of the creator's Matron calendars; null for their default. */
   calendarId: string | null;
   location: string;
-  /** The place the location was picked as from Google's suggestions; null when typed. */
-  place: Place | null;
+  /** What Google gave for the location when it was picked from its suggestions; null when typed. */
+  locationMetadata: LocationMetadata | null;
 }
 
 export interface EventSubmit {
   title: string;
   description: string;
   location: string;
-  place: Place | null;
+  locationMetadata: LocationMetadata | null;
   allDay: boolean;
   startAt: number;
   endAt: number;
@@ -122,7 +122,10 @@ function draftOf(
     title: occurrence?.title ?? event?.title ?? "",
     description: own?.description ?? event?.description ?? "",
     location: own?.location ?? event?.location ?? "",
-    place: own && own.location !== null ? own.place : (event?.place ?? null),
+    locationMetadata:
+      own && own.location !== null
+        ? own.locationMetadata
+        : (event?.locationMetadata ?? null),
     allDay,
     start: allDay ? toDayString(startAt) : toDateTimeString(startAt),
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
@@ -237,7 +240,7 @@ export function EventModal({
           title: draft.title.trim(),
           description: draft.description.trim(),
           location: draft.location.trim(),
-          place: draft.place,
+          locationMetadata: draft.locationMetadata,
           ...span,
         });
         onClose();
@@ -247,7 +250,7 @@ export function EventModal({
         title: draft.title.trim(),
         description: draft.description.trim(),
         location: draft.location.trim(),
-        place: draft.place,
+        locationMetadata: draft.locationMetadata,
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
@@ -342,13 +345,13 @@ export function EventModal({
               <Stack gap={2}>
                 <LocationInput
                   value={draft.location}
-                  onChange={(location, place) =>
-                    setDraft((prev) => ({ ...prev, location, place }))
+                  onChange={(location, locationMetadata) =>
+                    setDraft((prev) => ({ ...prev, location, locationMetadata }))
                   }
                 />
                 {draft.location.trim() && (
                   <Anchor
-                    href={mapsUrl(draft.location.trim(), draft.place)}
+                    href={mapsUrl(draft.location.trim(), draft.locationMetadata)}
                     target="_blank"
                     rel="noopener noreferrer"
                     size="xs"
