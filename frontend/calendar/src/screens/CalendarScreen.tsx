@@ -33,6 +33,7 @@ import {
   localTimeZone,
   toDayString,
 } from "../times";
+import { useTimeGrid } from "../timeGrid";
 import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
 import { CalendarItem } from "../widgets/CalendarItem";
 import { FiltersButton } from "../widgets/FiltersButton";
@@ -137,6 +138,8 @@ export function CalendarScreen() {
   const tasks = useTasks();
   const taskActions = useTaskActions();
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const { viewportRef, maxHeight } = useTimeGrid();
+  const scrollAreaProps = { viewportRef, mah: maxHeight };
 
   // What this device's filters leave on the calendar.
   const shown = (occurrences.data ?? []).filter(
@@ -359,7 +362,7 @@ export function CalendarScreen() {
           // Each view takes its own class names; the Schedule passes none down.
           // The phone's toolbar above stands in for each view's own header.
           dayViewProps={{
-            startScrollTime: "06:00:00",
+            scrollAreaProps,
             intervalMinutes: HOUR_MINUTES,
             withHeader: !narrow,
             classNames: classes,
@@ -368,7 +371,7 @@ export function CalendarScreen() {
           weekViewProps={{
             renderEvent: renderItem,
             classNames: classes,
-            startScrollTime: "06:00:00",
+            scrollAreaProps,
             withWeekNumber: false,
             highlightToday: true,
             withHeader: !narrow,
