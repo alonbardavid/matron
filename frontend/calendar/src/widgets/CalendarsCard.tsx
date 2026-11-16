@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
+  ColorSwatch,
   Group,
   Loader,
   Menu,
   Popover,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -17,18 +19,75 @@ import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
 import { Card } from "@frontend/ds/Card";
 import { ConfirmButton } from "@frontend/ds/ConfirmButton";
 import { useForm } from "@frontend/ds/forms/context";
+import { Form } from "@frontend/ds/forms/Form";
 import { FormGeneralErrors } from "@frontend/ds/forms/FormGeneralErrors";
 import { FormTextInput } from "@frontend/ds/forms/FormInputs";
 import { FormSubmitButton } from "@frontend/ds/forms/FormSubmitButton";
 import { StandardForm } from "@frontend/ds/forms/StandardForm";
 import { IconChevronDown, IconTrash } from "@frontend/ds/icons";
 import { useCalendarActions, useCalendars } from "../useCalendar";
-import { ColorPicker } from "./ColorPicker";
 
 const newCalendarSchema = z.object({
   name: z.string().trim().min(1, "Give the calendar a name").max(80),
 });
 type NewCalendarValues = z.infer<typeof newCalendarSchema>;
+
+/** A swatch that opens Matron's colours to pick from. */
+function ColorPicker({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+  label: string;
+}) {
+  const [opened, setOpened] = useState(false);
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-start"
+      shadow="md"
+      trapFocus
+      returnFocus
+    >
+      <Popover.Target>
+        <ColorSwatch
+          component="button"
+          type="button"
+          color={value}
+          size={22}
+          aria-label={label}
+          onClick={() => setOpened((open) => !open)}
+          style={{ cursor: "pointer", flexShrink: 0 }}
+        />
+      </Popover.Target>
+      <Popover.Dropdown p="xs">
+        <SimpleGrid cols={4} spacing={6}>
+          {CALENDAR_COLORS.map((color) => (
+            <ColorSwatch
+              key={color}
+              component="button"
+              type="button"
+              color={color}
+              size={24}
+              aria-label={color}
+              onClick={() => {
+                onChange(color);
+                setOpened(false);
+              }}
+              style={{
+                cursor: "pointer",
+                outline: color === value ? "2px solid" : undefined,
+              }}
+            />
+          ))}
+        </SimpleGrid>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
 
 /** Who an own calendar is shared with, read-only, picked in a popover. */
 function ShareButton({ calendar }: { calendar: Calendar }) {
@@ -43,6 +102,8 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
       position="bottom-end"
       shadow="md"
       width={300}
+      trapFocus
+      returnFocus
     >
       <Popover.Target>
         <Button
@@ -57,7 +118,15 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
         </Button>
       </Popover.Target>
       <Popover.Dropdown>
-        <Stack gap="xs">
+        <Form
+          gap="xs"
+          onSubmit={() =>
+            update.mutate(
+              { id: calendar.id, sharedWith: people },
+              { onSuccess: () => setOpened(false) },
+            )
+          }
+        >
           <PeoplePicker
             label="Share read-only with"
             placeholder="No one"
@@ -71,17 +140,14 @@ function ShareButton({ calendar }: { calendar: Calendar }) {
             it.
           </Text>
           <Button
+            type="submit"
             size="compact-sm"
             w="fit-content"
             loading={update.isPending}
-            onClick={async () => {
-              await update.mutateAsync({ id: calendar.id, sharedWith: people });
-              setOpened(false);
-            }}
           >
             Save
           </Button>
-        </Stack>
+        </Form>
       </Popover.Dropdown>
     </Popover>
   );

@@ -1,3 +1,5 @@
+import { TZDate } from "@date-fns/tz";
+import { format } from "date-fns";
 import { and, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
@@ -8,24 +10,30 @@ import {
   calendarEvent,
   calendarEventException,
   calendarEventHidden,
-  calendarEventLabel,
   calendarEventShare,
+  type LocationMetadata,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
-import { knownUserIds, listHouseholdUsers } from "@backend/household/users";
+import { knownUserIds } from "@backend/household/users";
+import {
+  alarmMinutesOf,
+  dropAlarms,
+  forgetAlarm,
+  rearmAlarms,
+  setAlarm,
+  type AlarmRing,
+} from "@backend/notifications/alarms";
+import { timeZoneOf } from "@backend/notifications/service";
 import {
   CALENDAR_COLORS,
-  EVENT_RESPONSES,
-  type Attachment,
   type CalendarEvent,
-  type EventResponse,
-  type ExternalGuest,
   type CalendarEventCreate,
   type CalendarEventUpdate,
   type Occurrence,
   type OccurrenceException,
   type OccurrenceUpdate,
 } from "@shared/contract/app/calendar";
+import type { Alarm } from "@shared/contract/app/notifications";
 import {
   calendarsById,
   sharedTargetOf,
@@ -43,15 +51,6 @@ import {
   ruleEndingOn,
   type ExceptionInput,
 } from "./recurrence";
-import {
-  attachFile,
-  attachLink,
-  attachmentsOfEvents,
-  detach,
-  dropAttachments,
-  type AttachmentUpload,
-} from "./attachments";
-import { labelsOfEvents, setEventLabels } from "./labels";
 import { eventPermissions } from "./permissions";
 
 const log = logger("calendar/service");
@@ -74,7 +73,7 @@ interface Placement {
   access: "edit" | "read";
 }
 
-async function viewerOf(principal: Principal): Promise<Viewer> {
+async function viewerOf(principal: Pick<Principal, "userId">): Promise<Viewer> {
   const sharedTarget = await sharedTargetOf(principal.userId);
   const [own, viewed] = await Promise.all([
     getDb().select().from(calendar).where(eq(calendar.ownerId, principal.userId)),
@@ -161,9 +160,8 @@ export async function listOccurrences(
       .where(eq(calendarEventShare.userId, principal.userId)),
   ]);
   const shareOf = new Map(myShares.map((share) => [share.eventId, share]));
-  const [exceptions, labels, hidden] = await Promise.all([
+  const [exceptions, hidden] = await Promise.all([
     exceptionsOf(rows.filter((r) => r.rrule).map((r) => r.id)),
-    labelsOfEvents(rows.map((r) => r.id)),
     hiddenBy(principal.userId),
   ]);
   const out: Occurrence[] = [];
@@ -171,9 +169,7 @@ export async function listOccurrences(
     const cal = calendars.get(row.calendarId);
     const placement = placementOf(viewer, row, shareOf.get(row.id));
     if (!placement) continue;
-    const labelIds = labels.get(row.id) ?? [];
     const isHidden = hidden.has(row.id);
-    const response = responseOf(row, principal.userId, shareOf.get(row.id));
     if (!row.rrule) {
       out.push(
         toOccurrence(row, cal, placement, {
@@ -181,13 +177,12 @@ export async function listOccurrences(
           originalStartAt: null,
           title: row.title,
           location: row.location,
+          locationMetadata: row.locationMetadata,
           startAt: row.startAt.getTime(),
           endAt: row.endAt.getTime(),
           recurring: row.externalSeriesId !== null,
           changed: false,
-          labelIds,
           hidden: isHidden,
-          response,
         }),
       );
       continue;
@@ -205,14 +200,12 @@ export async function listOccurrences(
           id: `${row.id}:${window.originalStartAt}`,
           originalStartAt: window.originalStartAt,
           title: changedOf.get(window.originalStartAt)?.title ?? row.title,
-          location: changedOf.get(window.originalStartAt)?.location ?? row.location,
+          ...locationOf(row, changedOf.get(window.originalStartAt)),
           startAt: window.startAt,
           endAt: window.endAt,
           recurring: true,
           changed: window.changed,
-          labelIds,
           hidden: isHidden,
-          response,
         }),
       );
     }
@@ -230,97 +223,6 @@ export async function getEvent(principal: Principal, id: string): Promise<Calend
     .get();
   if (!row) throw new DomainError("NOT_FOUND", "Event not found");
   return withShares(principal, row);
-}
-
-/**
- * Uploads a file to the event. Whoever may change the event attaches to it,
- * one imported from Google too: what is attached here is Matron's own.
- */
-export async function attachFileToEvent(
-  principal: Principal,
-  branch: string,
-  id: string,
-  upload: AttachmentUpload,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "update");
-  requireEditable(await getEvent(principal, id));
-  await attachFile(principal, branch, id, upload);
-  return getEvent(principal, id);
-}
-
-/** Attaches a link to the event, for whoever may change it. */
-export async function attachLinkToEvent(
-  principal: Principal,
-  id: string,
-  url: string,
-  title: string | undefined,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "update");
-  requireEditable(await getEvent(principal, id));
-  await attachLink(principal, id, url, title);
-  return getEvent(principal, id);
-}
-
-/** Removes something attached here, for whoever may change the event. */
-export async function detachFromEvent(
-  principal: Principal,
-  branch: string,
-  id: string,
-  attachmentId: string,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "update");
-  requireEditable(await getEvent(principal, id));
-  await detach(principal, branch, id, attachmentId);
-  return getEvent(principal, id);
-}
-
-/**
- * The caller answers an event they made or were given, for every occurrence.
- * Yes and maybe make them an attendee; no keeps them invited, declined.
- */
-export async function replyToEvent(
-  principal: Principal,
-  id: string,
-  response: Exclude<EventResponse, "needs_action">,
-): Promise<CalendarEvent> {
-  eventPermissions.require(principal, "view");
-  const current = await getEvent(principal, id);
-  const mine = current.creatorId === principal.userId;
-  if (!mine && !current.sharedWith.includes(principal.userId)) {
-    throw new DomainError(
-      "FORBIDDEN",
-      "Only whoever made the event, or someone it was shared with, answers it",
-    );
-  }
-  const db = getDb();
-  const going = response !== "declined";
-  const existing = await db
-    .select({ id: calendarEventShare.id })
-    .from(calendarEventShare)
-    .where(
-      and(
-        eq(calendarEventShare.eventId, id),
-        eq(calendarEventShare.userId, principal.userId),
-      ),
-    )
-    .get();
-  if (existing) {
-    await db
-      .update(calendarEventShare)
-      .set({ response, ...(going && { attendee: true }) })
-      .where(eq(calendarEventShare.id, existing.id));
-  } else {
-    // The creator, not listed among those attending, answers all the same.
-    await db.insert(calendarEventShare).values({
-      id: newEntityId("CALENDAR_EVENT_SHARE"),
-      eventId: id,
-      userId: principal.userId,
-      attendee: going,
-      response,
-    });
-  }
-  log.info("event answered", { eventId: id, response, userId: principal.userId });
-  return getEvent(principal, id);
 }
 
 /** Hides the event, every occurrence, from the caller's own calendar; or shows it again. Others are unaffected. */
@@ -365,6 +267,110 @@ async function hiddenBy(userId: string): Promise<Set<string>> {
     .from(calendarEventHidden)
     .where(eq(calendarEventHidden.userId, userId));
   return new Set(rows.map((row) => row.eventId));
+}
+
+/** The caller's own alarm on the event. */
+export async function getEventAlarm(principal: Principal, id: string): Promise<Alarm> {
+  eventPermissions.require(principal, "view");
+  await getEvent(principal, id);
+  return { minutesBefore: await alarmMinutesOf("event", id, principal.userId) };
+}
+
+/**
+ * Sets, changes or (null) removes the caller's own alarm on an event they
+ * see: a reminder that long before every occurrence starts. Others are unaffected.
+ */
+export async function setEventAlarm(
+  principal: Principal,
+  id: string,
+  minutesBefore: Alarm["minutesBefore"],
+): Promise<Alarm> {
+  eventPermissions.require(principal, "view");
+  await getEvent(principal, id);
+  await setAlarm("event", id, principal.userId, minutesBefore);
+  return { minutesBefore };
+}
+
+/** How far ahead the next occurrence of a series is looked for. */
+const ALARM_HORIZON_MS = 2 * 366 * 86_400_000;
+
+/**
+ * The member's first ring on the event later than `after`, for their alarm's
+ * object: before the occurrence that starts next. Null when they set no
+ * alarm or nothing is ahead; an event that is gone, or no longer theirs to
+ * see, loses the alarm. It acts for no one: an alarm rings on its own.
+ */
+export async function nextEventRing(
+  eventId: string,
+  userId: string,
+  after: number,
+): Promise<AlarmRing | null> {
+  const minutes = await alarmMinutesOf("event", eventId, userId);
+  if (minutes === null) return null;
+  const db = getDb();
+  const row = await db
+    .select()
+    .from(calendarEvent)
+    .where(eq(calendarEvent.id, eventId))
+    .get();
+  const mine = and(
+    eq(calendarEventShare.eventId, eventId),
+    eq(calendarEventShare.userId, userId),
+  );
+  const seen =
+    row &&
+    placementOf(
+      await viewerOf({ userId }),
+      row,
+      await db.select().from(calendarEventShare).where(mine).get(),
+    );
+  if (!row || !seen) {
+    await forgetAlarm("event", eventId, userId);
+    return null;
+  }
+  const lead = minutes * 60_000;
+  // An occurrence rings later than `after` when it starts later than this.
+  const from = after + lead;
+  const next = row.rrule
+    ? await nextOccurrence(row, from)
+    : { id: row.id, title: row.title, startAt: row.startAt.getTime() };
+  if (!next || next.startAt <= from) return null;
+  const [hidden, zone] = await Promise.all([hiddenBy(userId), timeZoneOf(userId)]);
+  return {
+    ringAt: next.startAt - lead,
+    at: next.startAt,
+    muted: hidden.has(eventId),
+    message: {
+      title: next.title,
+      // An all-day event's day is the event's own; a time reads best in the member's zone.
+      body: row.allDay
+        ? `All day, ${format(new TZDate(next.startAt, row.timeZone), "EEE, MMM d")}`
+        : `Starts at ${format(new TZDate(next.startAt, zone ?? row.timeZone), "HH:mm")}`,
+      url: "/",
+      tag: `event:${next.id}`,
+    },
+  };
+}
+
+/** The first occurrence of the series that starts later than `from`. */
+async function nextOccurrence(
+  row: EventRow,
+  from: number,
+): Promise<{ id: string; title: string; startAt: number } | null> {
+  const own = (await exceptionsOf([row.id])).get(row.id) ?? [];
+  const next = expandSeries(
+    seriesOf(row),
+    own.map(toExceptionInput),
+    from,
+    from + ALARM_HORIZON_MS,
+  ).find((window) => window.startAt > from);
+  if (!next) return null;
+  const changed = own.find((e) => e.originalStartAt.getTime() === next.originalStartAt);
+  return {
+    id: `${row.id}:${next.originalStartAt}`,
+    title: changed?.title ?? row.title,
+    startAt: next.startAt,
+  };
 }
 
 /** Shows an event shared with the caller in one of their Matron calendars, or (null) their calendar for shared events. */
@@ -424,6 +430,7 @@ export async function createEvent(
       title: input.title,
       description: input.description ?? "",
       location: input.location ?? "",
+      locationMetadata: (input.location && input.locationMetadata) || null,
       creatorId: principal.userId,
       allDay: input.allDay,
       startAt: new Date(input.startAt),
@@ -433,8 +440,7 @@ export async function createEvent(
       rrule: storedRule(input.rrule ?? null, input.timeZone, input.allDay),
     })
     .returning();
-  await writeShares(id, principal.userId, sharedWith, attendees);
-  if (input.labelIds?.length) await setEventLabels(id, input.labelIds);
+  await writeShares(id, sharedWith, attendees);
   log.info("event created", {
     eventId: id,
     calendarId: target.id,
@@ -460,13 +466,8 @@ export async function updateEvent(
     );
   }
   if (current.source !== "matron") {
-    // An imported event is the source's: only who it is shared with and its labels are Matron's own.
-    const {
-      sharedWith: _shared,
-      attendees: _attending,
-      labelIds: _labels,
-      ...rest
-    } = changes;
+    // An imported event is the source's: only who it is shared with is Matron's own.
+    const { sharedWith: _shared, attendees: _attending, ...rest } = changes;
     if (Object.values(rest).some((value) => value !== undefined)) {
       throw new DomainError(
         "BAD_REQUEST",
@@ -490,7 +491,10 @@ export async function updateEvent(
     .set({
       ...(changes.title !== undefined && { title: changes.title }),
       ...(changes.description !== undefined && { description: changes.description }),
-      ...(changes.location !== undefined && { location: changes.location }),
+      ...(changes.location !== undefined && {
+        location: changes.location,
+        locationMetadata: (changes.location && changes.locationMetadata) || null,
+      }),
       ...(changes.allDay !== undefined && { allDay: changes.allDay }),
       startAt: new Date(startAt),
       endAt: new Date(endAt),
@@ -513,17 +517,18 @@ export async function updateEvent(
       changes.sharedWith ?? current.sharedWith,
       changes.attendees ?? current.attendees,
     );
-    // Each remaining recipient keeps the calendar they placed it in, and their answer.
-    const kept = new Map(
+    // Each remaining recipient keeps the calendar they placed it in.
+    const placed = new Map(
       ((await sharesOf([id])).get(id) ?? []).map((share) => [
         share.userId,
-        { calendarId: share.calendarId, response: share.response },
+        share.calendarId,
       ]),
     );
     await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
-    await writeShares(id, current.creatorId, sharedWith, attendees, kept);
+    await writeShares(id, sharedWith, attendees, placed);
   }
-  if (changes.labelIds !== undefined) await setEventLabels(id, changes.labelIds);
+  // Its times, or who sees it, may have changed under someone's alarm.
+  await rearmAlarms("event", [id]);
   log.info("event updated", { eventId: id, userId: principal.userId });
   return withShares(principal, row!);
 }
@@ -569,13 +574,22 @@ export async function editOccurrence(
     cancelled: false,
     title: changes.title ?? existing?.title ?? null,
     description: changes.description ?? existing?.description ?? null,
-    location: changes.location ?? existing?.location ?? null,
+    ...(changes.location !== undefined
+      ? {
+          location: changes.location,
+          locationMetadata: (changes.location && changes.locationMetadata) || null,
+        }
+      : {
+          location: existing?.location ?? null,
+          locationMetadata: existing?.locationMetadata ?? null,
+        }),
     // Kept only when they differ from the series' own times.
     startAt: startAt === originalStartAt ? null : new Date(startAt),
     endAt: endAt === originalStartAt + duration ? null : new Date(endAt),
     updatedAt: new Date(),
   };
   await writeException(id, originalStartAt, values);
+  await rearmAlarms("event", [id]);
   log.info("occurrence changed", {
     eventId: id,
     originalStartAt,
@@ -597,6 +611,7 @@ export async function cancelOccurrence(
     title: null,
     description: null,
     location: null,
+    locationMetadata: null,
     startAt: null,
     endAt: null,
     updatedAt: new Date(),
@@ -659,12 +674,7 @@ async function writeException(
     });
 }
 
-/** Removes the event; the files uploaded to it go too when the branch is known. */
-export async function removeEvent(
-  principal: Principal,
-  id: string,
-  branch: string | null = null,
-): Promise<void> {
+export async function removeEvent(principal: Principal, id: string): Promise<void> {
   eventPermissions.require(principal, "remove");
   const current = await getEvent(principal, id);
   requireEditable(current);
@@ -676,11 +686,10 @@ export async function removeEvent(
   await db.batch([
     db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
     db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
-    db.delete(calendarEventLabel).where(eq(calendarEventLabel.eventId, id)),
     db.delete(calendarEventHidden).where(eq(calendarEventHidden.eventId, id)),
+    db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
   ]);
-  await dropAttachments([id], branch);
-  await db.delete(calendarEvent).where(eq(calendarEvent.id, id));
+  await dropAlarms("event", [id]);
   log.info("event removed", { eventId: id, userId: principal.userId });
 }
 
@@ -701,25 +710,22 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions, labels, hidden, attachments] =
-    await Promise.all([
-      sharesOf([row.id]),
-      calendarsById([row.calendarId]),
-      viewerOf(principal),
-      row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
-      labelsOfEvents([row.id]),
-      getDb()
-        .select({ id: calendarEventHidden.id })
-        .from(calendarEventHidden)
-        .where(
-          and(
-            eq(calendarEventHidden.eventId, row.id),
-            eq(calendarEventHidden.userId, principal.userId),
-          ),
-        )
-        .get(),
-      attachmentsOfEvents([row.id]),
-    ]);
+  const [shares, calendars, viewer, exceptions, hidden] = await Promise.all([
+    sharesOf([row.id]),
+    calendarsById([row.calendarId]),
+    viewerOf(principal),
+    row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
+    getDb()
+      .select({ id: calendarEventHidden.id })
+      .from(calendarEventHidden)
+      .where(
+        and(
+          eq(calendarEventHidden.eventId, row.id),
+          eq(calendarEventHidden.userId, principal.userId),
+        ),
+      )
+      .get(),
+  ]);
   const list = shares.get(row.id) ?? [];
   const placement = placementOf(
     viewer,
@@ -727,28 +733,14 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     list.find((share) => share.userId === principal.userId),
   );
   if (!placement) throw new DomainError("NOT_FOUND", "Event not found");
-  return toEvent(row, list, calendars.get(row.calendarId), placement, {
-    exceptions: exceptions.get(row.id) ?? [],
-    labelIds: labels.get(row.id) ?? [],
-    hidden: hidden !== undefined,
-    attachments: attachments.get(row.id) ?? [],
-    externalGuests: await externalGuestsOf(principal, row),
-  });
-}
-
-/** An imported event's guests, each matched by email to a household member where one is. */
-async function externalGuestsOf(
-  principal: Principal,
-  row: EventRow,
-): Promise<ExternalGuest[]> {
-  const guests = parseGuests(row.externalGuests);
-  if (guests.length === 0) return [];
-  const members = await listHouseholdUsers(principal);
-  const byEmail = new Map(members.map((m) => [m.email.toLowerCase(), m.id]));
-  return guests.map(({ self: _self, ...guest }) => ({
-    ...guest,
-    userId: byEmail.get(guest.email.toLowerCase()) ?? null,
-  }));
+  return toEvent(
+    row,
+    list,
+    calendars.get(row.calendarId),
+    placement,
+    exceptions.get(row.id) ?? [],
+    hidden !== undefined,
+  );
 }
 
 function checkTimes(startAt: number, endAt: number): void {
@@ -780,18 +772,11 @@ async function resolvePeople(
   return { sharedWith: everyone, attendees: attending };
 }
 
-/** What a recipient keeps when the people on an event change: where they placed it, and their answer. */
-interface KeptShare {
-  calendarId: string | null;
-  response: EventResponse;
-}
-
 async function writeShares(
   eventId: string,
-  creatorId: string,
   sharedWith: string[],
   attendees: string[],
-  kept: Map<string, KeptShare> = new Map(),
+  placed: Map<string, string | null> = new Map(),
 ): Promise<void> {
   const people = new Set([...sharedWith, ...attendees]);
   if (people.size === 0) return;
@@ -803,11 +788,7 @@ async function writeShares(
         eventId,
         userId,
         attendee: attendees.includes(userId),
-        calendarId: kept.get(userId)?.calendarId ?? null,
-        // Whoever made it is going; everyone else has yet to say.
-        response:
-          kept.get(userId)?.response ??
-          (userId === creatorId ? ("accepted" as const) : ("needs_action" as const)),
+        calendarId: placed.get(userId) ?? null,
       })),
     );
 }
@@ -882,7 +863,18 @@ function toException(row: ExceptionRow): OccurrenceException {
     title: row.title,
     description: row.description,
     location: row.location,
+    locationMetadata: row.locationMetadata,
   };
+}
+
+/** An occurrence's location: its own when it changed it, with its metadata; else the series'. */
+function locationOf(
+  row: EventRow,
+  own: ExceptionRow | undefined,
+): { location: string; locationMetadata: LocationMetadata | null } {
+  return own && own.location !== null
+    ? { location: own.location, locationMetadata: own.locationMetadata }
+    : { location: row.location, locationMetadata: row.locationMetadata };
 }
 
 function toEvent(
@@ -890,38 +882,28 @@ function toEvent(
   shares: ShareRow[],
   cal: CalendarRow | undefined,
   placement: Placement,
-  extra: {
-    exceptions: ExceptionRow[];
-    labelIds: string[];
-    hidden: boolean;
-    attachments: Attachment[];
-    externalGuests: ExternalGuest[];
-  },
+  exceptions: ExceptionRow[],
+  hidden: boolean,
 ): CalendarEvent {
   return {
     id: row.id,
     title: row.title,
     description: row.description,
     location: row.location,
-    attachments: extra.attachments,
+    locationMetadata: row.locationMetadata,
     creatorId: row.creatorId,
     allDay: row.allDay,
     startAt: row.startAt.getTime(),
     endAt: row.endAt.getTime(),
     timeZone: row.timeZone,
     rrule: row.rrule,
-    exceptions: extra.exceptions.map(toException),
+    exceptions: exceptions.map(toException),
     sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
     attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
-    replies: Object.fromEntries(
-      shares.filter((s) => s.attendee).map((s) => [s.userId, s.response]),
-    ),
-    externalGuests: extra.externalGuests,
     calendarId: row.calendarId,
     shownIn: placement.shownIn,
     access: placement.access,
-    labelIds: extra.labelIds,
-    hidden: extra.hidden,
+    hidden,
     source: cal?.source ?? "matron",
     repeatsAtSource: row.externalSeriesId !== null,
     externalUrl: row.externalUrl,
@@ -935,63 +917,12 @@ interface OccurrenceFields {
   originalStartAt: number | null;
   title: string;
   location: string;
+  locationMetadata: LocationMetadata | null;
   startAt: number;
   endAt: number;
   recurring: boolean;
   changed: boolean;
-  labelIds: string[];
   hidden: boolean;
-  response: EventResponse | null;
-}
-
-/**
- * The caller's answer to an event: theirs when they attend. For an event
- * imported to their own calendar, their answer at the source.
- */
-function responseOf(
-  row: EventRow,
-  userId: string,
-  share: ShareRow | undefined,
-): EventResponse | null {
-  if (row.creatorId === userId) {
-    const self = parseGuests(row.externalGuests).find((guest) => guest.self);
-    return self?.response ?? share?.response ?? "accepted";
-  }
-  return share?.attendee ? share.response : null;
-}
-
-interface StoredGuest {
-  email: string;
-  name: string | null;
-  response: EventResponse;
-  organizer: boolean;
-  /** Whether this guest is the calendar's owner, who imported the event. */
-  self: boolean;
-}
-
-/** An imported event's guests as stored; anything malformed is left out. */
-function parseGuests(value: string | null): StoredGuest[] {
-  if (!value) return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((item: Partial<StoredGuest>) =>
-      typeof item?.email === "string" &&
-      (EVENT_RESPONSES as readonly string[]).includes(item.response ?? "")
-        ? [
-            {
-              email: item.email,
-              name: typeof item.name === "string" ? item.name : null,
-              response: item.response as EventResponse,
-              organizer: item.organizer === true,
-              self: item.self === true,
-            },
-          ]
-        : [],
-    );
-  } catch {
-    return [];
-  }
 }
 
 function toOccurrence(

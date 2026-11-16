@@ -1,0 +1,119 @@
+/*
+ * Syntax colours for highlight.js scopes. Darker shades on the light scheme
+ * and lighter ones on the dark scheme keep every colour readable on the page,
+ * and on a diff's added and removed rows.
+ */
+:root {
+  --matron-code-keyword: var(--mantine-color-grape-8);
+  --matron-code-string: var(--mantine-color-green-9);
+  --matron-code-number: var(--mantine-color-orange-9);
+  --matron-code-function: var(--mantine-color-blue-8);
+  --matron-code-type: var(--mantine-color-cyan-9);
+  --matron-code-attribute: var(--mantine-color-indigo-8);
+  --matron-code-regexp: var(--mantine-color-pink-8);
+  --matron-code-meta: var(--mantine-color-gray-7);
+  --matron-code-comment: var(--matron-text-muted);
+  --matron-code-added: var(--mantine-color-green-9);
+  --matron-code-removed: var(--mantine-color-red-9);
+  /* A diff's changed lines: a pale tint, a little deeper behind the line numbers. */
+  --matron-diff-added-bg: #ecf5e6;
+  --matron-diff-added-number: #dcebd3;
+  --matron-diff-removed-bg: #fceaee;
+  --matron-diff-removed-number: #f8d6dd;
+}
+
+[data-mantine-color-scheme="dark"] {
+  --matron-code-keyword: var(--mantine-color-grape-3);
+  --matron-code-string: var(--mantine-color-green-3);
+  --matron-code-number: var(--mantine-color-orange-3);
+  --matron-code-function: var(--mantine-color-blue-3);
+  --matron-code-type: var(--mantine-color-cyan-3);
+  --matron-code-attribute: var(--mantine-color-indigo-3);
+  --matron-code-regexp: var(--mantine-color-pink-3);
+  --matron-code-meta: var(--mantine-color-gray-5);
+  --matron-code-comment: var(--mantine-color-dimmed);
+  --matron-code-added: var(--mantine-color-green-3);
+  --matron-code-removed: var(--mantine-color-red-3);
+  --matron-diff-added-bg: #1c2817;
+  --matron-diff-added-number: #22311c;
+  --matron-diff-removed-bg: #2e181c;
+  --matron-diff-removed-number: #3c1f25;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-name {
+  color: var(--matron-code-keyword);
+}
+
+.hljs-string,
+.hljs-template-variable,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--matron-code-string);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable.constant_ {
+  color: var(--matron-code-number);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: var(--matron-code-function);
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: var(--matron-code-type);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-params {
+  color: var(--matron-code-attribute);
+}
+
+.hljs-regexp,
+.hljs-link {
+  color: var(--matron-code-regexp);
+}
+
+.hljs-meta,
+.hljs-tag {
+  color: var(--matron-code-meta);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--matron-code-comment);
+  font-style: italic;
+}
+
+.hljs-addition {
+  color: var(--matron-code-added);
+}
+
+.hljs-deletion {
+  color: var(--matron-code-removed);
+}
+
+.hljs-section,
+.hljs-strong {
+  font-weight: 600;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}

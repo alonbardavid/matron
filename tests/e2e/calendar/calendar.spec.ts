@@ -76,8 +76,42 @@ test.describe("calendar", () => {
     await dialog.getByRole("button", { name: "Edit event" }).click();
     await expect(dialog.getByLabel("Title")).toHaveValue("Dentist");
     await dialog.getByLabel("Title").fill("Dentist, moved");
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByLabel("Title").press("Enter");
     await expect(page.getByText("Dentist, moved", { exact: true }).first()).toBeVisible();
+  });
+});
+
+test.describe("the date shown", () => {
+  test("a week moved to is in the URL, and a blank calendar opens on this week", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    const dateParam = () => new URL(page.url()).searchParams.get("date");
+    const path = new URL(page.url()).pathname;
+    expect(dateParam()).toBeNull();
+
+    await page.goto(`${path}?date=2031-09-03`);
+    await expect(page.getByRole("button", { name: "Weekday 2031-09-03" })).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Weekday 2031-09-10" })).toBeVisible();
+    // Mantine moves to the next week's first day.
+    await expect.poll(dateParam).toBe("2031-09-08");
+
+    // Back on today, the URL drops the date.
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await expect.poll(dateParam).toBeNull();
+
+    // A blank calendar is today's, whatever was shown before.
+    await page.goto(`${path}?date=2031-09-03`);
+    await page.goto(path);
+    const today = new Date();
+    const day = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0"),
+    ].join("-");
+    await expect(page.getByRole("button", { name: `Weekday ${day}` })).toBeVisible();
+    expect(dateParam()).toBeNull();
   });
 });
 
@@ -98,5 +132,33 @@ test.describe("calendar on a phone", () => {
     await expect(view).toHaveValue("Week");
     await page.getByRole("button", { name: "Pick a date" }).click();
     await expect(page.getByText("Mo", { exact: true })).toBeVisible();
+  });
+
+  test("the view chosen is kept on the device; ?view= shows another without keeping it", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    const view = page.getByRole("combobox", { name: "View" });
+    await expect(view).toHaveValue("Day");
+    const viewParam = () => new URL(page.url()).searchParams.get("view");
+    expect(viewParam()).toBeNull();
+
+    await view.click();
+    await page.getByRole("option", { name: "Month" }).click();
+    await expect.poll(viewParam).toBe("month");
+    await page.reload();
+    await expect(view).toHaveValue("Month");
+
+    // Opened without the parameter: the view last chosen, and the URL left as it is.
+    const path = new URL(page.url()).pathname;
+    await page.goto(path);
+    await expect(view).toHaveValue("Month");
+    expect(viewParam()).toBeNull();
+
+    // Opened with it: that view, while the device keeps its own.
+    await page.goto(`${path}?view=week`);
+    await expect(view).toHaveValue("Week");
+    await page.goto(path);
+    await expect(view).toHaveValue("Month");
   });
 });

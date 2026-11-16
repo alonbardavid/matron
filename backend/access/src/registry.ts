@@ -1,16 +1,14 @@
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements, userAc } from "better-auth/plugins/admin/access";
 import { branchPermissions } from "@backend/arch-branches/permissions";
+import { reviewPermissions } from "@backend/arch-review/permissions";
 import { troubleshootingPermissions } from "@backend/arch-troubleshooting/permissions";
 import { upstreamPermissions } from "@backend/arch-upstream/permissions";
 import { conversationPermissions, databasePermissions } from "@backend/ask/permissions";
-import {
-  calendarPermissions,
-  eventPermissions,
-  labelPermissions,
-} from "@backend/calendar/permissions";
+import { calendarPermissions, eventPermissions } from "@backend/calendar/permissions";
 import type { Role } from "@backend/commons/principal";
 import { householdPermissions, memberPermissions } from "@backend/household/permissions";
+import { pushPermissions } from "@backend/notifications/permissions";
 import { taskPermissions } from "@backend/tasks/permissions";
 import type { Permissions } from "@backend/commons/permissions";
 
@@ -27,10 +25,11 @@ const features: Permissions<string, string>[] = [
   taskPermissions,
   eventPermissions,
   calendarPermissions,
-  labelPermissions,
+  pushPermissions,
   conversationPermissions,
   databasePermissions,
   troubleshootingPermissions,
+  reviewPermissions,
   upstreamPermissions,
 ];
 

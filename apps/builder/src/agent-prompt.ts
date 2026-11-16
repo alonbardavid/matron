@@ -1,21 +1,5 @@
-import { loadPrompt, promptPath, renderTemplate } from "./prompts.js";
+import { loadOutcomeSchema, loadPrompt, promptPath, renderTemplate } from "./prompts.js";
 import type { AgentPrompt, BuilderRun } from "./types.js";
-
-/** The structured output every agent turn must end with. */
-export const OUTCOME_SCHEMA = {
-  type: "object",
-  properties: {
-    status: { type: "string", enum: ["done", "question", "blocked"] },
-    summary: {
-      type: "string",
-      description: "One line describing the change, for a commit title",
-    },
-    reasoning: { type: "string", description: "Why the change was made this way" },
-    message: { type: "string", description: "What to show the user, in markdown" },
-  },
-  required: ["status", "summary", "reasoning", "message"],
-  additionalProperties: false,
-} as const;
 
 export const ALLOWED_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "Grep"];
 
@@ -101,7 +85,7 @@ export function agentArgv(
     "--append-system-prompt-file",
     promptPath(promptsDir, "system"),
     "--json-schema",
-    JSON.stringify(OUTCOME_SCHEMA),
+    loadOutcomeSchema(promptsDir),
     "--settings",
     CLAUDE_SETTINGS_FILE,
     "--model",

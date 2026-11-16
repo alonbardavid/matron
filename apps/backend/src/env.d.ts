@@ -16,6 +16,7 @@ declare namespace Cloudflare {
     ASK_SESSIONS: DurableObjectNamespace<
       import("@backend/ask/ask-object").AskSessionObject
     >;
+    ALARMS: DurableObjectNamespace<import("./alarm-object").AlarmObject>;
     // "application" on a fork (a Preview); production runs the router.
     WORKER_ROLE?: "router" | "application";
     APP_ORIGIN: string;
@@ -24,11 +25,16 @@ declare namespace Cloudflare {
     /** The household's Google OAuth app, set in App settings as secrets of the Worker. */
     GOOGLE_CLIENT_ID?: string;
     GOOGLE_CLIENT_SECRET?: string;
+    /** The household's Google API key for Places, also set in App settings. */
+    GOOGLE_PLACES_API_KEY?: string;
     /** The account token: the router's API calls, and every model call through the gateway. */
     CLOUDFLARE_API_TOKEN?: string;
     CLOUDFLARE_ACCOUNT_ID?: string;
     WORKER_NAME: string;
     BUILDER_IMAGE?: string;
+    /** The push key pair; absent on a Preview, which sends no push. */
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_PRIVATE_KEY?: string;
   }
 }
 

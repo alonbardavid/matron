@@ -293,6 +293,19 @@ async function api(
   return body;
 }
 
+/** Restores a D1 database in place to `at` with Time Travel: everything written to it since is gone. */
+export async function d1Restore(
+  run: BuilderRun,
+  db: D1Database,
+  at: Date,
+): Promise<void> {
+  await api(
+    run,
+    "POST",
+    `/accounts/${run.cloudflare.accountId}/d1/database/${db.uuid}/time_travel/restore?timestamp=${encodeURIComponent(at.toISOString())}`,
+  );
+}
+
 /** The account's workers.dev subdomain, to compose a preview URL when wrangler printed none. */
 export async function workersSubdomain(run: BuilderRun): Promise<string | null> {
   try {

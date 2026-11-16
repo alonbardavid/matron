@@ -1,0 +1,92 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["done", "question", "blocked"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "One line describing the change, for a commit title"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Why the change was made this way"
+    },
+    "message": {
+      "type": "string",
+      "description": "What to show the user, in markdown"
+    },
+    "reviewReport": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "Markdown for the reviewer: what the whole branch changes and how, in a few short paragraphs"
+        },
+        "brackets": {
+          "type": "array",
+          "description": "Every changed line of the branch, grouped into what a reviewer should read together, in reading order",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "A few plain words"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "flow",
+                  "schema",
+                  "refactor",
+                  "move",
+                  "tests",
+                  "config",
+                  "docs",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "description": "What these lines do and why, in two to four sentences"
+              },
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Repository-relative path"
+                    },
+                    "start": {
+                      "type": "integer",
+                      "description": "First line, in the branch's version"
+                    },
+                    "end": {
+                      "type": "integer",
+                      "description": "Last line, inclusive"
+                    },
+                    "note": {
+                      "type": "string",
+                      "description": "One short sentence about these lines, or empty"
+                    }
+                  },
+                  "required": ["path", "start", "end", "note"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["title", "kind", "description", "ranges"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["summary", "brackets"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["status", "summary", "reasoning", "message", "reviewReport"],
+  "additionalProperties": false
+}

@@ -49,6 +49,24 @@ planner and the builder's agent turns have their own. `models/gateway.ts` reache
 household's stored provider key applies, and a `@cf/` slug is Workers AI through the AI binding.
 A Preview holds the token too, so its assistant takes the same route.
 
+## Reminders
+
+`apps/frontend/public/site.webmanifest` and `sw.js` make the SPA installable; the service
+worker handles no fetch, only `push` and `notificationclick`. `frontend/notifications` holds
+the install prompt, the device's subscription and the settings card. A subscription is a row
+in `push_subscription` (`backend/notifications/src/service.ts`), with the device's time zone.
+
+A member's alarm on an event or a task is a row in `alarm` (`backend/notifications/src/alarms.ts`):
+how many minutes before. Each has a Durable Object of its own, an Agents SDK agent
+(`alarm-object.ts`) holding one schedule: the next ring. A ring works out again what is due,
+pushes it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`) and schedules the one after. The feature a thing
+belongs to works out its rings (`nextEventRing` in `backend/calendar`, `nextTaskRing` in
+`backend/tasks`), decides who may set an alarm, and arms it again when the thing changes
+(`rearmAlarms`), so `backend/notifications` knows neither events nor tasks. The one class
+every alarm runs as, `AlarmObject` in `apps/backend/src/alarm-object.ts`, names each
+kind's rings.
+
 ## Building
 
 - `POST /api/arch/sessions` creates a session row; the chat is a WebSocket to the session's
@@ -73,10 +91,18 @@ A Preview holds the token too, so its assistant takes the same route.
   side, marked as the builder's, so the planner reads it as said to it; a status moves the
   session's phase and rows. The builder never imports the sessions package.
 - The code repository (Artifacts) is reached only through `backend/arch-repository/src/service.ts`:
-  main's head, the file listing, reading and searching behind the planner's tools, and the
-  token a builder clones with. It can also pull a branch of a public repository into one of
-  its own and say what main lacks of it (`mirror.ts`, isomorphic-git over `node:fs`,
-  whose `/tmp` in a Worker is memory that lasts for the request).
+  main's head, the file listing, reading and searching behind the planner's tools (at any
+  ref), the tree diff and commit log behind the review, and the token a builder clones with.
+  It can also pull a branch of a public repository into one of its own and say what main
+  lacks of it (`mirror.ts`, isomorphic-git over `node:fs`, whose `/tmp` in a Worker is
+  memory that lasts for the request).
+- The review (`backend/arch-review`, `frontend/review`) reads a live branch's diff against
+  its `base_commit`, the builder's commit messages (`commits.ts`), and the summary and
+  brackets the builder agent gave with the newest deploy, which the build session object
+  keeps (`reviewReport`). The browser diffs each file
+  itself (`frontend/review/src/diff.ts`) and keeps viewed marks in `localStorage`. Questions
+  go to the planner's model call with the branch's tools (`reviewer.ts`); the client sends the
+  whole conversation each time and nothing is stored.
 - Upstream updates are `backend/arch-upstream`: where upstream is (`source.ts`), the check that
   pulls it into the repository's `upstream/main` branch and compares main with it, and the start
   of the build session that merges it, with the plan under `prompts/`. It reaches the

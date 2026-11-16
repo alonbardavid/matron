@@ -1,4 +1,6 @@
 import { env, waitUntil } from "cloudflare:workers";
+import { TZDate, tz } from "@date-fns/tz";
+import { parseISO } from "date-fns";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
@@ -17,18 +19,16 @@ import {
   calendar,
   calendarEvent,
   calendarEventException,
-  calendarEventAttachment,
   calendarEventHidden,
-  calendarEventLabel,
   calendarEventShare,
   googleCalendarConnection,
   googleCalendarWatch,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
+import { dropAlarms, rearmAlarms } from "@backend/notifications/alarms";
 import {
   CALENDAR_COLORS,
   GOOGLE_CALENDAR_SCOPE,
-  type EventResponse,
   type GoogleCalendar,
   type GoogleStatus,
 } from "@shared/contract/app/calendar";
@@ -51,14 +51,8 @@ import {
   watchEvents,
   type GoogleEvent,
 } from "./google-api";
-import {
-  importedAttachmentsOf,
-  importedAttachmentWrites,
-  importedLinks,
-  type ImportedAttachment,
-} from "./attachments";
 import { calendarPermissions } from "./permissions";
-import { canonicalRule, expandSeries, fromWallClock } from "./recurrence";
+import { canonicalRule, expandSeries } from "./recurrence";
 
 const log = logger("calendar/google");
 
@@ -468,8 +462,6 @@ type EventValues = NonNullable<ReturnType<typeof eventValues>>;
 interface ImportedRow {
   externalId: string;
   values: EventValues & { rrule: string | null; externalSeriesId: string | null };
-  /** The event's attachments at Google (Drive files and the like), as links. */
-  attachments: ImportedAttachment[];
 }
 
 interface ImportedException {
@@ -518,7 +510,6 @@ async function mirrorCalendar(
       rows.set(event.id, {
         externalId: event.id,
         values: { ...values, rrule: null, externalSeriesId: seriesId },
-        attachments: attachmentsOf(event),
       });
     }
   };
@@ -536,7 +527,6 @@ async function mirrorCalendar(
       rows.set(event.id, {
         externalId: event.id,
         values: { ...values, rrule: rule.rrule, externalSeriesId: null },
-        attachments: attachmentsOf(event),
       });
       exceptions.set(event.id, [
         ...rule.exdates.map((at) => cancelledAt(at)),
@@ -558,6 +548,14 @@ async function mirrorCalendar(
     }
   }
 
+  const known = new Set(
+    (
+      await db
+        .select({ externalId: calendarEvent.externalId })
+        .from(calendarEvent)
+        .where(eq(calendarEvent.calendarId, cal.id))
+    ).map((event) => event.externalId),
+  );
   const writes: BatchItem<"sqlite">[] = [...rows.values()].map(({ externalId, values }) =>
     db
       .insert(calendarEvent)
@@ -590,20 +588,22 @@ async function mirrorCalendar(
       and(eq(calendarEvent.calendarId, cal.id), lt(calendarEvent.startAt, new Date(to))),
     );
 
-  // Each imported event's attachments are what Google sent this time; those added
-  // here stay. Only events whose attachments changed are written.
-  const synced = present.flatMap((event) => {
-    const imported = event.externalId ? rows.get(event.externalId) : undefined;
-    return imported ? [{ id: event.id, attachments: imported.attachments }] : [];
-  });
-  const before = await importedAttachmentsOf(synced.map((event) => event.id));
-  const attachmentWrites = synced
-    .filter(
-      (event) =>
-        JSON.stringify(event.attachments) !== JSON.stringify(before.get(event.id) ?? []),
-    )
-    .flatMap((event) => importedAttachmentWrites(event.id, event.attachments));
-  for (const chunk of chunks(attachmentWrites as BatchItem<"sqlite">[], WRITE_CHUNK))
+  // Whoever imported an event attends it, as an event's creator does by
+  // default; only on arrival, so taking themselves off it holds.
+  const attending: BatchItem<"sqlite">[] = present
+    .filter((event) => rows.has(event.externalId ?? "") && !known.has(event.externalId))
+    .map((event) =>
+      db
+        .insert(calendarEventShare)
+        .values({
+          id: newEntityId("CALENDAR_EVENT_SHARE"),
+          eventId: event.id,
+          userId: cal.ownerId,
+          attendee: true,
+        })
+        .onConflictDoNothing(),
+    );
+  for (const chunk of chunks(attending, WRITE_CHUNK))
     await db.batch(chunk as [BatchItem<"sqlite">]);
 
   // Each series' exceptions in the window are what Google sent this time.
@@ -634,10 +634,6 @@ async function mirrorCalendar(
   for (const ids of chunks(gone, ID_CHUNK)) {
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
-      db.delete(calendarEventLabel).where(inArray(calendarEventLabel.eventId, ids)),
-      db
-        .delete(calendarEventAttachment)
-        .where(inArray(calendarEventAttachment.eventId, ids)),
       db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, ids)),
       db
         .delete(calendarEventException)
@@ -645,6 +641,13 @@ async function mirrorCalendar(
       db.delete(calendarEvent).where(inArray(calendarEvent.id, ids)),
     ]);
   }
+  // What Google sent may have moved an event under someone's alarm.
+  const left = new Set(gone);
+  await dropAlarms("event", gone);
+  await rearmAlarms(
+    "event",
+    present.map((event) => event.id).filter((id) => !left.has(id)),
+  );
 }
 
 /** Replaces a series' exceptions due in [from, to) with those Google sent; ones outside stay. */
@@ -734,10 +737,7 @@ export function dateList(line: string, timeZone: string): number[] {
       const [, y, mo, d, h, mi, se, z] = m;
       if (!h) return midnight(`${y}-${mo}-${d}`, timeZone);
       if (z) return Date.UTC(+y!, +mo! - 1, +d!, +h, +mi!, +se!);
-      return fromWallClock(
-        { year: +y!, month: +mo!, day: +d!, hour: +h, minute: +mi!, second: +se! },
-        zone,
-      );
+      return new TZDate(+y!, +mo! - 1, +d!, +h, +mi!, +se!, zone).getTime();
     })
     .filter(Number.isFinite);
 }
@@ -812,7 +812,6 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
     title: (event.summary?.trim() || "(No title)").slice(0, 200),
     description: (event.description?.trim() ?? "").slice(0, 5000),
     location: (event.location?.trim() ?? "").slice(0, 500),
-    externalGuests: guestsOf(event),
     allDay,
     startAt: new Date(startAt),
     endAt: new Date(endAt),
@@ -821,51 +820,8 @@ function eventValues(event: GoogleEvent, calendarTimeZone: string | null) {
   };
 }
 
-const GOOGLE_RESPONSES: Record<string, EventResponse> = {
-  needsAction: "needs_action",
-  accepted: "accepted",
-  tentative: "tentative",
-  declined: "declined",
-};
-
-/** A Google event's guests (rooms left out) and their answers, as stored; null when it has none. */
-function guestsOf(event: GoogleEvent): string | null {
-  const guests = (event.attendees ?? [])
-    .filter((guest) => guest.email && !guest.resource)
-    .slice(0, 200)
-    .map((guest) => ({
-      email: guest.email!.slice(0, 320),
-      name: guest.displayName?.slice(0, 200) ?? null,
-      response: GOOGLE_RESPONSES[guest.responseStatus ?? ""] ?? "needs_action",
-      organizer: guest.organizer === true,
-      self: guest.self === true,
-    }));
-  return guests.length ? JSON.stringify(guests) : null;
-}
-
-/** A Google event's attachments (Drive files and the like) as links to open at Google. */
-function attachmentsOf(event: GoogleEvent): ImportedAttachment[] {
-  return importedLinks(
-    (event.attachments ?? []).flatMap((item) =>
-      item.fileUrl
-        ? [
-            {
-              url: item.fileUrl,
-              title: item.title ?? "",
-              mimeType: item.mimeType ?? null,
-            },
-          ]
-        : [],
-    ),
-  );
-}
-
 function midnight(day: string, timeZone: string): number {
-  const [year, month, date] = day.split("-").map(Number);
-  return fromWallClock(
-    { year: year!, month: month!, day: date!, hour: 0, minute: 0, second: 0 },
-    timeZone,
-  );
+  return parseISO(day, { in: tz(timeZone) }).getTime();
 }
 
 /**

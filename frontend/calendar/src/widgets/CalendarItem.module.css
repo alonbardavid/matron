@@ -1,0 +1,14 @@
+/* An event the member hid, shown because they asked to see hidden ones. */
+.item[data-muted] {
+  opacity: 0.5;
+}
+
+.item[data-muted] > :global(.mantine-ScheduleEvent-eventInner) {
+  outline: 1px dashed var(--event-color);
+  outline-offset: -1px;
+}
+
+/* A completed task. */
+.item[data-struck] > :global(.mantine-ScheduleEvent-eventInner) {
+  text-decoration: line-through;
+}

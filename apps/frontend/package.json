@@ -18,6 +18,7 @@
     "@frontend/calendar": "workspace:*",
     "@frontend/conversations": "workspace:*",
     "@frontend/ds": "workspace:*",
+    "@frontend/notifications": "workspace:*",
     "@frontend/root": "workspace:*",
     "@frontend/settings": "workspace:*",
     "@frontend/tasks": "workspace:*",

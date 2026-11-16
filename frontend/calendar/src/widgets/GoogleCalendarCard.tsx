@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Checkbox, Group, Loader, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import dayjs from "dayjs";
+import { format } from "date-fns";
 import { GOOGLE_CALENDAR_SCOPE, type GoogleStatus } from "@shared/contract/app/calendar";
 import { authClient, unwrapAuth } from "@frontend/api/auth-client";
 import { notifyError } from "@frontend/api/errors";
@@ -162,7 +162,7 @@ export function GoogleCalendarCard() {
         </Group>
         <Text size="sm" c="dimmed">
           {connection.lastSyncedAt
-            ? `Last synced ${dayjs(connection.lastSyncedAt).format("ddd D MMM, HH:mm")}`
+            ? `Last synced ${format(connection.lastSyncedAt, "EEE d MMM, HH:mm")}`
             : "Not synced yet"}
         </Text>
         {connection.lastError && (

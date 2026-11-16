@@ -1,12 +1,22 @@
 import { useState, type ReactNode } from "react";
 import { Button, Group, Popover, Stack, Text, type ButtonProps } from "@mantine/core";
 
+/** Escape on these closes only the confirmation, not a modal it sits in. */
+const KEEP_ESCAPE = { "data-mantine-stop-propagation": true };
+
 interface ConfirmButtonProps extends ButtonProps {
   children: ReactNode;
   onConfirm: () => unknown;
   message?: string;
   confirmLabel?: string;
 }
+
+/**
+ * The widest the question grows before its text wraps: a comfortable line on
+ * a wide screen, and the screen less a margin on a narrow one. A short
+ * question keeps its own width.
+ */
+const MAX_WIDTH = "min(22rem, calc(100vw - 2rem))";
 
 export function ConfirmButton({
   children,
@@ -29,7 +39,15 @@ export function ConfirmButton({
   };
 
   return (
-    <Popover opened={opened} onChange={setOpened} position="bottom" withArrow shadow="md">
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom"
+      withArrow
+      shadow="md"
+      trapFocus
+      returnFocus
+    >
       <Popover.Target>
         <Button
           {...props}
@@ -39,7 +57,7 @@ export function ConfirmButton({
           {children}
         </Button>
       </Popover.Target>
-      <Popover.Dropdown>
+      <Popover.Dropdown maw={MAX_WIDTH}>
         <Stack gap="xs">
           <Text size="sm">{message}</Text>
           <Group justify="flex-end" gap="xs">
@@ -48,10 +66,17 @@ export function ConfirmButton({
               variant="default"
               onClick={() => setOpened(false)}
               disabled={busy}
+              {...KEEP_ESCAPE}
             >
               Cancel
             </Button>
-            <Button size="xs" color="red" onClick={confirm} loading={busy}>
+            <Button
+              size="xs"
+              color="red"
+              onClick={confirm}
+              loading={busy}
+              {...KEEP_ESCAPE}
+            >
               {confirmLabel}
             </Button>
           </Group>

@@ -3,7 +3,6 @@ import {
   ActionIcon,
   Button,
   Checkbox,
-  Chip,
   ColorSwatch,
   Divider,
   Group,
@@ -13,7 +12,7 @@ import {
   Switch,
   Text,
 } from "@mantine/core";
-import type { Calendar, Label } from "@shared/contract/app/calendar";
+import type { Calendar } from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { IconFilter } from "@frontend/ds/icons";
 import { filtering, type CalendarFilters } from "../filters";
@@ -23,18 +22,16 @@ interface FiltersButtonProps {
   onChange: (changes: Partial<CalendarFilters>) => void;
   onReset: () => void;
   calendars: Calendar[];
-  labels: Label[];
   /** A phone's toolbar has room for an icon only. */
   compact?: boolean;
 }
 
-/** What the calendar shows on this device: which calendars, labels, tasks and hidden events. */
+/** What the calendar shows on this device: which calendars, tasks and hidden events. */
 export function FiltersButton({
   filters,
   onChange,
   onReset,
   calendars,
-  labels,
   compact = false,
 }: FiltersButtonProps) {
   const [opened, setOpened] = useState(false);
@@ -108,32 +105,6 @@ export function FiltersButton({
               />
             ))}
           </Stack>
-          {labels.length > 0 && (
-            <Stack gap={6}>
-              <Text size="sm" fw={600}>
-                Only with labels
-              </Text>
-              <Chip.Group
-                multiple
-                value={filters.labels}
-                onChange={(ids) => onChange({ labels: ids })}
-              >
-                <Group gap={4}>
-                  {labels.map((label) => (
-                    <Chip
-                      key={label.id}
-                      value={label.id}
-                      size="xs"
-                      color={label.color}
-                      variant="outline"
-                    >
-                      {label.name}
-                    </Chip>
-                  ))}
-                </Group>
-              </Chip.Group>
-            </Stack>
-          )}
           <Divider />
           <Switch
             label="Tasks with a due date"

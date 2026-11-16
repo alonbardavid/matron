@@ -39,6 +39,7 @@ import {
   type BuildMessageMetadata,
   type BuildPhase,
 } from "@shared/contract/arch/sessions";
+import type { ReviewReport } from "@shared/contract/arch/review";
 import { DEFAULT_BUILDER_MODEL } from "@shared/contract/arch/settings";
 import {
   BUILD_FAILED_MESSAGE,
@@ -76,6 +77,7 @@ const KEYS = {
   request: "request",
   title: "title",
   deployedOnce: "deployedOnce",
+  reviewReport: "review-report",
 } as const;
 
 /**
@@ -467,6 +469,9 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       headCommit: detail.headCommit ?? "",
       baseCommit: detail.baseCommit,
     });
+    // A deploy without one keeps the last: it still groups most of the branch.
+    if (detail.reviewReport)
+      await this.ctx.storage.put(KEYS.reviewReport, detail.reviewReport);
     this.setPhase("deployed");
     await setSessionStatus(sessionId, "deployed");
     // The branch link is explained once; later deploys speak through the builder's own message.
@@ -474,6 +479,13 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
     await this.ctx.storage.put(KEYS.deployedOnce, true);
     const url = `${this.env.APP_ORIGIN}/?branch=${encodeURIComponent(branchId)}`;
     await this.post(DEPLOYED_MESSAGE.replace("{url}", url));
+  }
+
+  // ── RPC from the review ───────────────────────────────────────────────────
+
+  /** What the builder prepared for the review with the newest deploy, or null before one did. */
+  async reviewReport(): Promise<ReviewReport | null> {
+    return (await this.ctx.storage.get<ReviewReport>(KEYS.reviewReport)) ?? null;
   }
 
   // ── Archiving ─────────────────────────────────────────────────────────────

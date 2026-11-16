@@ -1,4 +1,14 @@
-import dayjs from "dayjs";
+import { TZDate } from "@date-fns/tz";
+import {
+  addDays,
+  addWeeks,
+  endOfDay,
+  endOfWeek,
+  format,
+  parseISO,
+  startOfWeek,
+  subWeeks,
+} from "date-fns";
 
 /** The browser's zone, which every event made here is reckoned in. */
 export function localTimeZone(): string {
@@ -7,21 +17,21 @@ export function localTimeZone(): string {
 
 /** Mantine's `YYYY-MM-DD HH:mm:ss`, in local time. */
 export function toDateTimeString(ms: number): string {
-  return dayjs(ms).format("YYYY-MM-DD HH:mm:ss");
+  return format(ms, "yyyy-MM-dd HH:mm:ss");
 }
 
 export function toDayString(ms: number): string {
-  return dayjs(ms).format("YYYY-MM-DD");
+  return format(ms, "yyyy-MM-dd");
 }
 
 export function fromDateTimeString(value: string): number {
-  return dayjs(value).valueOf();
+  return parseISO(value).getTime();
 }
 
 /** The day an instant falls on in a zone, as `YYYY-MM-DD`. */
 function dayIn(ms: number, timeZone: string): string {
   try {
-    return new Intl.DateTimeFormat("en-CA", { timeZone }).format(ms);
+    return format(new TZDate(ms, timeZone), "yyyy-MM-dd");
   } catch {
     return toDayString(ms);
   }
@@ -42,8 +52,8 @@ export function allDayBlock(
   // The end is the last day's final instant, or the midnight after it.
   const last = dayIn(Math.max(startAt, endAt - 1), timeZone);
   return {
-    start: dayjs(first).startOf("day").toDate(),
-    end: dayjs(last).add(1, "day").startOf("day").toDate(),
+    start: parseISO(first),
+    end: addDays(parseISO(last), 1),
   };
 }
 
@@ -53,16 +63,16 @@ export function allDaySpan(
   toDay: string,
 ): { startAt: number; endAt: number } {
   return {
-    startAt: dayjs(fromDay).startOf("day").valueOf(),
-    endAt: dayjs(toDay).endOf("day").valueOf(),
+    startAt: parseISO(fromDay).getTime(),
+    endAt: endOfDay(parseISO(toDay)).getTime(),
   };
 }
 
 /** The window of occurrences worth loading around a visible date: six weeks either side. */
 export function loadWindow(date: string): { from: number; to: number } {
-  const center = dayjs(date);
+  const center = parseISO(date);
   return {
-    from: center.subtract(6, "week").startOf("week").valueOf(),
-    to: center.add(6, "week").endOf("week").valueOf(),
+    from: startOfWeek(subWeeks(center, 6)).getTime(),
+    to: endOfWeek(addWeeks(center, 6)).getTime(),
   };
 }

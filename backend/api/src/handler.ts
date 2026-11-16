@@ -5,11 +5,12 @@ import { logUnexpectedError, type ApiContext } from "@backend/commons/api";
 import { conversations } from "./routes/conversations";
 import { calendar } from "./routes/calendar";
 import { files } from "./routes/files";
+import { notifications } from "./routes/notifications";
 import { tasks } from "./routes/tasks";
 import { users } from "./routes/users";
 
 const handler = new OpenAPIHandler(
-  { calendar, conversations, files, tasks, users },
+  { calendar, conversations, files, notifications, tasks, users },
   {
     interceptors: [onError(logUnexpectedError)],
     // A file procedure sets its response's headers through the context.
