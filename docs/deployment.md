@@ -67,7 +67,7 @@ Flags (`pnpm run deploy --name home`):
 | What                                                                              | Where                                                                                                            |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `CLOUDFLARE_API_TOKEN`, `BETTER_AUTH_SECRET`, `SIGNING_KEY`                       | Worker secrets (never in config; printed nowhere)                                                                |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                        | Worker secrets too, set from App settings through Cloudflare's API; a deploy leaves them as they are             |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PLACES_API_KEY`               | Worker secrets too, set from App settings through Cloudflare's API; a deploy leaves them as they are             |
 | `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; every resource the deployment owns carries the name in `WORKER_NAME`        |
 | Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)            |
 | Users, branches, sessions, tasks, events                                          | Production D1 `<name>`                                                                                           |

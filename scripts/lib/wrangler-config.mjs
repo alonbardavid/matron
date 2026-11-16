@@ -24,6 +24,7 @@ export const SECRET_VARS = [
   // Set from App settings, through Cloudflare's API.
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_PLACES_API_KEY",
   "CLOUDFLARE_API_TOKEN",
 ];
 

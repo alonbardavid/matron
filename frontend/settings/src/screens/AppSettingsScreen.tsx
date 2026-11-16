@@ -24,6 +24,7 @@ import { Card } from "@frontend/ds/Card";
 import { Form } from "@frontend/ds/forms/Form";
 import { Page } from "@frontend/ds/Page";
 import { GoogleOAuthCard } from "../widgets/GoogleOAuthCard";
+import { GooglePlacesCard } from "../widgets/GooglePlacesCard";
 
 const ANTHROPIC_OPTIONS = ANTHROPIC_MODELS.map((model) => ({
   value: model,
@@ -141,6 +142,7 @@ export function AppSettingsScreen() {
           </Stack>
         </Card>
         <GoogleOAuthCard />
+        <GooglePlacesCard />
       </Stack>
     </Page>
   );

@@ -18,12 +18,14 @@ import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 import {
   IconCalendar,
   IconEyeOff,
+  IconMapPin,
   IconNotes,
   IconPencil,
   IconRepeat,
   IconUsers,
   IconX,
 } from "@frontend/ds/icons";
+import { isLink, mapsUrl } from "../places";
 import { describeRule } from "../rrule";
 
 interface EventViewProps {
@@ -160,6 +162,21 @@ export function EventView({
         </Title>
         <Text size="sm">{describeWhen(event.allDay, startAt, endAt)}</Text>
       </Row>
+      {event.location && (
+        <Row icon={<IconMapPin size={18} />}>
+          <Text size="sm" style={{ overflowWrap: "anywhere" }}>
+            {event.location}
+          </Text>
+          <Anchor
+            href={mapsUrl(event.location, event.locationMetadata)}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="xs"
+          >
+            {isLink(event.location) ? "Open link" : "Open in Maps"}
+          </Anchor>
+        </Row>
+      )}
       {repeats && (
         <Row icon={<IconRepeat size={18} />}>
           <Text size="sm">{repeats}</Text>

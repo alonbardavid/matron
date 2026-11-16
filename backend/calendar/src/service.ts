@@ -9,6 +9,7 @@ import {
   calendarEventException,
   calendarEventHidden,
   calendarEventShare,
+  type LocationMetadata,
 } from "@backend/db-models/calendar";
 import { getDb } from "@backend/db-models/db";
 import { knownUserIds } from "@backend/household/users";
@@ -163,6 +164,8 @@ export async function listOccurrences(
           id: row.id,
           originalStartAt: null,
           title: row.title,
+          location: row.location,
+          locationMetadata: row.locationMetadata,
           startAt: row.startAt.getTime(),
           endAt: row.endAt.getTime(),
           recurring: row.externalSeriesId !== null,
@@ -173,7 +176,7 @@ export async function listOccurrences(
       continue;
     }
     const own = exceptions.get(row.id) ?? [];
-    const titles = new Map(own.map((e) => [e.originalStartAt.getTime(), e.title]));
+    const changedOf = new Map(own.map((e) => [e.originalStartAt.getTime(), e]));
     for (const window of expandSeries(
       seriesOf(row),
       own.map(toExceptionInput),
@@ -184,7 +187,8 @@ export async function listOccurrences(
         toOccurrence(row, cal, placement, {
           id: `${row.id}:${window.originalStartAt}`,
           originalStartAt: window.originalStartAt,
-          title: titles.get(window.originalStartAt) ?? row.title,
+          title: changedOf.get(window.originalStartAt)?.title ?? row.title,
+          ...locationOf(row, changedOf.get(window.originalStartAt)),
           startAt: window.startAt,
           endAt: window.endAt,
           recurring: true,
@@ -309,6 +313,8 @@ export async function createEvent(
       id,
       title: input.title,
       description: input.description ?? "",
+      location: input.location ?? "",
+      locationMetadata: (input.location && input.locationMetadata) || null,
       creatorId: principal.userId,
       allDay: input.allDay,
       startAt: new Date(input.startAt),
@@ -369,6 +375,10 @@ export async function updateEvent(
     .set({
       ...(changes.title !== undefined && { title: changes.title }),
       ...(changes.description !== undefined && { description: changes.description }),
+      ...(changes.location !== undefined && {
+        location: changes.location,
+        locationMetadata: (changes.location && changes.locationMetadata) || null,
+      }),
       ...(changes.allDay !== undefined && { allDay: changes.allDay }),
       startAt: new Date(startAt),
       endAt: new Date(endAt),
@@ -429,7 +439,7 @@ export async function stopRecurrence(
   return withShares(principal, row!);
 }
 
-/** Changes one occurrence of a series: its title, description or times. */
+/** Changes one occurrence of a series: its title, description, location or times. */
 export async function editOccurrence(
   principal: Principal,
   id: string,
@@ -446,6 +456,15 @@ export async function editOccurrence(
     cancelled: false,
     title: changes.title ?? existing?.title ?? null,
     description: changes.description ?? existing?.description ?? null,
+    ...(changes.location !== undefined
+      ? {
+          location: changes.location,
+          locationMetadata: (changes.location && changes.locationMetadata) || null,
+        }
+      : {
+          location: existing?.location ?? null,
+          locationMetadata: existing?.locationMetadata ?? null,
+        }),
     // Kept only when they differ from the series' own times.
     startAt: startAt === originalStartAt ? null : new Date(startAt),
     endAt: endAt === originalStartAt + duration ? null : new Date(endAt),
@@ -472,6 +491,8 @@ export async function cancelOccurrence(
     cancelled: true,
     title: null,
     description: null,
+    location: null,
+    locationMetadata: null,
     startAt: null,
     endAt: null,
     updatedAt: new Date(),
@@ -721,7 +742,19 @@ function toException(row: ExceptionRow): OccurrenceException {
     ...toExceptionInput(row),
     title: row.title,
     description: row.description,
+    location: row.location,
+    locationMetadata: row.locationMetadata,
   };
+}
+
+/** An occurrence's location: its own when it changed it, with its metadata; else the series'. */
+function locationOf(
+  row: EventRow,
+  own: ExceptionRow | undefined,
+): { location: string; locationMetadata: LocationMetadata | null } {
+  return own && own.location !== null
+    ? { location: own.location, locationMetadata: own.locationMetadata }
+    : { location: row.location, locationMetadata: row.locationMetadata };
 }
 
 function toEvent(
@@ -736,6 +769,8 @@ function toEvent(
     id: row.id,
     title: row.title,
     description: row.description,
+    location: row.location,
+    locationMetadata: row.locationMetadata,
     creatorId: row.creatorId,
     allDay: row.allDay,
     startAt: row.startAt.getTime(),
@@ -761,6 +796,8 @@ interface OccurrenceFields {
   id: string;
   originalStartAt: number | null;
   title: string;
+  location: string;
+  locationMetadata: LocationMetadata | null;
   startAt: number;
   endAt: number;
   recurring: boolean;
