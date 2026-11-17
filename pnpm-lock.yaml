@@ -1255,6 +1255,9 @@ importers:
       dayjs:
         specifier: 1.11.23
         version: 1.11.23
+      mobile-drag-drop:
+        specifier: 3.0.0-rc.0
+        version: 3.0.0-rc.0
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -4644,6 +4647,9 @@ packages:
 
   mkdirp-classic@0.5.3:
     resolution: {integrity: sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A==}
+
+  mobile-drag-drop@3.0.0-rc.0:
+    resolution: {integrity: sha512-f8wIDTbBYLBW/+5sei1cqUE+StyDpf/LP+FRZELlVX6tmOOmELk84r3wh1z3woxCB9G5octhF06K5COvFjGgqg==}
 
   modern-tar@0.7.7:
     resolution: {integrity: sha512-t9VmxaqrmANnEOBhpSDI6HD192Ge48k8vmWqQQL7hSFEqHEYwZbbsu49+aKLWZeRvFs3j1pMhXOqqF4kPlvjkQ==}
@@ -8423,6 +8429,8 @@ snapshots:
 
   mkdirp-classic@0.5.3:
     optional: true
+
+  mobile-drag-drop@3.0.0-rc.0: {}
 
   modern-tar@0.7.7: {}
 

@@ -170,6 +170,8 @@ export const occurrenceSchema = z.object({
   source: calendarSourceSchema,
   /** Whether the caller hid the event; listed all the same, for the calendar to show or leave out. */
   hidden: z.boolean(),
+  /** Whether the caller may move or resize it: an event made in Matron they may change. */
+  editable: z.boolean(),
 });
 export type Occurrence = z.infer<typeof occurrenceSchema>;
 

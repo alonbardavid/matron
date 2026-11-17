@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Box,
@@ -24,6 +24,7 @@ import {
   format,
   isSameMonth,
   parseISO,
+  startOfDay,
   startOfHour,
   startOfWeek,
 } from "date-fns";
@@ -39,9 +40,17 @@ import {
   fromDateTimeString,
   loadWindow,
   localTimeZone,
+  toDayString,
 } from "../times";
 import { useTimeGrid } from "../timeGrid";
-import { useCalendars, useEvent, useEventActions, useOccurrences } from "../useCalendar";
+import { enableTouchDrag } from "../touchDrag";
+import {
+  useCalendars,
+  useEvent,
+  useEventActions,
+  useMoveEvent,
+  useOccurrences,
+} from "../useCalendar";
 import { useCalendarDisplay, type View } from "../display";
 import { CalendarItem } from "../widgets/CalendarItem";
 import { FiltersButton } from "../widgets/FiltersButton";
@@ -97,6 +106,11 @@ type ItemPayload =
       occurrence: OpenedOccurrence | null;
       hidden: boolean;
       location: string;
+      /** Whether the caller may drag it to move or resize it. */
+      editable: boolean;
+      allDay: boolean;
+      startAt: number;
+      endAt: number;
     }
   | { kind: "task"; task: Task };
 
@@ -148,6 +162,7 @@ export function CalendarScreen() {
   const taskActions = useTaskActions();
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const { viewportRef, maxHeight } = useTimeGrid();
+  useEffect(enableTouchDrag, []);
   const scrollAreaProps = { viewportRef, mah: maxHeight };
 
   // What this device's filters leave on the calendar.
@@ -175,6 +190,10 @@ export function CalendarScreen() {
       eventId: item.eventId,
       hidden: item.hidden,
       location: item.location,
+      editable: item.editable,
+      allDay: item.allDay,
+      startAt: item.startAt,
+      endAt: item.endAt,
       occurrence:
         item.originalStartAt === null
           ? null
@@ -233,6 +252,70 @@ export function CalendarScreen() {
     const input = { ...values, timeZone: localTimeZone() };
     if (opening?.eventId) await update.mutateAsync({ id: opening.eventId, ...input });
     else await create.mutateAsync(input);
+  };
+
+  const moveEvent = useMoveEvent(window.from, window.to);
+  /**
+   * Drops an item where it was dragged (`move`), or stretches it to its new
+   * edges (`resize`). The calendar draws a timed event over whole quarters of
+   * an hour, so its times shift by as much as its block did rather than taking
+   * the block's edges: 7:05 to 7:12 dragged an hour on is 8:05 to 8:12. An
+   * all-day event keeps its length in days; a task takes the day as its due date.
+   */
+  const dropped = (
+    kind: "move" | "resize",
+    {
+      event: item,
+      newStart,
+      newEnd,
+    }: {
+      event: ScheduleEventData;
+      newStart: string;
+      newEnd: string;
+    },
+  ) => {
+    const payload = payloadOf(item);
+    if (payload?.kind === "task") {
+      const day = toDayString(fromDateTimeString(newStart));
+      if (day !== payload.task.dueDate)
+        taskActions.update.mutate({ id: payload.task.id, dueDate: day });
+      return;
+    }
+    if (!payload?.editable) return;
+    const shownStart = new Date(item.start).getTime();
+    const shownEnd = new Date(item.end).getTime();
+    const startShift = fromDateTimeString(newStart) - shownStart;
+    const endShift = fromDateTimeString(newEnd) - shownEnd;
+    let startAt: number;
+    let endAt: number;
+    if (payload.allDay) {
+      startAt = startOfDay(parseISO(newStart)).getTime();
+      endAt = startAt + (payload.endAt - payload.startAt);
+    } else if (kind === "move") {
+      startAt = payload.startAt + startShift;
+      endAt = payload.endAt + startShift;
+    } else {
+      // Only the edge that was pulled moves.
+      startAt = startShift ? fromDateTimeString(newStart) : payload.startAt;
+      endAt = endShift ? fromDateTimeString(newEnd) : payload.endAt;
+      if (endAt <= startAt) return;
+    }
+    if (startAt === payload.startAt && endAt === payload.endAt) return;
+    void moveEvent({
+      occurrenceId: String(item.id),
+      eventId: payload.eventId,
+      originalStartAt: payload.occurrence?.originalStartAt ?? null,
+      startAt,
+      endAt,
+    });
+  };
+  const draggable = (item: ScheduleEventData) => {
+    const payload = payloadOf(item);
+    return payload?.kind === "task" || (payload?.kind === "event" && payload.editable);
+  };
+  const resizable = (item: ScheduleEventData) => {
+    const payload = payloadOf(item);
+    return payload?.kind === "event" && payload.editable && !payload.allDay;
   };
 
   const filtersButton = (compact: boolean) => (
@@ -343,6 +426,12 @@ export function CalendarScreen() {
           onViewChange={(next) => setView(next)}
           layout="default"
           withDragSlotSelect
+          withEventsDragAndDrop
+          canDragEvent={draggable}
+          onEventDrop={(data) => dropped("move", data)}
+          withEventResize
+          canResizeEvent={resizable}
+          onEventResize={(data) => dropped("resize", data)}
           onTimeSlotClick={({ slotStart, slotEnd }) =>
             openNew({
               allDay: false,
