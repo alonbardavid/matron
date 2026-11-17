@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { branchPermissions, type BranchAction } from "@backend/arch-branches/permissions";
 import { reviewPermissions } from "@backend/arch-review/permissions";
+import { settingsPermissions } from "@backend/arch-settings/permissions";
 import { troubleshootingPermissions } from "@backend/arch-troubleshooting/permissions";
 import { householdPermissions } from "@backend/household/permissions";
 import { useSession } from "@frontend/api/auth-client";
@@ -39,8 +40,10 @@ export function useMe() {
     isLoading: isPending,
     can,
     isOwner: me?.role === "owner",
-    /** Owners and admins: the household's members and settings. */
+    /** Owners and admins: the household's members. */
     canManage: me ? householdPermissions.can(me.role, "manage") : false,
+    /** Owners: the app settings, its models and household secrets. */
+    canConfigure: me ? settingsPermissions.can(me.role, "manage") : false,
     /** Owners: the deployment's own databases, containers and objects. */
     canTroubleshoot: me ? troubleshootingPermissions.can(me.role, "manage") : false,
     /** Owners: reading a branch's code before merging it. */

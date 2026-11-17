@@ -1,6 +1,4 @@
 import { eq } from "drizzle-orm";
-import { householdPermissions } from "@backend/household/permissions";
-import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
@@ -25,6 +23,7 @@ import {
   removeHouseholdSecret,
   setHouseholdSecret,
 } from "./worker-secrets";
+import { settingsPermissions } from "./permissions";
 
 const log = logger("arch-settings/service");
 
@@ -72,9 +71,7 @@ export async function updateSettings(
   principal: Principal,
   changes: Partial<AppSettings>,
 ): Promise<AppSettings> {
-  if (!householdPermissions.can(principal.role, "manage")) {
-    throw new DomainError("FORBIDDEN", "Only owners and admins change the settings");
-  }
+  settingsPermissions.require(principal, "manage");
   if (changes.builderModel) {
     await writeValue(BUILDER_MODEL_KEY, changes.builderModel);
     log.info("setting changed", {
@@ -116,7 +113,7 @@ function hintsOf(valueOf: (name: HouseholdSecret) => string | undefined) {
 export async function getHouseholdSecrets(
   principal: Principal,
 ): Promise<HouseholdSecrets> {
-  householdPermissions.require(principal, "manage");
+  settingsPermissions.require(principal, "manage");
   return hintsOf(householdSecret);
 }
 
@@ -129,7 +126,7 @@ export async function updateHouseholdSecrets(
   principal: Principal,
   changes: HouseholdSecretsUpdate,
 ): Promise<HouseholdSecrets> {
-  householdPermissions.require(principal, "manage");
+  settingsPermissions.require(principal, "manage");
   const after = new Map<HouseholdSecret, string | undefined>();
   for (const name of HOUSEHOLD_SECRETS) {
     const current = householdSecret(name);

@@ -607,9 +607,6 @@ importers:
       '@backend/db-models':
         specifier: workspace:*
         version: link:../db-models
-      '@backend/household':
-        specifier: workspace:*
-        version: link:../household
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
@@ -1037,6 +1034,9 @@ importers:
       '@backend/arch-review':
         specifier: workspace:*
         version: link:../../backend/arch-review
+      '@backend/arch-settings':
+        specifier: workspace:*
+        version: link:../../backend/arch-settings
       '@backend/arch-troubleshooting':
         specifier: workspace:*
         version: link:../../backend/arch-troubleshooting

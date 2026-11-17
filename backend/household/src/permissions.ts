@@ -1,6 +1,6 @@
 import { definePermissions } from "@backend/commons/permissions";
 
-/** The household itself: its members and its settings. */
+/** The household itself: adding and removing its members, and their roles. */
 export const householdPermissions = definePermissions({
   resource: "household",
   actions: ["manage"],
