@@ -114,11 +114,12 @@ export const calendarEvent = sqliteTable(
 );
 
 /**
- * What someone an event is shared with may do: see it; edit it (its times,
- * details, repetition and single occurrences); or manage it too (who it is
- * shared with and at what level, who attends, removing it).
+ * What someone an event is shared with may do, each level adding to the one
+ * before: see it; share it too (who it is shared with and at what level, who
+ * attends); edit it too (its times, details, repetition, single occurrences,
+ * removing it).
  */
-export const SHARE_PERMISSIONS = ["view", "edit", "manage"] as const;
+export const SHARE_PERMISSIONS = ["view", "share", "edit"] as const;
 export type SharePermission = (typeof SHARE_PERMISSIONS)[number];
 
 export const calendarEventShare = sqliteTable(
@@ -128,7 +129,7 @@ export const calendarEventShare = sqliteTable(
     eventId: text("event_id").notNull(),
     userId: text("user_id").notNull(),
     attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
-    /** What the member may do with it: view, edit it, or manage it (share it, remove it). */
+    /** What the member may do with it: view it, share it too, or edit it too. */
     permission: text("permission", { enum: SHARE_PERMISSIONS }).notNull().default("edit"),
     /** The recipient's own calendar it shows in; their calendar for shared events when null. */
     calendarId: text("calendar_id"),

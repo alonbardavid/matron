@@ -168,7 +168,7 @@ test.describe("calendar sharing", () => {
     await context.close();
   });
 
-  test("someone an event is shared with changes it, but not who it is shared with", async ({
+  test("someone an event is shared with changes it, and who it is shared with", async ({
     page,
     browser,
   }) => {
@@ -193,8 +193,8 @@ test.describe("calendar sharing", () => {
     await memberPage.getByText("Swimming", { exact: true }).first().click();
     const dialog = memberPage.getByRole("dialog");
     await dialog.getByRole("button", { name: "Edit event" }).click();
-    // Who it is shared with is its creator's to say.
-    await expect(dialog.getByLabel("Shared with")).toHaveCount(0);
+    // Sharing it gives edit unless said otherwise, and editing takes sharing with it.
+    await expect(dialog.getByLabel("Shared with")).toHaveCount(1);
     await dialog.getByLabel("Title").fill("Swimming gala");
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(dialog).toBeHidden();

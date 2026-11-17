@@ -26,6 +26,7 @@ import {
 import { timeZoneOf } from "@backend/notifications/service";
 import {
   CALENDAR_COLORS,
+  SHARE_PERMISSIONS,
   type CalendarEvent,
   type SharePermission,
   type CalendarEventCreate,
@@ -118,23 +119,31 @@ function placementOf(
 }
 
 /**
- * What the caller may do with an event: whoever made it, and a household
- * owner, manage it; someone it is shared with does what they were given; one
- * seen through a calendar shared read-only is only seen.
+ * What the caller may do with an event: whoever made it edits it; someone it
+ * is shared with does what they were given, whatever their role in the
+ * household; one seen through a calendar shared read-only is only seen.
  */
 function capabilitiesOf(
   principal: Principal,
   row: EventRow,
   placement: Placement,
   mine: ShareRow | undefined,
-): { edit: boolean; manage: boolean } {
+): { share: boolean; edit: boolean } {
   const level: SharePermission =
     placement.access === "read"
       ? "view"
-      : row.creatorId === principal.userId || principal.role === "owner"
-        ? "manage"
+      : row.creatorId === principal.userId
+        ? "edit"
         : (mine?.permission ?? "view");
-  return { edit: level !== "view", manage: level === "manage" };
+  return { share: level !== "view", edit: level === "edit" };
+}
+
+/** Whether one level allows more than another. */
+function above(level: SharePermission | undefined, other: SharePermission): boolean {
+  return (
+    level !== undefined &&
+    SHARE_PERMISSIONS.indexOf(level) > SHARE_PERMISSIONS.indexOf(other)
+  );
 }
 
 /** Everything on the caller's calendar between two instants, series expanded. */
@@ -467,7 +476,7 @@ export async function createEvent(
       rrule: storedRule(input.rrule ?? null, input.timeZone, input.allDay),
     })
     .returning();
-  await writeShares(id, sharedWith, attendees, new Map(), input.permissions);
+  await writeShares(id, sharedWith, attendees, input.permissions);
   log.info("event created", {
     eventId: id,
     calendarId: target.id,
@@ -487,12 +496,12 @@ export async function updateEvent(
     throw new DomainError("FORBIDDEN", "This calendar is shared with you read-only");
   }
   // A save sends who it is shared with whether or not that changed: only a real
-  // change needs leave to manage the event.
+  // change needs leave to share the event.
   const sharing =
     differs(changes.sharedWith, current.sharedWith) ||
     differs(changes.attendees, current.attendees) ||
     Object.entries(changes.permissions ?? {}).some(
-      ([userId, level]) => (current.permissions[userId] ?? "edit") !== level,
+      ([userId, level]) => current.permissions[userId] !== level,
     );
   const {
     sharedWith: _shared,
@@ -502,9 +511,37 @@ export async function updateEvent(
   } = changes;
   const detailed = Object.values(details).some((value) => value !== undefined);
   if (detailed) requireEditable(current);
-  if (sharing) {
+  // Who it is shared with after this, who attends, and what each may do: as
+  // set now, else as before, else as much as the caller may.
+  const own: SharePermission = current.can.edit ? "edit" : "share";
+  const people = sharing
+    ? await resolvePeople(
+        current.creatorId,
+        changes.sharedWith ?? current.sharedWith,
+        changes.attendees ?? current.attendees,
+      )
+    : null;
+  const levels: Record<string, SharePermission> = Object.fromEntries(
+    (people?.sharedWith ?? []).map((userId) => [
+      userId,
+      changes.permissions?.[userId] ?? current.permissions[userId] ?? own,
+    ]),
+  );
+  if (people) {
     eventPermissions.require(principal, "share");
-    requireManage(current, "changes who it is shared with and who attends");
+    requireShare(current);
+    // Nobody gives more than they have, or changes what someone with more has.
+    const overreach = [...new Set([...people.sharedWith, ...current.sharedWith])]
+      .filter((userId) => levels[userId] !== current.permissions[userId])
+      .some(
+        (userId) => above(levels[userId], own) || above(current.permissions[userId], own),
+      );
+    if (overreach) {
+      throw new DomainError(
+        "FORBIDDEN",
+        "Only someone who may edit the event lets others edit it, or stops them",
+      );
+    }
   }
   if (current.source !== "matron" && detailed) {
     // An imported event is the source's: only who it is shared with is Matron's own.
@@ -552,22 +589,16 @@ export async function updateEvent(
     })
     .where(eq(calendarEvent.id, id))
     .returning();
-  if (sharing) {
-    const { sharedWith, attendees } = await resolvePeople(
-      current.creatorId,
-      changes.sharedWith ?? current.sharedWith,
-      changes.attendees ?? current.attendees,
-    );
-    // Each remaining recipient keeps the calendar they placed it in and what
-    // they may do, unless that is set now.
-    const kept = new Map(
+  if (people) {
+    // Each remaining recipient keeps the calendar they placed it in.
+    const placed = new Map(
       ((await sharesOf([id])).get(id) ?? []).map((share) => [
         share.userId,
-        { calendarId: share.calendarId, permission: share.permission },
+        share.calendarId,
       ]),
     );
     await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
-    await writeShares(id, sharedWith, attendees, kept, changes.permissions ?? {});
+    await writeShares(id, people.sharedWith, people.attendees, levels, placed);
   }
   // Its times, or who sees it, may have changed under someone's alarm.
   await rearmAlarms("event", [id]);
@@ -769,7 +800,6 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
   const current = await getEvent(principal, id);
   requireEditable(current);
   refuseImported(current);
-  requireManage(current, "removes it");
   const db = getDb();
   await db.batch([
     db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
@@ -790,7 +820,7 @@ function refuseImported(item: CalendarEvent): void {
   }
 }
 
-/** The caller may change the event's details and occurrences. */
+/** The caller may change the event's details and occurrences, and remove it. */
 function requireEditable(item: CalendarEvent): void {
   if (item.access !== "edit") {
     throw new DomainError("FORBIDDEN", "This calendar is shared with you read-only");
@@ -798,17 +828,17 @@ function requireEditable(item: CalendarEvent): void {
   if (!item.can.edit) {
     throw new DomainError(
       "FORBIDDEN",
-      "This event was shared with you to view; ask whoever made it to let you edit it",
+      "This event was not shared with you to edit; ask whoever made it to let you",
     );
   }
 }
 
-/** The caller may change who the event is shared with and who attends, and remove it. */
-function requireManage(item: CalendarEvent, what: string): void {
-  if (!item.can.manage) {
+/** The caller may change who the event is shared with and who attends. */
+function requireShare(item: CalendarEvent): void {
+  if (!item.can.share) {
     throw new DomainError(
       "FORBIDDEN",
-      `Only whoever made the event, or someone allowed to manage it, ${what}`,
+      "This event was shared with you to view; ask whoever made it to let you share it",
     );
   }
 }
@@ -871,18 +901,12 @@ async function resolvePeople(
   return { sharedWith: everyone, attendees: attending };
 }
 
-/** What a recipient keeps when the people on an event change: where they placed it, and what they may do. */
-interface KeptShare {
-  calendarId: string | null;
-  permission: SharePermission;
-}
-
 async function writeShares(
   eventId: string,
   sharedWith: string[],
   attendees: string[],
-  kept: Map<string, KeptShare> = new Map(),
   levels: Record<string, SharePermission> = {},
+  placed: Map<string, string | null> = new Map(),
 ): Promise<void> {
   const people = new Set([...sharedWith, ...attendees]);
   if (people.size === 0) return;
@@ -894,9 +918,9 @@ async function writeShares(
         eventId,
         userId,
         attendee: attendees.includes(userId),
-        calendarId: kept.get(userId)?.calendarId ?? null,
-        // What they may do: as set now, else as before, else edit.
-        permission: levels[userId] ?? kept.get(userId)?.permission ?? ("edit" as const),
+        calendarId: placed.get(userId) ?? null,
+        // What they may do; edit for anyone not named.
+        permission: levels[userId] ?? ("edit" as const),
       })),
     );
 }
@@ -992,7 +1016,7 @@ function toEvent(
   placement: Placement,
   exceptions: ExceptionRow[],
   hidden: boolean,
-  can: { edit: boolean; manage: boolean },
+  can: { share: boolean; edit: boolean },
 ): CalendarEvent {
   return {
     id: row.id,

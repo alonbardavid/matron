@@ -108,7 +108,7 @@ export function EventView({
         ? "From Google Calendar"
         : `Created by ${nameOf(event.creatorId)}${
             event.creatorId !== me?.id && event.sharedWith.includes(me?.id ?? "")
-              ? ` · you can ${event.can.manage ? "manage" : event.can.edit ? "edit" : "view"} it`
+              ? ` · you can ${event.can.edit ? "edit" : event.can.share ? "share" : "view"} it`
               : ""
           }`;
   return (

@@ -101,11 +101,12 @@ export type Calendar = z.infer<typeof calendarSchema>;
 const calendarName = z.string().trim().min(1, "Give the calendar a name").max(80);
 
 /**
- * What someone an event is shared with may do: see it; edit it (times,
- * details, repetition, single occurrences); or manage it too (who it is
- * shared with and at what level, who attends, removing it).
+ * What someone an event is shared with may do, each level adding to the one
+ * before: see it; share it too (who it is shared with and at what level, who
+ * attends); edit it too (times, details, repetition, single occurrences,
+ * removing it).
  */
-export const SHARE_PERMISSIONS = ["view", "edit", "manage"] as const;
+export const SHARE_PERMISSIONS = ["view", "share", "edit"] as const;
 export const sharePermissionSchema = z.enum(SHARE_PERMISSIONS);
 export type SharePermission = z.infer<typeof sharePermissionSchema>;
 
@@ -136,10 +137,10 @@ export const calendarEventSchema = z.object({
   /** What each member it is shared with may do, by user id. */
   permissions: z.record(z.string(), sharePermissionSchema),
   /**
-   * What the caller may do with it: `edit` its details and occurrences;
-   * `manage` who it is shared with and who attends, and remove it.
+   * What the caller may do with it: `share` it, changing who it is shared
+   * with and who attends; `edit` its details and occurrences, and remove it.
    */
-  can: z.object({ edit: z.boolean(), manage: z.boolean() }),
+  can: z.object({ share: z.boolean(), edit: z.boolean() }),
   /** The creator's calendar it belongs to. */
   calendarId: z.string(),
   /** The calendar it shows in for the caller: theirs for an event shared with them, or the shared calendar it came through. */
