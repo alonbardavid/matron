@@ -50,7 +50,7 @@ export interface EventDraft {
   location: string;
   /** What Google gave for the location when it was picked from its suggestions; null when typed. */
   locationMetadata: LocationMetadata | null;
-  permissions: Record<string, SharePermission>;
+  permissions: Record<string, SharePermission[]>;
 }
 
 export interface EventSubmit {
@@ -67,7 +67,7 @@ export interface EventSubmit {
   attendees?: string[];
   calendarId?: string;
   /** What each member it is shared with may do; sent only by whoever may share it. */
-  permissions?: Record<string, SharePermission>;
+  permissions?: Record<string, SharePermission[]>;
 }
 
 /** The occurrence of a series that was opened. */
@@ -193,9 +193,9 @@ export function EventModal({
 
   const creatorId = event?.creatorId ?? me?.id ?? "";
   // What the caller may do, as the server says: share it (who it is shared
-  // with, who attends), and edit its details or remove it too.
-  const canShare = !event || event.can.share;
-  const canEdit = !event || event.can.edit;
+  // with, who attends), edit its details or remove it, each on its own.
+  const canShare = !event || event.can.includes("share");
+  const canEdit = !event || event.can.includes("edit");
   // An event imported from Google changes there; here only who it is shared with.
   const imported = event?.source === "google";
   // Seen only through a calendar shared with the caller: nothing here changes it.
@@ -203,7 +203,7 @@ export function EventModal({
   const editable = !imported && !readOnly && canEdit;
   // Sharing is all a Google event has to change here, and all a guest who
   // may share but not edit has.
-  const changeable = !readOnly && canShare;
+  const changeable = !readOnly && (canShare || editable);
   // One occurrence is changed on its own only in what editing changes.
   const one = scope === "one" && series && editable;
   // Shared with the caller by someone else: they choose which of their calendars shows it.
@@ -275,7 +275,7 @@ export function EventModal({
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
-        // Who it is shared with, who attends and at what level.
+        // Who it is shared with, who attends and what each may do.
         ...(canShare && {
           sharedWith: draft.sharedWith,
           attendees: draft.attendees,
@@ -350,8 +350,8 @@ export function EventModal({
         <Form onSubmit={() => void save()}>
           {event && !editable && (
             <Text size="sm" c="dimmed">
-              {draft.title}:{imported && " it changes in Google Calendar."} Here you choose
-              who sees it.
+              {draft.title}:{imported && " it changes in Google Calendar."} Here you
+              choose who sees it.
             </Text>
           )}
           {series && editable && (
@@ -484,12 +484,12 @@ export function EventModal({
               <SharePermissions
                 people={draft.sharedWith}
                 value={draft.permissions}
-                upTo={canEdit ? "edit" : "share"}
+                canEdit={canEdit}
                 onChange={(permissions) => set("permissions", permissions)}
               />
               <PeoplePicker
                 label="Attending"
-                description="Anyone attending sees the event too."
+                description="Who takes part. Share the event with someone for it to show on their calendar."
                 placeholder={draft.attendees.length ? undefined : "No one"}
                 value={draft.attendees}
                 onChange={(ids) => set("attendees", ids)}

@@ -114,10 +114,10 @@ export const calendarEvent = sqliteTable(
 );
 
 /**
- * What someone an event is shared with may do, each level adding to the one
- * before: see it; share it too (who it is shared with and at what level, who
- * attends); edit it too (its times, details, repetition, single occurrences,
- * removing it).
+ * What someone may do with an event: view it, as everyone it is shared with
+ * may; share it (who it is shared with, who of them may share it, who
+ * attends); edit it (its times, details, repetition, single occurrences,
+ * removing it, and who may edit it). Share and edit are each given on their own.
  */
 export const SHARE_PERMISSIONS = ["view", "share", "edit"] as const;
 export type SharePermission = (typeof SHARE_PERMISSIONS)[number];
@@ -128,15 +128,34 @@ export const calendarEventShare = sqliteTable(
     id: text("id").primaryKey(),
     eventId: text("event_id").notNull(),
     userId: text("user_id").notNull(),
-    attendee: integer("attendee", { mode: "boolean" }).notNull().default(true),
-    /** What the member may do with it: view it, share it too, or edit it too. */
-    permission: text("permission", { enum: SHARE_PERMISSIONS }).notNull().default("edit"),
+    /** What the member may do with it; viewing it is always among them. */
+    permissions: text("permissions", { mode: "json" })
+      .$type<SharePermission[]>()
+      .notNull()
+      .default(["view"]),
     /** The recipient's own calendar it shows in; their calendar for shared events when null. */
     calendarId: text("calendar_id"),
     createdAt: createdAt(),
   },
   (table) => [
     uniqueIndex("calendar_event_share_event_user").on(table.eventId, table.userId),
+  ],
+);
+
+/**
+ * A member attending an event. Attending does not show them the event, and
+ * being shared it does not make them attend.
+ */
+export const calendarEventAttendee = sqliteTable(
+  "calendar_event_attendee",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("calendar_event_attendee_event_user").on(table.eventId, table.userId),
   ],
 );
 

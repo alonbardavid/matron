@@ -100,6 +100,9 @@ export function EventView({
     : event.repeatsAtSource
       ? "Repeats in Google Calendar"
       : null;
+  const given = (["share", "edit"] as const).filter((permission) =>
+    event.can.includes(permission),
+  );
   const alsoSharedWith = event.sharedWith.filter((id) => !event.attendees.includes(id));
   const origin =
     event.access === "read"
@@ -108,7 +111,7 @@ export function EventView({
         ? "From Google Calendar"
         : `Created by ${nameOf(event.creatorId)}${
             event.creatorId !== me?.id && event.sharedWith.includes(me?.id ?? "")
-              ? ` · you can ${event.can.edit ? "edit" : event.can.share ? "share" : "view"} it`
+              ? ` · you can ${given.length ? given.join(" and ") : "view"} it`
               : ""
           }`;
   return (

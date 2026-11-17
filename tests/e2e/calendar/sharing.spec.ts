@@ -175,6 +175,7 @@ test.describe("calendar sharing", () => {
     await signIn(page, OWNER);
     const start = new Date();
     start.setHours(14, 0, 0, 0);
+    const member = await memberId(page.request);
     await page.request.post("/api/app/calendar/events", {
       data: {
         title: "Swimming",
@@ -182,7 +183,8 @@ test.describe("calendar sharing", () => {
         startAt: start.getTime(),
         endAt: start.getTime() + 3_600_000,
         timeZone: "UTC",
-        sharedWith: [await memberId(page.request)],
+        sharedWith: [member],
+        permissions: { [member]: ["share", "edit"] },
       },
     });
 
@@ -193,7 +195,7 @@ test.describe("calendar sharing", () => {
     await memberPage.getByText("Swimming", { exact: true }).first().click();
     const dialog = memberPage.getByRole("dialog");
     await dialog.getByRole("button", { name: "Edit event" }).click();
-    // Sharing it gives edit unless said otherwise, and editing takes sharing with it.
+    // Given both, they change the event and who it is shared with.
     await expect(dialog.getByLabel("Shared with")).toHaveCount(1);
     await dialog.getByLabel("Title").fill("Swimming gala");
     await dialog.getByRole("button", { name: "Save" }).click();

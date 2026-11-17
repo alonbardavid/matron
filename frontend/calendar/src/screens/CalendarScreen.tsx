@@ -249,7 +249,10 @@ export function CalendarScreen() {
     });
 
   const save = async (values: EventSubmit) => {
-    if (opening?.eventId && (event.data?.source === "google" || !event.data?.can.edit)) {
+    if (
+      opening?.eventId &&
+      (event.data?.source === "google" || !event.data?.can.includes("edit"))
+    ) {
       // Only who it is shared with changes: an imported event is Google's, and
       // a guest who may share it does not edit it.
       await update.mutateAsync({

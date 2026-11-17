@@ -18,6 +18,7 @@ import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import {
   calendar,
   calendarEvent,
+  calendarEventAttendee,
   calendarEventException,
   calendarEventHidden,
   calendarEventShare,
@@ -594,12 +595,11 @@ async function mirrorCalendar(
     .filter((event) => rows.has(event.externalId ?? "") && !known.has(event.externalId))
     .map((event) =>
       db
-        .insert(calendarEventShare)
+        .insert(calendarEventAttendee)
         .values({
-          id: newEntityId("CALENDAR_EVENT_SHARE"),
+          id: newEntityId("CALENDAR_EVENT_ATTENDEE"),
           eventId: event.id,
           userId: cal.ownerId,
-          attendee: true,
         })
         .onConflictDoNothing(),
     );
@@ -634,6 +634,7 @@ async function mirrorCalendar(
   for (const ids of chunks(gone, ID_CHUNK)) {
     await db.batch([
       db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, ids)),
+      db.delete(calendarEventAttendee).where(inArray(calendarEventAttendee.eventId, ids)),
       db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, ids)),
       db
         .delete(calendarEventException)

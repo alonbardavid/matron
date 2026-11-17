@@ -1,65 +1,68 @@
-import { Group, Select, Stack, Text } from "@mantine/core";
-import { SHARE_PERMISSIONS, type SharePermission } from "@shared/contract/app/calendar";
+import { Checkbox, Group, Stack, Text } from "@mantine/core";
+import type { SharePermission } from "@shared/contract/app/calendar";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { UserAvatar } from "@frontend/auth/widgets/UserAvatar";
 
-export const PERMISSION_LABELS: Record<SharePermission, string> = {
-  view: "Can view",
-  share: "Can share",
-  edit: "Can edit",
-};
-
-const optionOf = (value: SharePermission) => ({ value, label: PERMISSION_LABELS[value] });
-
 /**
- * What each member an event is shared with may do. The caller gives as much as
- * they may themselves (`upTo`), which is also what anyone not set gets, and
- * leaves alone whoever has more.
+ * What each member an event is shared with may do besides viewing it: share
+ * it, edit it, each on its own. Who may edit is for someone who may edit the
+ * event to say (`canEdit`); anyone else sees it as it stands.
  */
 export function SharePermissions({
   people,
   value,
-  upTo,
+  canEdit,
   onChange,
 }: {
   people: string[];
-  value: Record<string, SharePermission>;
-  upTo: SharePermission;
-  onChange: (next: Record<string, SharePermission>) => void;
+  value: Record<string, SharePermission[]>;
+  canEdit: boolean;
+  onChange: (next: Record<string, SharePermission[]>) => void;
 }) {
   const { nameOf, avatarUrlOf } = useHouseholdMembers();
   if (people.length === 0) return null;
-  const options = SHARE_PERMISSIONS.slice(0, SHARE_PERMISSIONS.indexOf(upTo) + 1);
+  const set = (userId: string, permission: SharePermission, on: boolean) => {
+    const rest = (value[userId] ?? []).filter((held) => held !== permission);
+    onChange({ ...value, [userId]: on ? [...rest, permission] : rest });
+  };
   return (
     <Stack gap={4}>
       <Text size="xs" c="dimmed">
-        Share: also who it is shared with and who attends. Edit: also its times and
-        details, and removing it.
+        Everyone listed sees the event. Tick what else each may do.
       </Text>
       {people.map((userId) => {
-        const level = value[userId] ?? upTo;
-        const beyond = !options.includes(level);
+        const name = nameOf(userId);
+        const held = value[userId] ?? [];
         return (
-          <Group key={userId} gap="xs" wrap="nowrap">
-            <UserAvatar size="sm" name={nameOf(userId)} avatarUrl={avatarUrlOf(userId)} />
-            <Text size="sm" style={{ flex: 1 }} truncate>
-              {nameOf(userId)}
-            </Text>
-            <Select
-              aria-label={`What ${nameOf(userId)} may do`}
-              size="xs"
-              w={130}
-              data={(beyond ? [level] : options).map(optionOf)}
-              value={level}
-              onChange={(next) =>
-                next && onChange({ ...value, [userId]: next as SharePermission })
-              }
-              disabled={beyond}
-              allowDeselect={false}
+          <Group key={userId} gap="md" wrap="nowrap" mih={{ base: 44, sm: 36 }}>
+            <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <UserAvatar size="sm" name={name} avatarUrl={avatarUrlOf(userId)} />
+              <Text size="sm" truncate>
+                {name}
+              </Text>
+            </Group>
+            <Checkbox
+              label="Share"
+              aria-label={`${name} may share`}
+              checked={held.includes("share")}
+              onChange={(event) => set(userId, "share", event.currentTarget.checked)}
+            />
+            <Checkbox
+              label="Edit"
+              aria-label={`${name} may edit`}
+              checked={held.includes("edit")}
+              onChange={(event) => set(userId, "edit", event.currentTarget.checked)}
+              disabled={!canEdit}
             />
           </Group>
         );
       })}
+      <Text size="xs" c="dimmed">
+        Share: who it is shared with and who attends.{" "}
+        {canEdit
+          ? "Edit: its times and details, and removing it."
+          : "Edit is set by someone who may edit the event."}
+      </Text>
     </Stack>
   );
 }

@@ -36,7 +36,11 @@ One occurrence of a repeating event cancelled or changed: `event_id`, `original_
 
 ## calendar_event_share
 
-Who an event is shared with, one row per user: `event_id`, `user_id`, `attendee` (1 when they take part, 0 when they only see it), `calendar_id` (the recipient's own calendar it shows in, or null for their calendar for shared events). Indexes: `user_id`, unique (`event_id`, `user_id`).
+Who an event is shared with, one row per user: `event_id`, `user_id`, `permissions` (a JSON list of what they may do: `view` always, and `share` and `edit` each when given), `calendar_id` (the recipient's own calendar it shows in, or null for their calendar for shared events). Indexes: `user_id`, unique (`event_id`, `user_id`).
+
+## calendar_event_attendee
+
+Who takes part in an event, one row per user: `event_id`, `user_id`. Attending does not show someone the event, and being shared it does not make them attend. Unique (`event_id`, `user_id`).
 
 A member sees the events they created, the ones shared with them, and every event in a calendar shared with them.
 

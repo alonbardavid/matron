@@ -7,8 +7,8 @@ interface EventRow {
   title: string;
   sharedWith: string[];
   attendees: string[];
-  permissions: Record<string, string>;
-  can: { share: boolean; edit: boolean };
+  permissions: Record<string, string[]>;
+  can: string[];
 }
 
 /** An hour of today, local to the browser, for an event the week view shows. */
@@ -36,7 +36,7 @@ async function idsOf(page: Page) {
 }
 
 test.describe("what guests may do", () => {
-  test("view, share and edit each allow what they say", async ({ page, browser }) => {
+  test("sharing and editing are each given on their own", async ({ page, browser }) => {
     await signIn(page, OWNER);
     const ids = await idsOf(page);
     const start = Date.UTC(2031, 10, 4, 10);
@@ -50,30 +50,37 @@ test.describe("what guests may do", () => {
           timeZone: "UTC",
           rrule: "FREQ=WEEKLY;COUNT=3",
           sharedWith: [ids.member],
-          permissions: { [ids.member]: "view" },
         },
       })
     ).json()) as EventRow;
-    expect(event.permissions).toEqual({ [ids.member]: "view" });
-    expect(event.can).toEqual({ share: true, edit: true });
+    // Shared with nothing said: they view it.
+    expect(event.permissions).toEqual({ [ids.member]: ["view"] });
+    expect(event.can).toEqual(["view", "share", "edit"]);
     const path = `/api/app/calendar/events/${event.id}`;
-    const give = (level: string) =>
-      page.request.put(path, { data: { permissions: { [ids.member]: level } } });
+    const give = (...permissions: string[]) =>
+      page.request.put(path, { data: { permissions: { [ids.member]: permissions } } });
 
     const member = await memberPage(browser);
     const as = member.page.request;
     try {
       const seen = (await (await as.get(path)).json()) as EventRow;
-      expect(seen.can).toEqual({ share: false, edit: false });
-      // As the dialog saves: with who it is shared with, unchanged.
-      const save = (title: string) =>
-        as.put(path, {
-          data: { title, sharedWith: seen.sharedWith, attendees: seen.attendees },
-        });
+      expect(seen.can).toEqual(["view"]);
+      const can = async () => ((await (await as.get(path)).json()) as EventRow).can;
+      const retitle = (title: string) => as.put(path, { data: { title } });
       const attend = (attendees: string[]) => as.put(path, { data: { attendees } });
+      const letEdit = () =>
+        as.put(path, { data: { permissions: { [ids.member]: ["share", "edit"] } } });
+      const editable = async () =>
+        (
+          (await (
+            await as.get(
+              `/api/app/calendar/occurrences?from=${start - 1}&to=${start + 1}`,
+            )
+          ).json()) as { eventId: string; editable: boolean }[]
+        ).find((o) => o.eventId === event.id)?.editable;
 
       // Viewing: no changes, no stopping, no single occurrences; hiding is theirs.
-      expect((await save("Car service!")).status()).toBe(403);
+      expect((await retitle("Car service!")).status()).toBe(403);
       expect((await attend([ids.member])).status()).toBe(403);
       expect(
         (await as.post(`${path}/stop`, { data: { from: "2031-11-11" } })).status(),
@@ -82,32 +89,43 @@ test.describe("what guests may do", () => {
       expect((await as.put(`${path}/hidden`, { data: { hidden: false } })).ok()).toBe(
         true,
       );
-      const occurrences = (await (
-        await as.get(`/api/app/calendar/occurrences?from=${start - 1}&to=${start + 1}`)
-      ).json()) as { eventId: string; editable: boolean }[];
-      expect(occurrences.find((o) => o.eventId === event.id)?.editable).toBe(false);
+      expect(await editable()).toBe(false);
 
-      // Sharing: who attends, but no details, no removing, and no more than they have.
+      // Sharing: who attends, but no details, no removing, and not who may edit.
       await give("share");
-      expect(((await (await as.get(path)).json()) as EventRow).can).toEqual({
-        share: true,
-        edit: false,
-      });
+      expect(await can()).toEqual(["view", "share"]);
       expect((await attend([ids.member])).ok()).toBe(true);
-      expect((await save("Car service!")).status()).toBe(403);
+      expect((await retitle("Car service!")).status()).toBe(403);
       expect((await as.delete(path)).status()).toBe(403);
-      expect(
-        (
-          await as.put(path, { data: { permissions: { [ids.member]: "edit" } } })
-        ).status(),
-      ).toBe(403);
+      expect((await letEdit()).status()).toBe(403);
+      expect(await editable()).toBe(false);
 
-      // Editing: all of it, though the dialog's save sends who it is shared with.
+      // Editing: its details, but not who it is shared with or who attends.
       await give("edit");
-      const saved = await save("Car service (MOT)");
-      expect(saved.ok()).toBe(true);
-      expect(((await saved.json()) as EventRow).title).toBe("Car service (MOT)");
-      expect((await attend([ids.owner, ids.member])).ok()).toBe(true);
+      expect(await can()).toEqual(["view", "edit"]);
+      const retitled = await retitle("Car service (MOT)");
+      expect(retitled.ok()).toBe(true);
+      expect(((await retitled.json()) as EventRow).title).toBe("Car service (MOT)");
+      expect((await attend([ids.owner])).status()).toBe(403);
+      expect((await letEdit()).status()).toBe(403);
+      expect(await editable()).toBe(true);
+
+      // Both: all of it, as the dialog saves it, with who it is shared with.
+      await give("share", "edit");
+      expect(await can()).toEqual(["view", "share", "edit"]);
+      const now = (await (await as.get(path)).json()) as EventRow;
+      const saved = await as.put(path, {
+        data: {
+          title: "Car service",
+          sharedWith: now.sharedWith,
+          attendees: now.attendees,
+          permissions: { [ids.member]: ["share"] },
+        },
+      });
+      expect(((await saved.json()) as EventRow).permissions).toEqual({
+        [ids.member]: ["view", "share"],
+      });
+      await give("share", "edit");
       expect((await as.delete(path)).ok()).toBe(true);
     } finally {
       await member.close();
@@ -132,13 +150,12 @@ test.describe("what guests may do", () => {
             endAt: start + 3_600_000,
             timeZone: "UTC",
             sharedWith: [ids.owner],
-            permissions: { [ids.owner]: "view" },
           },
         })
       ).json()) as EventRow;
       const path = `/api/app/calendar/events/${event.id}`;
       const seen = (await (await page.request.get(path)).json()) as EventRow;
-      expect(seen.can).toEqual({ share: false, edit: false });
+      expect(seen.can).toEqual(["view"]);
       expect(
         (await page.request.put(path, { data: { title: "Band practice!" } })).status(),
       ).toBe(403);
@@ -184,12 +201,14 @@ test.describe("what guests may do", () => {
       await page.request.get(`/api/app/calendar/events/${event.id}`)
     ).json()) as EventRow;
     expect(now.sharedWith).toEqual([]);
+    // Leaving is about seeing it: they still attend.
+    expect(now.attendees).toContain(ids.member);
   });
 
-  test("the dialog offers a guest what their level allows", async ({ page, browser }) => {
+  test("the dialog offers a guest what they were given", async ({ page, browser }) => {
     await signIn(page, OWNER);
     const ids = await idsOf(page);
-    const make = (title: string, hour: number, level?: string) =>
+    const make = (title: string, hour: number, ...permissions: string[]) =>
       page.request.post("/api/app/calendar/events", {
         data: {
           title,
@@ -198,22 +217,26 @@ test.describe("what guests may do", () => {
           endAt: todayAt(hour + 1),
           timeZone: "UTC",
           sharedWith: [ids.member],
-          ...(level && { permissions: { [ids.member]: level } }),
+          permissions: { [ids.member]: permissions },
         },
       });
-    await make("Plumber visit", 8);
+    await make("Plumber visit", 8, "share", "edit");
     await make("School run", 12, "share");
-    await make("Surprise party", 20, "view");
+    await make("Dog walk", 16, "edit");
+    await make("Surprise party", 20);
     const member = await memberPage(browser);
     try {
       const dialog = member.page.getByRole("dialog");
       const open = (title: string) =>
         member.page.locator("[data-event-id]", { hasText: title }).first().click();
       await open("Plumber visit");
-      await expect(dialog.getByText("you can edit it")).toBeVisible();
+      await expect(dialog.getByText("you can share and edit it")).toBeVisible();
       await dialog.getByRole("button", { name: "Edit event" }).click();
-      // Editing takes sharing with it.
+      // Both: the event, and who it is shared with.
       await expect(dialog.getByLabel("Shared with")).toHaveCount(1);
+      await expect(
+        dialog.getByRole("checkbox", { name: "Max Member may edit" }),
+      ).toBeEnabled();
       await dialog.getByLabel("Title").fill("Plumber visit, bring the key");
       await dialog.getByRole("button", { name: "Save" }).click();
       await expect(dialog).toBeHidden();
@@ -228,8 +251,27 @@ test.describe("what guests may do", () => {
       await expect(dialog.getByRole("heading", { name: "Share event" })).toBeVisible();
       await expect(dialog.getByLabel("Title")).toHaveCount(0);
       await expect(dialog.getByLabel("Shared with")).toHaveCount(1);
+      // Who may edit shows, and is not theirs to change.
+      await expect(
+        dialog.getByRole("checkbox", { name: "Max Member may share" }),
+      ).toBeChecked();
+      await expect(
+        dialog.getByRole("checkbox", { name: "Max Member may edit" }),
+      ).toBeDisabled();
       await dialog.getByRole("button", { name: "Save" }).click();
       await expect(dialog).toBeHidden();
+
+      await open("Dog walk");
+      // Editing only: the event itself, and nothing of who it is shared with.
+      await expect(dialog.getByText("you can edit it")).toBeVisible();
+      await dialog.getByRole("button", { name: "Edit event" }).click();
+      await expect(dialog.getByLabel("Shared with")).toHaveCount(0);
+      await dialog.getByLabel("Title").fill("Dog walk, long one");
+      await dialog.getByRole("button", { name: "Save" }).click();
+      await expect(dialog).toBeHidden();
+      await expect(
+        member.page.getByText("Dog walk, long one", { exact: true }).first(),
+      ).toBeVisible();
 
       await open("Surprise party");
       // Viewing only: it reads, and offers nothing to change.
@@ -240,15 +282,17 @@ test.describe("what guests may do", () => {
       await member.close();
     }
 
-    // The owner sets the level per person in the dialog.
+    // Whoever made it ticks what each person may do.
     await page.reload();
     await page.locator("[data-event-id]", { hasText: "Plumber visit" }).first().click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("button", { name: "Edit event" }).click();
-    const level = dialog.getByRole("combobox", { name: "What Max Member may do" });
-    await expect(level).toHaveValue("Can edit");
-    await level.click();
-    await page.getByRole("option", { name: "Can share" }).click();
+    const share = dialog.getByRole("checkbox", { name: "Max Member may share" });
+    await expect(share).toBeChecked();
+    await expect(
+      dialog.getByRole("checkbox", { name: "Max Member may edit" }),
+    ).toBeChecked();
+    await share.uncheck();
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(dialog).toBeHidden();
     const events = (await (
@@ -260,7 +304,49 @@ test.describe("what guests may do", () => {
     const full = (await (
       await page.request.get(`/api/app/calendar/events/${plumber.eventId}`)
     ).json()) as EventRow;
-    expect(full.permissions[ids.member]).toBe("share");
+    expect(full.permissions[ids.member]).toEqual(["view", "edit"]);
+  });
+
+  test("attending and being shared an event are separate", async ({ page, browser }) => {
+    await signIn(page, OWNER);
+    const ids = await idsOf(page);
+    const start = Date.UTC(2031, 10, 6, 10);
+    const event = (await (
+      await page.request.post("/api/app/calendar/events", {
+        data: {
+          title: "Swimming gala",
+          allDay: false,
+          startAt: start,
+          endAt: start + 3_600_000,
+          timeZone: "UTC",
+          attendees: [ids.owner, ids.member],
+        },
+      })
+    ).json()) as EventRow;
+    const path = `/api/app/calendar/events/${event.id}`;
+    // Attending does not show it to them.
+    expect(event.attendees.sort()).toEqual([ids.owner, ids.member].sort());
+    expect(event.sharedWith).toEqual([]);
+    const member = await memberPage(browser);
+    try {
+      expect((await member.page.request.get(path)).status()).toBe(404);
+
+      const shared = (await (
+        await page.request.put(path, { data: { sharedWith: [ids.member] } })
+      ).json()) as EventRow;
+      expect(shared.sharedWith).toEqual([ids.member]);
+      expect((await member.page.request.get(path)).ok()).toBeTruthy();
+
+      // No longer shared, they still attend.
+      const unshared = (await (
+        await page.request.put(path, { data: { sharedWith: [] } })
+      ).json()) as EventRow;
+      expect(unshared.sharedWith).toEqual([]);
+      expect(unshared.attendees.sort()).toEqual([ids.owner, ids.member].sort());
+      expect((await member.page.request.get(path)).status()).toBe(404);
+    } finally {
+      await member.close();
+    }
   });
 
   test("whoever makes an event in the dialog attends it", async ({ page }) => {

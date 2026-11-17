@@ -8,6 +8,7 @@ import type { Principal } from "@backend/commons/principal";
 import {
   calendar,
   calendarEvent,
+  calendarEventAttendee,
   calendarEventException,
   calendarEventHidden,
   calendarEventShare,
@@ -119,30 +120,25 @@ function placementOf(
 }
 
 /**
- * What the caller may do with an event: whoever made it edits it; someone it
- * is shared with does what they were given, whatever their role in the
- * household; one seen through a calendar shared read-only is only seen.
+ * What the caller may do with an event: whoever made it does everything;
+ * someone it is shared with does what they were given, whatever their role in
+ * the household; one seen through a calendar shared read-only is only seen.
  */
 function capabilitiesOf(
   principal: Principal,
   row: EventRow,
   placement: Placement,
   mine: ShareRow | undefined,
-): { share: boolean; edit: boolean } {
-  const level: SharePermission =
-    placement.access === "read"
-      ? "view"
-      : row.creatorId === principal.userId
-        ? "edit"
-        : (mine?.permission ?? "view");
-  return { share: level !== "view", edit: level === "edit" };
+): SharePermission[] {
+  if (placement.access === "read") return ["view"];
+  if (row.creatorId === principal.userId) return [...SHARE_PERMISSIONS];
+  return mine?.permissions ?? ["view"];
 }
 
-/** Whether one level allows more than another. */
-function above(level: SharePermission | undefined, other: SharePermission): boolean {
-  return (
-    level !== undefined &&
-    SHARE_PERMISSIONS.indexOf(level) > SHARE_PERMISSIONS.indexOf(other)
+/** A share's permissions as stored: the known ones named, and view always. */
+function permissionsOf(named: readonly SharePermission[] = []): SharePermission[] {
+  return SHARE_PERMISSIONS.filter(
+    (permission) => permission === "view" || named.includes(permission),
   );
 }
 
@@ -202,7 +198,7 @@ export async function listOccurrences(
     const isHidden = hidden.has(row.id);
     // Moved or resized on the calendar by whoever may edit it, when it is Matron's own.
     const editable =
-      capabilitiesOf(principal, row, placement, shareOf.get(row.id)).edit &&
+      capabilitiesOf(principal, row, placement, shareOf.get(row.id)).includes("edit") &&
       (cal?.source ?? "matron") === "matron";
     if (!row.rrule) {
       out.push(
@@ -501,7 +497,9 @@ export async function updateEvent(
     differs(changes.sharedWith, current.sharedWith) ||
     differs(changes.attendees, current.attendees) ||
     Object.entries(changes.permissions ?? {}).some(
-      ([userId, level]) => current.permissions[userId] !== level,
+      ([userId, permissions]) =>
+        (changes.sharedWith ?? current.sharedWith).includes(userId) &&
+        differs(permissionsOf(permissions), current.permissions[userId] ?? []),
     );
   const {
     sharedWith: _shared,
@@ -512,8 +510,7 @@ export async function updateEvent(
   const detailed = Object.values(details).some((value) => value !== undefined);
   if (detailed) requireEditable(current);
   // Who it is shared with after this, who attends, and what each may do: as
-  // set now, else as before, else as much as the caller may.
-  const own: SharePermission = current.can.edit ? "edit" : "share";
+  // set now, else as before, else only view.
   const people = sharing
     ? await resolvePeople(
         current.creatorId,
@@ -521,27 +518,19 @@ export async function updateEvent(
         changes.attendees ?? current.attendees,
       )
     : null;
-  const levels: Record<string, SharePermission> = Object.fromEntries(
+  const granted: Record<string, SharePermission[]> = Object.fromEntries(
     (people?.sharedWith ?? []).map((userId) => [
       userId,
-      changes.permissions?.[userId] ?? current.permissions[userId] ?? own,
+      permissionsOf(changes.permissions?.[userId] ?? current.permissions[userId]),
     ]),
   );
   if (people) {
     eventPermissions.require(principal, "share");
     requireShare(current);
-    // Nobody gives more than they have, or changes what someone with more has.
-    const overreach = [...new Set([...people.sharedWith, ...current.sharedWith])]
-      .filter((userId) => levels[userId] !== current.permissions[userId])
-      .some(
-        (userId) => above(levels[userId], own) || above(current.permissions[userId], own),
-      );
-    if (overreach) {
-      throw new DomainError(
-        "FORBIDDEN",
-        "Only someone who may edit the event lets others edit it, or stops them",
-      );
-    }
+    // Who may edit the event is part of the event: changing it takes editing.
+    const editors = (permissions: Record<string, SharePermission[]>) =>
+      people.sharedWith.filter((userId) => permissions[userId]?.includes("edit"));
+    if (differs(editors(granted), editors(current.permissions))) requireEditable(current);
   }
   if (current.source !== "matron" && detailed) {
     // An imported event is the source's: only who it is shared with is Matron's own.
@@ -597,8 +586,11 @@ export async function updateEvent(
         share.calendarId,
       ]),
     );
-    await db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id));
-    await writeShares(id, people.sharedWith, people.attendees, levels, placed);
+    await db.batch([
+      db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
+      db.delete(calendarEventAttendee).where(eq(calendarEventAttendee.eventId, id)),
+    ]);
+    await writeShares(id, people.sharedWith, people.attendees, granted, placed);
   }
   // Its times, or who sees it, may have changed under someone's alarm.
   await rearmAlarms("event", [id]);
@@ -616,7 +608,8 @@ function differs(sent: readonly string[] | undefined, held: readonly string[]): 
 
 /**
  * The caller stops being given an event someone shared with them: it leaves
- * their calendar, and they no longer attend. Whoever made it can share it again.
+ * their calendar. Whether they attend stays as it is. Whoever made it can share
+ * it again.
  */
 export async function leaveEvent(principal: Principal, id: string): Promise<void> {
   eventPermissions.require(principal, "view");
@@ -803,6 +796,7 @@ export async function removeEvent(principal: Principal, id: string): Promise<voi
   const db = getDb();
   await db.batch([
     db.delete(calendarEventShare).where(eq(calendarEventShare.eventId, id)),
+    db.delete(calendarEventAttendee).where(eq(calendarEventAttendee.eventId, id)),
     db.delete(calendarEventException).where(eq(calendarEventException.eventId, id)),
     db.delete(calendarEventHidden).where(eq(calendarEventHidden.eventId, id)),
     db.delete(calendarEvent).where(eq(calendarEvent.id, id)),
@@ -825,7 +819,7 @@ function requireEditable(item: CalendarEvent): void {
   if (item.access !== "edit") {
     throw new DomainError("FORBIDDEN", "This calendar is shared with you read-only");
   }
-  if (!item.can.edit) {
+  if (!item.can.includes("edit")) {
     throw new DomainError(
       "FORBIDDEN",
       "This event was not shared with you to edit; ask whoever made it to let you",
@@ -835,18 +829,22 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The caller may change who the event is shared with and who attends. */
 function requireShare(item: CalendarEvent): void {
-  if (!item.can.share) {
+  if (!item.can.includes("share")) {
     throw new DomainError(
       "FORBIDDEN",
-      "This event was shared with you to view; ask whoever made it to let you share it",
+      "This event was not shared with you to share; ask whoever made it to let you",
     );
   }
 }
 
 /** The event as the caller sees it; NOT_FOUND when they may not see it. */
 async function withShares(principal: Principal, row: EventRow): Promise<CalendarEvent> {
-  const [shares, calendars, viewer, exceptions, hidden] = await Promise.all([
+  const [shares, attending, calendars, viewer, exceptions, hidden] = await Promise.all([
     sharesOf([row.id]),
+    getDb()
+      .select({ userId: calendarEventAttendee.userId })
+      .from(calendarEventAttendee)
+      .where(eq(calendarEventAttendee.eventId, row.id)),
     calendarsById([row.calendarId]),
     viewerOf(principal),
     row.rrule ? exceptionsOf([row.id]) : new Map<string, ExceptionRow[]>(),
@@ -868,6 +866,7 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
   return toEvent(
     row,
     list,
+    attending.map((attendee) => attendee.userId),
     calendars.get(row.calendarId),
     placement,
     exceptions.get(row.id) ?? [],
@@ -882,8 +881,9 @@ function checkTimes(startAt: number, endAt: number): void {
 }
 
 /**
- * Attendees default to everyone shared with and the creator; anyone named as
- * attending is shared with as well, so they can see what they attend.
+ * Who an event is shared with and who attends it, each its own list: attending
+ * does not show someone the event. Attendees default to everyone shared with
+ * and the creator.
  */
 async function resolvePeople(
   creatorId: string,
@@ -895,34 +895,37 @@ async function resolvePeople(
     attendees === undefined
       ? [creatorId, ...shared]
       : await knownUserIds([...new Set(attendees)]);
-  const everyone = [
-    ...new Set([...shared, ...attending.filter((id) => id !== creatorId)]),
-  ];
-  return { sharedWith: everyone, attendees: attending };
+  return { sharedWith: shared, attendees: attending };
 }
 
 async function writeShares(
   eventId: string,
   sharedWith: string[],
   attendees: string[],
-  levels: Record<string, SharePermission> = {},
+  granted: Record<string, readonly SharePermission[]> = {},
   placed: Map<string, string | null> = new Map(),
 ): Promise<void> {
-  const people = new Set([...sharedWith, ...attendees]);
-  if (people.size === 0) return;
-  await getDb()
-    .insert(calendarEventShare)
-    .values(
-      [...people].map((userId) => ({
+  const db = getDb();
+  if (sharedWith.length > 0) {
+    await db.insert(calendarEventShare).values(
+      sharedWith.map((userId) => ({
         id: newEntityId("CALENDAR_EVENT_SHARE"),
         eventId,
         userId,
-        attendee: attendees.includes(userId),
         calendarId: placed.get(userId) ?? null,
-        // What they may do; edit for anyone not named.
-        permission: levels[userId] ?? ("edit" as const),
+        permissions: permissionsOf(granted[userId]),
       })),
     );
+  }
+  if (attendees.length > 0) {
+    await db.insert(calendarEventAttendee).values(
+      attendees.map((userId) => ({
+        id: newEntityId("CALENDAR_EVENT_ATTENDEE"),
+        eventId,
+        userId,
+      })),
+    );
+  }
 }
 
 async function sharesOf(eventIds: string[]): Promise<Map<string, ShareRow[]>> {
@@ -1012,11 +1015,12 @@ function locationOf(
 function toEvent(
   row: EventRow,
   shares: ShareRow[],
+  attendees: string[],
   cal: CalendarRow | undefined,
   placement: Placement,
   exceptions: ExceptionRow[],
   hidden: boolean,
-  can: { share: boolean; edit: boolean },
+  can: SharePermission[],
 ): CalendarEvent {
   return {
     id: row.id,
@@ -1031,13 +1035,9 @@ function toEvent(
     timeZone: row.timeZone,
     rrule: row.rrule,
     exceptions: exceptions.map(toException),
-    sharedWith: shares.map((s) => s.userId).filter((id) => id !== row.creatorId),
-    attendees: shares.filter((s) => s.attendee).map((s) => s.userId),
-    permissions: Object.fromEntries(
-      shares
-        .filter((s) => s.userId !== row.creatorId)
-        .map((s) => [s.userId, s.permission]),
-    ),
+    sharedWith: shares.map((s) => s.userId),
+    attendees,
+    permissions: Object.fromEntries(shares.map((s) => [s.userId, s.permissions])),
     can,
     calendarId: row.calendarId,
     shownIn: placement.shownIn,

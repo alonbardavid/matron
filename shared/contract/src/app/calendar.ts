@@ -101,14 +101,15 @@ export type Calendar = z.infer<typeof calendarSchema>;
 const calendarName = z.string().trim().min(1, "Give the calendar a name").max(80);
 
 /**
- * What someone an event is shared with may do, each level adding to the one
- * before: see it; share it too (who it is shared with and at what level, who
- * attends); edit it too (times, details, repetition, single occurrences,
- * removing it).
+ * What someone may do with an event: `view` it, as everyone it is shared with
+ * may; `share` it (who it is shared with, who of them may share it, who
+ * attends); `edit` it (times, details, repetition, single occurrences,
+ * removing it, and who may edit it). Share and edit are each given on their own.
  */
 export const SHARE_PERMISSIONS = ["view", "share", "edit"] as const;
 export const sharePermissionSchema = z.enum(SHARE_PERMISSIONS);
 export type SharePermission = z.infer<typeof sharePermissionSchema>;
+const sharePermissionsSchema = z.array(sharePermissionSchema);
 
 /** An event as stored: a single one, or the series a recurrence generates. */
 export const calendarEventSchema = z.object({
@@ -135,12 +136,9 @@ export const calendarEventSchema = z.object({
   /** User ids attending; by default everyone the event is shared with, and the creator. */
   attendees: z.array(z.string()),
   /** What each member it is shared with may do, by user id. */
-  permissions: z.record(z.string(), sharePermissionSchema),
-  /**
-   * What the caller may do with it: `share` it, changing who it is shared
-   * with and who attends; `edit` its details and occurrences, and remove it.
-   */
-  can: z.object({ share: z.boolean(), edit: z.boolean() }),
+  permissions: z.record(z.string(), sharePermissionsSchema),
+  /** What the caller may do with it. */
+  can: sharePermissionsSchema,
   /** The creator's calendar it belongs to. */
   calendarId: z.string(),
   /** The calendar it shows in for the caller: theirs for an event shared with them, or the shared calendar it came through. */
@@ -212,8 +210,8 @@ export const calendarEventCreateSchema = z.object({
   rrule: rruleString.nullable().optional(),
   sharedWith: userIds.optional(),
   attendees: userIds.optional(),
-  /** What members it is shared with may do, by user id; edit for anyone not named. */
-  permissions: z.record(z.string(), sharePermissionSchema).optional(),
+  /** What members it is shared with may do, by user id; only view for anyone not named. */
+  permissions: z.record(z.string(), sharePermissionsSchema).optional(),
 });
 export type CalendarEventCreate = z.infer<typeof calendarEventCreateSchema>;
 
