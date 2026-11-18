@@ -30,7 +30,7 @@ const PLANNER_ACTIVITY: Record<string, string> = {
 const REFRESH_DEBOUNCE_MS = 800;
 
 /** A member's message carries when it was said; the session keeps it. */
-function saidNow(): BuildMessageMetadata {
+function getBuildMetadata(): BuildMessageMetadata {
   return { createdAt: Date.now() };
 }
 
@@ -90,7 +90,7 @@ export function BuildConversation({
   const say = (text: string, files: BuildInput["files"]) => {
     clearError();
     setAwaiting(true);
-    void sendMessage({ text, files, metadata: saidNow() });
+    void sendMessage({ text, files, metadata: getBuildMetadata() });
   };
   // The turn failed before an answer came: say so, and offer the last message again.
   const lastMember = [...messages]
@@ -140,7 +140,7 @@ export function BuildConversation({
     void sendMessage({
       text: pending.text,
       files: pending.files,
-      metadata: saidNow(),
+      metadata: getBuildMetadata(),
     });
     onPendingSent();
   }, [pending, status, sendMessage, onPendingSent]);

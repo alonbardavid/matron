@@ -176,7 +176,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       system: this.getSystemPrompt(),
       activeTools: plannerToolsFor(this.state.phase),
       // The planner's answer is stamped as it starts; a continued answer keeps its first stamp.
-      messageMetadata: ({ part }) => (part.type === "start" ? said() : undefined),
+      messageMetadata: ({ part }) => (part.type === "start" ? getBuildMetadata() : undefined),
     };
   }
 
@@ -265,7 +265,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       {
         id: crypto.randomUUID(),
         role: "user",
-        metadata: said(),
+        metadata: getBuildMetadata(),
         parts: [{ type: "text", text: input.request }],
       },
     ]);
@@ -275,7 +275,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       {
         id: crypto.randomUUID(),
         role: "assistant",
-        metadata: said(),
+        metadata: getBuildMetadata(),
         parts: [{ type: "text", text: input.plan }],
       },
     ]);
@@ -396,7 +396,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       {
         id: crypto.randomUUID(),
         role: "user",
-        metadata: said("builder"),
+        metadata: getBuildMetadata("builder"),
         parts: [{ type: "text", text: `${BUILDER_SAYS}${text}` }],
       },
     ]);
@@ -520,7 +520,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       {
         id: crypto.randomUUID(),
         role: "assistant",
-        metadata: said(),
+        metadata: getBuildMetadata(),
         parts: [{ type: "text", text }],
       },
     ]);
@@ -567,8 +567,8 @@ function readPrincipal(headers: Headers): Principal | null {
   };
 }
 
-/** The metadata of a message said now, by the builder when it is the builder's. */
-function said(author?: "builder"): BuildMessageMetadata {
+/** A chat message's metadata: when it was said, and the builder as its author when it is the builder's. */
+function getBuildMetadata(author?: "builder"): BuildMessageMetadata {
   return author ? { author, createdAt: Date.now() } : { createdAt: Date.now() };
 }
 
