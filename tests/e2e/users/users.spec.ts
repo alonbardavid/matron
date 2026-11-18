@@ -64,7 +64,7 @@ test.describe("users", () => {
       const secrets = await adminPage.request.get("/api/arch/settings/secrets");
       expect(secrets.status()).toBe(403);
       const update = await adminPage.request.put("/api/arch/settings", {
-        data: { askModel: "@cf/moonshotai/kimi-k2.6" },
+        data: { askModel: "claude-haiku-5-5" },
       });
       expect(update.status()).toBe(403);
 

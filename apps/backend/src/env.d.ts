@@ -3,7 +3,6 @@ declare namespace Cloudflare {
     DB: D1Database;
     FILES: R2Bucket;
     ASSETS: Fetcher;
-    AI: Ai;
     IMAGES?: ImagesBinding;
     SEND_EMAIL?: SendEmail;
     ARTIFACTS?: Artifacts;
