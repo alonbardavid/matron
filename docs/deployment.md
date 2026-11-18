@@ -28,8 +28,8 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    request; it must hold the provider credentials. In the dashboard (AI → AI Gateway → `default`)
    enable Unified Billing, or store an Anthropic key under Provider Keys (BYOK). There is no
    Anthropic key on the Worker.
-5. Commit your work on `main`: the repository is pushed to Artifacts with full history and the
-   deploy refuses a dirty tree or another branch. What runs is always `main`, as pushed there.
+5. Commit your work, on any branch: the deploy refuses a dirty tree, and the commit it deploys
+   becomes `main` in the Artifacts repository, with its history.
 
 ## What `pnpm run deploy` does
 
@@ -37,7 +37,11 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    and the production origin (`--origin`, or `https://<name>.<subdomain>.workers.dev`).
 2. Creates the D1 database if missing and resolves its id.
 3. Creates the R2 bucket (same name as the database) if missing.
-4. Creates the Artifacts namespace `matron` if missing (REST API).
+4. Creates the Artifacts namespace `matron` if missing (REST API), and the repository
+   `matron/matron` in it, and mints a one-hour write token (it travels in git's config env).
+   Checks with `git push --dry-run` that the commit can become `main` there: if `main` there
+   holds commits this one lacks (a merge made in the app, another deploy), the deploy stops
+   before anything changes. Merge that `main` in and deploy again.
 5. Builds `apps/builder` with `wrangler containers build ... --push`, tagged with the git sha, and
    keeps the pushed digest: the config references
    `registry.cloudflare.com/<account>/matron@sha256:<digest>`.
@@ -47,8 +51,8 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    and the push key pair `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` once (a new pair would
    unsubscribe every device).
 9. `wrangler deploy` with a temporary `--secrets-file` (deleted afterwards); the secrets it set go to the Worker's Preview base config too, which gives them to every Preview. The push key pair does not: a Preview sends no reminders.
-10. Creates the Artifacts repository `matron/matron` if missing, mints a one-hour write token and
-    runs `git push --all` and `git push --tags` to it (the token travels in git's config env).
+10. Pushes the deployed commit to `main` in the repository (`HEAD:main`) and the tags; on the
+    first deploy also starts `upstream/main` there at the same commit.
 11. If the `user` table is empty, asks for the owner's email, name and password (password without
     echo) and inserts the owner with a hash made by better-auth's own `hashPassword`.
 12. Prints the URL.

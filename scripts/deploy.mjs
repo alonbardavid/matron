@@ -274,13 +274,15 @@ let accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || undefined;
 const gitHead = run("git", ["rev-parse", "--verify", "--short", "HEAD"], {
   allowFailure: true,
 });
-// The Artifacts repository is the code's source of truth: what runs is always main, pushed there.
+// The Artifacts repository is the code's source of truth: whatever is deployed,
+// from any branch, becomes main there.
 if (gitHead.status !== 0)
-  fail("the repository has no commits yet; commit on main before deploying");
+  fail("the repository has no commits yet; commit before deploying");
 {
   const branch = run("git", ["branch", "--show-current"]).stdout;
-  if (branch !== "main")
-    fail(`deploy from the main branch (currently on "${branch || "detached HEAD"}")`);
+  console.log(
+    `Deploying ${gitHead.stdout} (${branch || "detached HEAD"}); it becomes main in the repository.`,
+  );
   const dirty = run("git", ["status", "--porcelain"]).stdout;
   if (dirty) {
     fail(
@@ -399,7 +401,77 @@ step(`Artifacts namespace "${workerName}"`);
   }
 }
 
-// ---------------------------------------------------------------- 5. builder image
+// ---------------------------------------------------------------- 5. Artifacts repository
+
+step(`Artifacts repository "${workerName}/${workerName}"`);
+const repoRemote = (() => {
+  const nsArgs = ["--namespace", workerName, "--json"];
+  const got = wrangler(["artifacts", "repos", "get", workerName, ...nsArgs], {
+    capture: true,
+    allowFailure: true,
+  });
+  let repo;
+  if (got.status === 0) {
+    repo = parseJsonOutput(got.stdout);
+    console.log(`  exists (${repo.remote})`);
+  } else {
+    const created = wrangler(
+      ["artifacts", "repos", "create", workerName, ...nsArgs, "--default-branch", "main"],
+      { capture: true },
+    );
+    repo = parseJsonOutput(created.stdout);
+    console.log(`  created (${repo.remote})`);
+  }
+  if (!repo.remote) fail("the repository has no remote URL in wrangler's output");
+  return repo.remote;
+})();
+const repoGitEnv = (() => {
+  const issued = parseJsonOutput(
+    wrangler(
+      [
+        "artifacts",
+        "repos",
+        "issue-token",
+        workerName,
+        "--namespace",
+        workerName,
+        "--json",
+        "--scope",
+        "write",
+        "--ttl",
+        "3600",
+      ],
+      { capture: true },
+    ).stdout,
+  );
+  if (!issued.plaintext) fail("issue-token returned no plaintext token");
+  // The token travels in git's config env, never in argv.
+  return {
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.extraHeader",
+    GIT_CONFIG_VALUE_0: `Authorization: Bearer ${issued.plaintext}`,
+    GIT_TERMINAL_PROMPT: "0",
+  };
+})();
+{
+  // What is deployed becomes main there, so main there must not hold commits this one
+  // lacks (a merge made in the app, another deploy). Checked before anything changes.
+  const check = run(
+    "git",
+    ["push", "--dry-run", "--porcelain", repoRemote, "HEAD:refs/heads/main"],
+    { env: repoGitEnv, allowFailure: true },
+  );
+  if (check.status !== 0) {
+    fail(
+      "main in the repository has commits this one lacks; nothing was changed.\n" +
+        `Merge the repository's main into this branch first (${repoRemote}), then deploy again.\n` +
+        check.stdout,
+    );
+  }
+  console.log("  main there is behind this commit or at it");
+}
+
+// ---------------------------------------------------------------- 6. builder image
 
 step("Builder container image");
 let builderImage = process.env.BUILDER_IMAGE?.trim() || undefined;
@@ -452,7 +524,7 @@ if (flags["no-container"]) {
   console.log(`  pushed ${builderImage}`);
 }
 
-// ---------------------------------------------------------------- 6. config
+// ---------------------------------------------------------------- 7. config
 
 step("Generating the production wrangler config");
 run("node", [join(root, "scripts/gen-wrangler-config.mjs")], {
@@ -469,12 +541,12 @@ run("node", [join(root, "scripts/gen-wrangler-config.mjs")], {
   },
 });
 
-// ---------------------------------------------------------------- 7. migrations
+// ---------------------------------------------------------------- 8. migrations
 
 step("Applying D1 migrations");
 wrangler(["d1", "migrations", "apply", "DB", "--remote", "--config", generatedConfig]);
 
-// ---------------------------------------------------------------- 8. secrets
+// ---------------------------------------------------------------- 9. secrets
 
 step("Worker secrets");
 const secretsFileDir = mkdtempSync(join(tmpdir(), "matron-deploy-"));
@@ -539,7 +611,7 @@ let settingNow;
   }
 }
 
-// ---------------------------------------------------------------- 9. deploy
+// ---------------------------------------------------------------- 10. deploy
 
 step("Deploying the Worker");
 try {
@@ -586,79 +658,35 @@ try {
   rmSync(secretsFileDir, { recursive: true, force: true });
 }
 
-// ---------------------------------------------------------------- 10. repository
+// ---------------------------------------------------------------- 11. repository push
 
-step(`Artifacts repository "${workerName}/${workerName}"`);
+step(`Pushing ${gitHead.stdout} to main in the repository`);
 {
-  const nsArgs = ["--namespace", workerName, "--json"];
-  let repo;
-  const got = wrangler(["artifacts", "repos", "get", workerName, ...nsArgs], {
-    capture: true,
-    allowFailure: true,
+  console.log(`  $ git push ${repoRemote} HEAD:refs/heads/main`);
+  run("git", ["push", repoRemote, "HEAD:refs/heads/main"], {
+    capture: false,
+    env: repoGitEnv,
   });
-  if (got.status === 0) {
-    repo = parseJsonOutput(got.stdout);
-    console.log(`  exists (${repo.remote})`);
-  } else {
-    const created = wrangler(
-      ["artifacts", "repos", "create", workerName, ...nsArgs, "--default-branch", "main"],
-      { capture: true },
-    );
-    repo = parseJsonOutput(created.stdout);
-    console.log(`  created (${repo.remote})`);
-  }
-  if (!repo.remote) fail("the repository has no remote URL in wrangler's output");
-  const issued = parseJsonOutput(
-    wrangler(
-      [
-        "artifacts",
-        "repos",
-        "issue-token",
-        workerName,
-        ...nsArgs,
-        "--scope",
-        "write",
-        "--ttl",
-        "3600",
-      ],
-      {
-        capture: true,
-      },
-    ).stdout,
-  );
-  if (!issued.plaintext) fail("issue-token returned no plaintext token");
-  // The token travels in git's config env, never in argv.
-  const gitEnv = {
-    GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "http.extraHeader",
-    GIT_CONFIG_VALUE_0: `Authorization: Bearer ${issued.plaintext}`,
-    GIT_TERMINAL_PROMPT: "0",
-  };
-  console.log(`  $ git push --all ${repo.remote}`);
-  run("git", ["push", "--all", repo.remote], { capture: false, env: gitEnv });
-  console.log(`  $ git push --tags ${repo.remote}`);
-  run("git", ["push", "--tags", repo.remote], { capture: false, env: gitEnv });
+  console.log(`  $ git push --tags ${repoRemote}`);
+  run("git", ["push", "--tags", repoRemote], { capture: false, env: repoGitEnv });
   // The upstream/main branch starts where main does; checking for updates moves it from then on.
   const upstream = run(
     "git",
-    ["ls-remote", "--heads", repo.remote, "refs/heads/upstream/main"],
-    {
-      capture: true,
-      env: gitEnv,
-    },
+    ["ls-remote", "--heads", repoRemote, "refs/heads/upstream/main"],
+    { capture: true, env: repoGitEnv },
   );
   if (upstream.stdout.trim()) {
     console.log("  upstream/main branch exists");
   } else {
-    console.log(`  $ git push ${repo.remote} main:refs/heads/upstream/main`);
-    run("git", ["push", repo.remote, "main:refs/heads/upstream/main"], {
+    console.log(`  $ git push ${repoRemote} HEAD:refs/heads/upstream/main`);
+    run("git", ["push", repoRemote, "HEAD:refs/heads/upstream/main"], {
       capture: false,
-      env: gitEnv,
+      env: repoGitEnv,
     });
   }
 }
 
-// ---------------------------------------------------------------- 11. owner
+// ---------------------------------------------------------------- 12. owner
 
 step("Owner account");
 {
@@ -732,7 +760,7 @@ step("Owner account");
   }
 }
 
-// ---------------------------------------------------------------- 12. done
+// ---------------------------------------------------------------- 13. done
 
 console.log(`
 Deployed ${workerName}: ${origin}
