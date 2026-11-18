@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import type { ListItem } from "@shared/contract/app/lists";
 import { PeopleAvatars } from "@frontend/auth/widgets/PeopleAvatars";
-import { IconChevronRight, IconDots, IconGrip } from "@frontend/ds/icons";
+import { IconDots, IconGrip } from "@frontend/ds/icons";
 import { describeDay, isPast } from "../dates";
 import {
   depthBounds,
@@ -50,8 +50,6 @@ interface ItemTreeProps {
   editable: boolean;
   /** Whether rows can be dragged; the completed ones cannot. */
   draggable: boolean;
-  folded: ReadonlySet<string>;
-  onFold: (id: string) => void;
   onToggle: (item: ListItem, completed: boolean) => void;
   onOpen: (item: ListItem) => void;
   onAddUnder: (item: ListItem) => void;
@@ -184,22 +182,6 @@ export function ItemTree(props: ItemTreeProps) {
               </button>
             ) : (
               <Box w={editable ? 24 : 4} />
-            )}
-            {row.hasChildren ? (
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="sm"
-                aria-expanded={!props.folded.has(item.id)}
-                aria-label={`Items under ${item.title}`}
-                onClick={() => props.onFold(item.id)}
-                className={classes.fold}
-                data-open={!props.folded.has(item.id) || undefined}
-              >
-                <IconChevronRight size={14} />
-              </ActionIcon>
-            ) : (
-              <Box w={22} style={{ flex: "none" }} />
             )}
             <Checkbox
               checked={done}

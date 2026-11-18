@@ -51,15 +51,6 @@
   cursor: grabbing;
 }
 
-.fold {
-  flex: none;
-  transition: transform 120ms ease;
-}
-
-.fold[data-open] {
-  transform: rotate(90deg);
-}
-
 .indicator {
   position: absolute;
   right: var(--mantine-spacing-sm);

@@ -1,10 +1,9 @@
 import type { ListItem } from "@shared/contract/app/lists";
 
-/** One row of a list's page: an item, how deep it is, and whether items are under it. */
+/** One row of a list's page: an item and how deep it is. */
 export interface Row {
   item: ListItem;
   depth: number;
-  hasChildren: boolean;
 }
 
 /** Where a moved item goes: under `parentId` (null: the top) at `index` among the items there. */
@@ -28,19 +27,17 @@ export function childrenOf(items: ListItem[]): Map<string | null, ListItem[]> {
 }
 
 /**
- * The rows under each of `tops`, depth first, without what is under a folded
- * item. Done items under an open one stay in place, crossed out.
+ * The rows under each of `tops`, depth first. Done items under an open one
+ * stay in place, crossed out.
  */
 export function rowsOf(
   tops: ListItem[],
   children: Map<string | null, ListItem[]>,
-  folded: ReadonlySet<string>,
 ): Row[] {
   const rows: Row[] = [];
   const walk = (item: ListItem, depth: number) => {
-    const under = children.get(item.id) ?? [];
-    rows.push({ item, depth, hasChildren: under.length > 0 });
-    if (!folded.has(item.id)) for (const child of under) walk(child, depth + 1);
+    rows.push({ item, depth });
+    for (const child of children.get(item.id) ?? []) walk(child, depth + 1);
   };
   for (const top of tops) walk(top, 0);
   return rows;

@@ -155,12 +155,6 @@ test.describe("lists", () => {
     await expect
       .poll(() => outlineOf(page, list.id))
       .toBe("Cake [Venue], Flavour, Invitations");
-
-    // Items under one fold away with it.
-    await page.getByRole("button", { name: "Items under Cake" }).click();
-    await expect(page.getByRole("checkbox", { name: "Venue" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Items under Cake" }).click();
-    await expect(page.getByRole("checkbox", { name: "Venue" })).toBeVisible();
   });
 
   test("an item moves to another list with the items under it", async ({ page }) => {

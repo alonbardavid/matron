@@ -27,7 +27,13 @@ import { useMe } from "@frontend/auth/useMe";
 import { PeopleAvatars } from "@frontend/auth/widgets/PeopleAvatars";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { Form } from "@frontend/ds/forms/Form";
-import { IconArrowLeft, IconChevronRight, IconDots, IconPin, IconPlus } from "@frontend/ds/icons";
+import {
+  IconArrowLeft,
+  IconChevronRight,
+  IconDots,
+  IconPin,
+  IconPlus,
+} from "@frontend/ds/icons";
 import { usePinnedLists } from "../pins";
 import { applyMove, childrenOf, rowsOf, type Placement } from "../tree";
 import { useItemActions, useList, useListActions, useLists } from "../useLists";
@@ -36,13 +42,19 @@ import { ItemTree } from "../widgets/ItemTree";
 import { ListModal } from "../widgets/ListModal";
 
 /** Whose list it is and who else sees it, in a line. */
-function sharingLine(list: List, meId: string | undefined, nameOf: (id: string) => string) {
+function sharingLine(
+  list: List,
+  meId: string | undefined,
+  nameOf: (id: string) => string,
+) {
   const names = (ids: string[]) =>
     ids.length <= 2
       ? ids.map(nameOf).join(" and ")
       : `${ids.slice(0, -1).map(nameOf).join(", ")} and ${nameOf(ids[ids.length - 1]!)}`;
   if (list.creatorId !== meId) return `Shared with you by ${nameOf(list.creatorId)}`;
-  return list.sharedWith.length > 0 ? `Shared with ${names(list.sharedWith)}` : "Only you";
+  return list.sharedWith.length > 0
+    ? `Shared with ${names(list.sharedWith)}`
+    : "Only you";
 }
 
 /** One list: its items as a tree to tick off, reorder and nest, and what was done, folded away. */
@@ -57,12 +69,12 @@ export function ListScreen() {
   const itemActions = useItemActions();
   const listActions = useListActions();
   const { isPinned, toggle } = usePinnedLists();
-  const [folded, setFolded] = useState<Set<string>>(new Set());
   const [showDone, setShowDone] = useState(false);
   const [settings, setSettings] = useState(false);
-  const [editing, setEditing] = useState<{ item: ListItem | null; under: ListItem | null } | null>(
-    null,
-  );
+  const [editing, setEditing] = useState<{
+    item: ListItem | null;
+    under: ListItem | null;
+  } | null>(null);
   const [draft, setDraft] = useState("");
   const [removing, setRemoving] = useState(false);
 
@@ -70,12 +82,20 @@ export function ListScreen() {
   const children = useMemo(() => childrenOf(items), [items]);
   const tops = children.get(null) ?? [];
   const openRows = useMemo(
-    () => rowsOf(tops.filter((item) => item.completedAt === null), children, folded),
-    [tops, children, folded],
+    () =>
+      rowsOf(
+        tops.filter((item) => item.completedAt === null),
+        children,
+      ),
+    [tops, children],
   );
   const doneRows = useMemo(
-    () => rowsOf(tops.filter((item) => item.completedAt !== null), children, folded),
-    [tops, children, folded],
+    () =>
+      rowsOf(
+        tops.filter((item) => item.completedAt !== null),
+        children,
+      ),
+    [tops, children],
   );
 
   if (list.isLoading) {
@@ -153,15 +173,6 @@ export function ListScreen() {
       childMap={children}
       editable={editable}
       draggable={draggable}
-      folded={folded}
-      onFold={(itemId) =>
-        setFolded((prev) => {
-          const next = new Set(prev);
-          if (next.has(itemId)) next.delete(itemId);
-          else next.add(itemId);
-          return next;
-        })
-      }
       onToggle={toggleDone}
       onOpen={(item) => setEditing({ item, under: null })}
       onAddUnder={(under) => setEditing({ item: null, under })}
@@ -173,7 +184,13 @@ export function ListScreen() {
   return (
     <Container size="md" py="lg">
       <Stack gap="md">
-        <Anchor component={Link} to={withBranch("/lists")} size="sm" fw={500} w="fit-content">
+        <Anchor
+          component={Link}
+          to={withBranch("/lists")}
+          size="sm"
+          fw={500}
+          w="fit-content"
+        >
           <Group gap={4}>
             <IconArrowLeft size={16} />
             All lists
