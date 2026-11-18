@@ -40,7 +40,6 @@ export const sessionsContract = {
   list: oc
     .route({ method: "GET", path: "/api/arch/sessions" })
     .output(z.array(buildSessionSchema)),
-  // Fails with CONFLICT for a request on a branch: a new session is started from main.
   create: oc
     .route({ method: "POST", path: "/api/arch/sessions" })
     .output(buildSessionSchema),

@@ -40,12 +40,10 @@ export async function checkUpstream(
 /**
  * Starts a build session that merges the `upstream/main` branch, as the last
  * check left it, into a new branch; one such session is open at a time. From
- * there it is a build session like any other, started from main like any other:
- * `branch` is where it was asked for.
+ * there it is a build session like any other.
  */
 export async function mergeUpstream(
   principal: Principal,
-  branch: string,
 ): Promise<{ sessionId: string; branchId: string }> {
   upstreamPermissions.require(principal, "merge");
   const open = await liveBranchOfType("upstream-pull");
@@ -62,7 +60,7 @@ export async function mergeUpstream(
       "Nothing was pulled from upstream yet; check for updates first",
     );
   }
-  const session = await createSession(principal, branch);
+  const session = await createSession(principal);
   try {
     const buildSession = await getSession(principal, session.id);
     await buildSession.proposePlan(principal, {

@@ -4,7 +4,7 @@ import { branchForSession, type BranchRow } from "@backend/arch-branches/service
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
+import type { Principal } from "@backend/commons/principal";
 import { getDb } from "@backend/db-models/db";
 import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-sessions";
 import { canArchiveSession, canClearSession } from "./archive";
@@ -110,18 +110,8 @@ export async function markSessionArchived(sessionId: string): Promise<void> {
     .where(eq(buildSessions.id, sessionId));
 }
 
-/**
- * A new session, asked for from `branch`. It plans a change to main, so it is
- * started from main: a tab on a branch has that branch's session and no other.
- */
-export async function createSession(
-  principal: Principal,
-  branch: string,
-): Promise<BuildSession> {
+export async function createSession(principal: Principal): Promise<BuildSession> {
   authorize(principal);
-  if (branch !== MAIN_BRANCH) {
-    throw new DomainError("CONFLICT", "Switch to main to start a new build");
-  }
   const [row] = await getDb()
     .insert(buildSessions)
     .values({

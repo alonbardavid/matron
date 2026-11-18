@@ -101,8 +101,8 @@ export function useStartBuild() {
 
 /**
  * An empty chat; nothing is stored until the first message. A new build is
- * started from main: `onBranch` says this tab is on a branch, where the
- * server refuses one.
+ * started from main: `onBranch` says this tab is on a branch, which has its
+ * branch's session and offers no other.
  */
 export function useNewSession() {
   const buildChat = useBuildChat();

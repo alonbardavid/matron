@@ -43,7 +43,6 @@ test.describe("starting a build", () => {
       title: "Recipes for the week",
       status: "ready",
     };
-    const sessionsOnBranch = `/api/arch/sessions?branch=${branch.id}`;
     await signIn(page, OWNER);
     const id = await createSession(page);
     deployBranch(id, branch);
@@ -51,9 +50,7 @@ test.describe("starting a build", () => {
     const newBuild = page.getByRole("button", { name: "New build" });
     const build = page.getByRole("button", { name: "Build", exact: true });
     try {
-      // On the branch the server starts no session, and the page offers none.
-      const refused = await page.request.post(sessionsOnBranch, { data: {} });
-      expect(refused.status()).toBe(409);
+      // On the branch the page offers no new build.
       await page.goto(`/builds?branch=${branch.id}`);
       await expect(newBuild).toBeDisabled();
       // Build is the branch's own chat.
@@ -72,8 +69,6 @@ test.describe("starting a build", () => {
       await build.click();
       await expect(panel.getByText(branch.title)).toBeVisible();
       await expect(panel.getByText(ARCHIVED_NOTICE)).toBeVisible();
-      const stillRefused = await page.request.post(sessionsOnBranch, { data: {} });
-      expect(stillRefused.status()).toBe(409);
     } finally {
       // Nothing of the branch is left for the tests that list branches.
       runTestSql([
