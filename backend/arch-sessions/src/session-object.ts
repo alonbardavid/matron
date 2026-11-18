@@ -176,7 +176,8 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       system: this.getSystemPrompt(),
       activeTools: plannerToolsFor(this.state.phase),
       // The planner's answer is stamped as it starts; a continued answer keeps its first stamp.
-      messageMetadata: ({ part }) => (part.type === "start" ? getBuildMetadata() : undefined),
+      messageMetadata: ({ part }) =>
+        part.type === "start" ? getBuildMetadata() : undefined,
     };
   }
 
