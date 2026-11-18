@@ -138,7 +138,7 @@ export const calendarEventSchema = z.object({
   /** What each member it is shared with may do, by user id. */
   permissions: z.record(z.string(), sharePermissionsSchema),
   /** What the caller may do with it. */
-  can: sharePermissionsSchema,
+  myPermissions: sharePermissionsSchema,
   /** The creator's calendar it belongs to. */
   calendarId: z.string(),
   /** The calendar it shows in for the caller: theirs for an event shared with them, or the shared calendar it came through. */

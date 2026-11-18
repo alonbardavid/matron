@@ -101,7 +101,7 @@ export function EventView({
       ? "Repeats in Google Calendar"
       : null;
   const given = (["share", "edit"] as const).filter((permission) =>
-    event.can.includes(permission),
+    event.myPermissions.includes(permission),
   );
   const alsoSharedWith = event.sharedWith.filter((id) => !event.attendees.includes(id));
   const origin =

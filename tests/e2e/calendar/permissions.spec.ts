@@ -8,7 +8,7 @@ interface EventRow {
   sharedWith: string[];
   attendees: string[];
   permissions: Record<string, string[]>;
-  can: string[];
+  myPermissions: string[];
 }
 
 /** An hour of today, local to the browser, for an event the week view shows. */
@@ -55,7 +55,7 @@ test.describe("what guests may do", () => {
     ).json()) as EventRow;
     // Shared with nothing said: they view it.
     expect(event.permissions).toEqual({ [ids.member]: ["view"] });
-    expect(event.can).toEqual(["view", "share", "edit"]);
+    expect(event.myPermissions).toEqual(["view", "share", "edit"]);
     const path = `/api/app/calendar/events/${event.id}`;
     const give = (...permissions: string[]) =>
       page.request.put(path, { data: { permissions: { [ids.member]: permissions } } });
@@ -64,8 +64,9 @@ test.describe("what guests may do", () => {
     const as = member.page.request;
     try {
       const seen = (await (await as.get(path)).json()) as EventRow;
-      expect(seen.can).toEqual(["view"]);
-      const can = async () => ((await (await as.get(path)).json()) as EventRow).can;
+      expect(seen.myPermissions).toEqual(["view"]);
+      const mine = async () =>
+        ((await (await as.get(path)).json()) as EventRow).myPermissions;
       const retitle = (title: string) => as.put(path, { data: { title } });
       const attend = (attendees: string[]) => as.put(path, { data: { attendees } });
       const letEdit = () =>
@@ -93,7 +94,7 @@ test.describe("what guests may do", () => {
 
       // Sharing: who attends, but no details, no removing, and not who may edit.
       await give("share");
-      expect(await can()).toEqual(["view", "share"]);
+      expect(await mine()).toEqual(["view", "share"]);
       expect((await attend([ids.member])).ok()).toBe(true);
       expect((await retitle("Car service!")).status()).toBe(403);
       expect((await as.delete(path)).status()).toBe(403);
@@ -102,7 +103,7 @@ test.describe("what guests may do", () => {
 
       // Editing: its details, but not who it is shared with or who attends.
       await give("edit");
-      expect(await can()).toEqual(["view", "edit"]);
+      expect(await mine()).toEqual(["view", "edit"]);
       const retitled = await retitle("Car service (MOT)");
       expect(retitled.ok()).toBe(true);
       expect(((await retitled.json()) as EventRow).title).toBe("Car service (MOT)");
@@ -112,7 +113,7 @@ test.describe("what guests may do", () => {
 
       // Both: all of it, as the dialog saves it, with who it is shared with.
       await give("share", "edit");
-      expect(await can()).toEqual(["view", "share", "edit"]);
+      expect(await mine()).toEqual(["view", "share", "edit"]);
       const now = (await (await as.get(path)).json()) as EventRow;
       const saved = await as.put(path, {
         data: {
@@ -155,7 +156,7 @@ test.describe("what guests may do", () => {
       ).json()) as EventRow;
       const path = `/api/app/calendar/events/${event.id}`;
       const seen = (await (await page.request.get(path)).json()) as EventRow;
-      expect(seen.can).toEqual(["view"]);
+      expect(seen.myPermissions).toEqual(["view"]);
       expect(
         (await page.request.put(path, { data: { title: "Band practice!" } })).status(),
       ).toBe(403);

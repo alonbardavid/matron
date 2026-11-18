@@ -124,7 +124,7 @@ function placementOf(
  * someone it is shared with does what they were given, whatever their role in
  * the household; one seen through a calendar shared read-only is only seen.
  */
-function capabilitiesOf(
+function myPermissionsOf(
   principal: Principal,
   row: EventRow,
   placement: Placement,
@@ -198,7 +198,7 @@ export async function listOccurrences(
     const isHidden = hidden.has(row.id);
     // Moved or resized on the calendar by whoever may edit it, when it is Matron's own.
     const editable =
-      capabilitiesOf(principal, row, placement, shareOf.get(row.id)).includes("edit") &&
+      myPermissionsOf(principal, row, placement, shareOf.get(row.id)).includes("edit") &&
       (cal?.source ?? "matron") === "matron";
     if (!row.rrule) {
       out.push(
@@ -819,7 +819,7 @@ function requireEditable(item: CalendarEvent): void {
   if (item.access !== "edit") {
     throw new DomainError("FORBIDDEN", "This calendar is shared with you read-only");
   }
-  if (!item.can.includes("edit")) {
+  if (!item.myPermissions.includes("edit")) {
     throw new DomainError(
       "FORBIDDEN",
       "This event was not shared with you to edit; ask whoever made it to let you",
@@ -829,7 +829,7 @@ function requireEditable(item: CalendarEvent): void {
 
 /** The caller may change who the event is shared with and who attends. */
 function requireShare(item: CalendarEvent): void {
-  if (!item.can.includes("share")) {
+  if (!item.myPermissions.includes("share")) {
     throw new DomainError(
       "FORBIDDEN",
       "This event was not shared with you to share; ask whoever made it to let you",
@@ -871,7 +871,7 @@ async function withShares(principal: Principal, row: EventRow): Promise<Calendar
     placement,
     exceptions.get(row.id) ?? [],
     hidden !== undefined,
-    capabilitiesOf(principal, row, placement, mine),
+    myPermissionsOf(principal, row, placement, mine),
   );
 }
 
@@ -1020,7 +1020,7 @@ function toEvent(
   placement: Placement,
   exceptions: ExceptionRow[],
   hidden: boolean,
-  can: SharePermission[],
+  myPermissions: SharePermission[],
 ): CalendarEvent {
   return {
     id: row.id,
@@ -1038,7 +1038,7 @@ function toEvent(
     sharedWith: shares.map((s) => s.userId),
     attendees,
     permissions: Object.fromEntries(shares.map((s) => [s.userId, s.permissions])),
-    can,
+    myPermissions,
     calendarId: row.calendarId,
     shownIn: placement.shownIn,
     access: placement.access,

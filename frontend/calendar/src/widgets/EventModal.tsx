@@ -194,8 +194,8 @@ export function EventModal({
   const creatorId = event?.creatorId ?? me?.id ?? "";
   // What the caller may do, as the server says: share it (who it is shared
   // with, who attends), edit its details or remove it, each on its own.
-  const canShare = !event || event.can.includes("share");
-  const canEdit = !event || event.can.includes("edit");
+  const canShare = !event || event.myPermissions.includes("share");
+  const canEdit = !event || event.myPermissions.includes("edit");
   // An event imported from Google changes there; here only who it is shared with.
   const imported = event?.source === "google";
   // Seen only through a calendar shared with the caller: nothing here changes it.
