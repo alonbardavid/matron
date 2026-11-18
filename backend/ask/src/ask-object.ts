@@ -4,10 +4,10 @@ import type { LanguageModel } from "ai";
 import { getAskModel } from "@backend/arch-settings/service";
 import { logger } from "@backend/commons/logger";
 import { ROLES, type Principal, type Role } from "@backend/commons/principal";
-import { DEFAULT_ASK_MODEL } from "@shared/contract/arch/settings";
+import { DEFAULT_ASK_MODEL, type AnthropicModel } from "@shared/contract/arch/settings";
 import { fileNames } from "./attachments";
 import { touchConversation } from "./conversations";
-import { gatewayModel, gatewayOptions, type AskModelMetadata } from "./models/gateway";
+import { gatewayModel, type AskModelMetadata } from "./models/gateway";
 import { askSystemPrompt } from "./prompt";
 import { householdTools } from "./tools";
 
@@ -74,18 +74,12 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
 
   /** The default until the first turn, which reads the household's choice. */
   override getModel(): string {
-    return DEFAULT_ASK_MODEL;
-  }
-
-  /** A slug the agent resolves itself goes through the household's gateway, with the same log metadata. */
-  override getGateway() {
-    return gatewayOptions(this.modelMetadata());
+    return slugOf(DEFAULT_ASK_MODEL);
   }
 
   /**
-   * An Anthropic slug goes to the gateway's Anthropic endpoint, authenticated
-   * with the account token, where the household's stored provider key applies.
-   * Any other slug is resolved the agent's own way, through the AI binding.
+   * The model goes to the gateway's Anthropic endpoint, authenticated with the
+   * account token, where the household's stored provider key applies.
    */
   override resolveModel(model: string | LanguageModel = this.getModel()): LanguageModel {
     if (typeof model !== "string") return super.resolveModel(model);
@@ -95,10 +89,7 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
         "The assistant has no account token for the gateway: set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
       );
     }
-    return (
-      gatewayModel(model, { accountId, token }, this.modelMetadata()) ??
-      super.resolveModel(model)
-    );
+    return gatewayModel(model, { accountId, token }, this.modelMetadata());
   }
 
   private modelMetadata(): AskModelMetadata {
@@ -140,11 +131,16 @@ export class AskSessionObject extends Think<Cloudflare.Env, AskState> {
     ).catch((err: unknown) => log.warn("touch failed", { err }));
     const model = await getAskModel().catch(() => DEFAULT_ASK_MODEL);
     return {
-      model,
+      model: slugOf(model),
       system: this.getSystemPrompt(),
       activeTools: Object.keys(this.getTools()),
     };
   }
+}
+
+/** A model as the agent names it: its slug on the gateway. */
+function slugOf(model: AnthropicModel): string {
+  return `anthropic/${model}`;
 }
 
 function readPrincipal(headers: Headers): Principal | null {

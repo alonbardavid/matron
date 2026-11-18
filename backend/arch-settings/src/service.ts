@@ -6,13 +6,11 @@ import { settings } from "@backend/db-models/arch-settings";
 import { getDb } from "@backend/db-models/db";
 import {
   ANTHROPIC_MODELS,
-  askModelSchema,
   DEFAULT_ASK_MODEL,
   DEFAULT_BUILDER_MODEL,
   HOUSEHOLD_SECRETS,
   type AnthropicModel,
   type AppSettings,
-  type AskModel,
   type HouseholdSecret,
   type HouseholdSecrets,
   type HouseholdSecretsUpdate,
@@ -52,19 +50,22 @@ export async function getSettings(): Promise<AppSettings> {
   return { builderModel, askModel };
 }
 
-/** The model the planner and the builder use. */
-export async function getBuilderModel(): Promise<AnthropicModel> {
-  const value = await readValue(BUILDER_MODEL_KEY);
+/** A stored model, or the default when it is unset or no longer offered. */
+async function readModel(key: string, fallback: AnthropicModel): Promise<AnthropicModel> {
+  const value = await readValue(key);
   return (ANTHROPIC_MODELS as readonly string[]).includes(value ?? "")
     ? (value as AnthropicModel)
-    : DEFAULT_BUILDER_MODEL;
+    : fallback;
 }
 
-/** The assistant's model, a gateway slug. */
-export async function getAskModel(): Promise<AskModel> {
-  const value = await readValue(ASK_MODEL_KEY);
-  const parsed = askModelSchema.safeParse(value);
-  return parsed.success ? parsed.data : DEFAULT_ASK_MODEL;
+/** The model the planner and the builder use. */
+export function getBuilderModel(): Promise<AnthropicModel> {
+  return readModel(BUILDER_MODEL_KEY, DEFAULT_BUILDER_MODEL);
+}
+
+/** The assistant's model. */
+export function getAskModel(): Promise<AnthropicModel> {
+  return readModel(ASK_MODEL_KEY, DEFAULT_ASK_MODEL);
 }
 
 export async function updateSettings(

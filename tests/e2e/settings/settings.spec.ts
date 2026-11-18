@@ -27,16 +27,19 @@ test.describe("settings", () => {
     await expect(page.getByText("Settings saved")).toBeVisible();
 
     const assistantModel = page.getByRole("combobox", { name: "Assistant model" });
-    await assistantModel.fill("@cf/moonshotai/kimi-k2.6");
-    // Escape closes the suggestions; Enter then submits the typed model.
-    await assistantModel.press("Escape");
-    await assistantModel.press("Enter");
+    await assistantModel.click();
+    await page.getByRole("option", { name: "claude-haiku-5-5" }).click();
     await expect(page.getByText("Settings saved").nth(1)).toBeVisible();
+    // Only Anthropic's models are taken.
+    const other = await page.request.put("/api/arch/settings", {
+      data: { askModel: "@cf/moonshotai/kimi-k2.6" },
+    });
+    expect(other.status()).toBe(400);
 
     const settings = await page.request.get("/api/arch/settings");
     expect(await settings.json()).toEqual({
       builderModel: "claude-sonnet-5-5",
-      askModel: "@cf/moonshotai/kimi-k2.6",
+      askModel: "claude-haiku-5-5",
     });
   });
 });
