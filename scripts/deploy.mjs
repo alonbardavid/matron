@@ -492,36 +492,34 @@ if (flags["no-container"]) {
         `  BUILDER_IMAGE=registry.cloudflare.com/${accountId}/${workerName}@sha256:<digest> pnpm run deploy --skip-image`,
     );
   }
-  const tag = gitHead.stdout;
-  // `-t name:tag --push` pushes to registry.cloudflare.com/<account>/name:tag.
-  // The config needs the digest, which the push prints.
+  const local = `${workerName}:${gitHead.stdout}`;
+  const repository = `registry.cloudflare.com/${accountId}/${workerName}`;
+  // Built and pushed apart: the config needs the digest, and a push prints it,
+  // but wrangler skips pushing an image the registry already holds (the builder
+  // unchanged since an earlier deploy) and then prints none. Docker remembers
+  // the digest this very image was pushed under then, so it is read before the push.
   const built = wrangler(
-    [
-      "containers",
-      "build",
-      join(root, "apps/builder"),
-      "-t",
-      `${workerName}:${tag}`,
-      "--push",
-    ],
+    ["containers", "build", join(root, "apps/builder"), "-t", local],
     { capture: true },
   );
-  process.stdout.write(built.stdout.split("\n").slice(-12).join("\n") + "\n");
-  let digest = /digest:\s*(sha256:[a-f0-9]{64})/.exec(built.stdout + built.stderr)?.[1];
-  if (!digest) {
-    // A tag that is already in the registry is not pushed again, and then
-    // nothing prints its digest: the registry is asked for it instead.
-    const ref = `registry.cloudflare.com/${accountId}/${workerName}:${tag}`;
-    const inspected = run(
-      "docker",
-      ["buildx", "imagetools", "inspect", ref, "--format", "{{.Manifest.Digest}}"],
-      { capture: true, allowFailure: true },
-    );
-    digest = /sha256:[a-f0-9]{64}/.exec(inspected.stdout)?.[0];
-  }
+  process.stdout.write(built.stdout.split("\n").slice(-6).join("\n") + "\n");
+  const repoDigests = run("docker", [
+    "image",
+    "inspect",
+    local,
+    "--format",
+    "{{json .RepoDigests}}",
+  ]).stdout;
+  const known = JSON.parse(repoDigests || "[]")
+    .map((ref) => ref.split("@"))
+    .find(([repo]) => repo === repository)?.[1];
+  const pushed = wrangler(["containers", "push", local], { capture: true });
+  process.stdout.write(pushed.stdout.split("\n").slice(-4).join("\n") + "\n");
+  const digest =
+    /digest:\s*(sha256:[a-f0-9]{64})/.exec(pushed.stdout + pushed.stderr)?.[1] ?? known;
   if (!digest) fail("the image was pushed but no digest appeared in wrangler's output");
-  builderImage = `registry.cloudflare.com/${accountId}/${workerName}@${digest}`;
-  console.log(`  pushed ${builderImage}`);
+  builderImage = `${repository}@${digest}`;
+  console.log(`  using ${builderImage}`);
 }
 
 // ---------------------------------------------------------------- 7. config
