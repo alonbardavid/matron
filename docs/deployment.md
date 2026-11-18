@@ -29,7 +29,7 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    enable Unified Billing, or store an Anthropic key under Provider Keys (BYOK). There is no
    Anthropic key on the Worker.
 5. Commit your work on `main`: the repository is pushed to Artifacts with full history and the
-   deploy refuses a dirty tree or another branch (unless `--skip-repo`).
+   deploy refuses a dirty tree or another branch. What runs is always `main`, as pushed there.
 
 ## What `pnpm run deploy` does
 
@@ -61,7 +61,6 @@ Flags (`pnpm run deploy --name home`):
 | `--origin`                                          | `https://<name>.<subdomain>.workers.dev` | Production origin (`APP_ORIGIN`)                                                                                       |
 | `--skip-image`                                      | off                                      | Do not build; use `BUILDER_IMAGE=<digest-pinned ref>` from the shell                                                   |
 | `--no-container`                                    | off                                      | Deploy without the builder container; no Docker, building off                                                          |
-| `--skip-repo`                                       | off                                      | Do not create or push the Artifacts repository                                                                         |
 | `--owner-email`, `--owner-name`, `--owner-password` | prompted                                 | Owner account on a first deploy                                                                                        |
 
 ## Where things live

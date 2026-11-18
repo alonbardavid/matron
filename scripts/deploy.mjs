@@ -40,7 +40,6 @@ const USAGE = `Usage: pnpm run deploy [flags]   (or: pnpm build && node scripts/
   --origin <url>           Production origin (default: https://<name>.<subdomain>.workers.dev)
   --skip-image             Do not build/push the builder image; use BUILDER_IMAGE (digest-pinned) from the shell
   --no-container           Deploy without the builder container (no Docker needed; building is off)
-  --skip-repo              Do not create/push the Artifacts code repository
   --owner-email <email>    Owner account on a first deploy (prompted when omitted)
   --owner-name <name>
   --owner-password <pw>    Prompted without echo when omitted
@@ -227,7 +226,6 @@ try {
       origin: { type: "string" },
       "skip-image": { type: "boolean", default: false },
       "no-container": { type: "boolean", default: false },
-      "skip-repo": { type: "boolean", default: false },
       "owner-email": { type: "string" },
       "owner-name": { type: "string" },
       "owner-password": { type: "string" },
@@ -276,19 +274,18 @@ let accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || undefined;
 const gitHead = run("git", ["rev-parse", "--verify", "--short", "HEAD"], {
   allowFailure: true,
 });
-if (!flags["skip-repo"]) {
-  if (gitHead.status !== 0)
-    fail(
-      "the repository has no commits yet; commit before deploying (or pass --skip-repo)",
-    );
+// The Artifacts repository is the code's source of truth: what runs is always main, pushed there.
+if (gitHead.status !== 0)
+  fail("the repository has no commits yet; commit on main before deploying");
+{
   const branch = run("git", ["branch", "--show-current"]).stdout;
   if (branch !== "main")
     fail(`deploy from the main branch (currently on "${branch || "detached HEAD"}")`);
   const dirty = run("git", ["status", "--porcelain"]).stdout;
   if (dirty) {
     fail(
-      "the working tree has uncommitted changes; the Worker was built from them but the repository push would not carry them.\n" +
-        "Commit (or stash) first, or pass --skip-repo.\n" +
+      "the working tree has uncommitted changes; the Worker would be built from them but the repository push would not carry them.\n" +
+        "Commit (or stash) first.\n" +
         dirty,
     );
   }
@@ -423,10 +420,7 @@ if (flags["no-container"]) {
         `  BUILDER_IMAGE=registry.cloudflare.com/${accountId}/${workerName}@sha256:<digest> pnpm run deploy --skip-image`,
     );
   }
-  const tag =
-    gitHead.status === 0
-      ? gitHead.stdout
-      : new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  const tag = gitHead.stdout;
   // `-t name:tag --push` pushes to registry.cloudflare.com/<account>/name:tag.
   // The config needs the digest, which the push prints.
   const built = wrangler(
@@ -595,9 +589,7 @@ try {
 // ---------------------------------------------------------------- 10. repository
 
 step(`Artifacts repository "${workerName}/${workerName}"`);
-if (flags["skip-repo"]) {
-  console.log("  skipped");
-} else {
+{
   const nsArgs = ["--namespace", workerName, "--json"];
   let repo;
   const got = wrangler(["artifacts", "repos", "get", workerName, ...nsArgs], {
