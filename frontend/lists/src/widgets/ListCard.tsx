@@ -10,15 +10,16 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { Link } from "react-router-dom";
-import type { ListSummary } from "@shared/contract/app/lists";
+import type { List } from "@shared/contract/app/lists";
 import { withBranch } from "@frontend/api/branch";
 import { PeopleAvatars } from "@frontend/auth/widgets/PeopleAvatars";
 import { IconPin } from "@frontend/ds/icons";
+import { cardOf } from "../cards";
 import { describeDay, isPast } from "../dates";
 import classes from "./ListCard.module.css";
 
 interface ListCardProps {
-  list: ListSummary;
+  list: List;
   pinned: boolean;
   onTogglePin: () => void;
   /** Ticks an item off; only on a list the caller may edit. */
@@ -34,6 +35,7 @@ interface ListCardProps {
 export function ListCard({ list, pinned, onTogglePin, onTick }: ListCardProps) {
   const pinLabel = pinned ? "Unpin from this device" : "Pin on this device";
   const editable = list.myPermissions.includes("edit");
+  const { preview, more, completedCount } = cardOf(list);
   return (
     <Paper withBorder radius="md" className={classes.card} data-list-card={list.name}>
       <Link
@@ -49,13 +51,13 @@ export function ListCard({ list, pinned, onTogglePin, onTick }: ListCardProps) {
               {list.name}
             </Text>
           </Group>
-          {list.preview.length === 0 ? (
+          {preview.length === 0 ? (
             <Text size="sm" c="dimmed">
-              {list.completedCount > 0 ? "All done" : "Nothing here yet"}
+              {completedCount > 0 ? "All done" : "Nothing here yet"}
             </Text>
           ) : (
             <Stack gap={6} component="ul" className={classes.lines}>
-              {list.preview.map((line) => (
+              {preview.map((line) => (
                 <Group
                   key={line.id}
                   component="li"
@@ -93,16 +95,16 @@ export function ListCard({ list, pinned, onTogglePin, onTick }: ListCardProps) {
                   )}
                 </Group>
               ))}
-              {list.more && (
+              {more && (
                 <Text size="sm" c="dimmed" pl={24}>
                   …
                 </Text>
               )}
             </Stack>
           )}
-          {list.completedCount > 0 && (
+          {completedCount > 0 && (
             <Text size="sm" c="dimmed" className={classes.completed}>
-              + {list.completedCount} completed
+              + {completedCount} completed
             </Text>
           )}
           {list.sharedWith.length > 0 && (

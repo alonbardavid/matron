@@ -29,9 +29,8 @@ import {
   startOfWeek,
 } from "date-fns";
 import type { Occurrence } from "@shared/contract/app/calendar";
-import type { DueItem } from "@shared/contract/app/lists";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
-import { useDueItems, useItemActions } from "@frontend/lists/useLists";
+import { type DueItem, useDueItems, useItemActions } from "@frontend/lists/useLists";
 import { ItemModal } from "@frontend/lists/widgets/ItemModal";
 import { useCalendarFilters } from "../filters";
 import {
@@ -167,7 +166,7 @@ export function CalendarScreen() {
   } = useEventActions();
   const calendars = useCalendars();
   const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
-  const dueItems = useDueItems(filters.showItems);
+  const dueItems = useDueItems();
   const itemActions = useItemActions();
   const [openItem, setOpenItem] = useState<DueItem | null>(null);
   const { viewportRef, maxHeight } = useTimeGrid();
@@ -216,7 +215,7 @@ export function CalendarScreen() {
   }));
   if (filters.showItems) {
     // List items with a due date, as all-day items on that day, in their list's colour.
-    for (const item of dueItems.data ?? []) {
+    for (const item of dueItems) {
       if (!item.dueDate) continue;
       const span = allDaySpan(item.dueDate, item.dueDate);
       events.push({
@@ -292,7 +291,7 @@ export function CalendarScreen() {
     if (payload?.kind === "item") {
       const day = toDayString(fromDateTimeString(newStart));
       if (payload.item.editable && day !== payload.item.dueDate)
-        itemActions.update.mutate({ id: payload.item.id, dueDate: day });
+        itemActions.update(payload.item.id, { dueDate: day });
       return;
     }
     if (!payload?.editable) return;
@@ -568,17 +567,10 @@ export function CalendarScreen() {
         item={openItem}
         people={openItem?.people ?? []}
         editable={openItem?.editable ?? false}
-        onSave={async (values) => {
-          if (openItem)
-            await itemActions.update.mutateAsync({ id: openItem.id, ...values });
+        onSave={(values) => {
+          if (openItem) itemActions.update(openItem.id, values);
         }}
-        onRemove={
-          openItem
-            ? async () => {
-                await itemActions.remove.mutateAsync({ id: openItem.id });
-              }
-            : undefined
-        }
+        onRemove={openItem ? () => itemActions.remove(openItem.id) : undefined}
       />
     </Box>
   );

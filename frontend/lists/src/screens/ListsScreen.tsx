@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button, Group, Loader, Stack, Text, TextInput } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { useNavigate } from "react-router-dom";
-import type { ListSummary } from "@shared/contract/app/lists";
+import type { List } from "@shared/contract/app/lists";
 import { withBranch } from "@frontend/api/branch";
 import { EmptyState } from "@frontend/ds/EmptyState";
 import { IconPlus, IconSearch } from "@frontend/ds/icons";
 import { Page } from "@frontend/ds/Page";
+import { matches } from "../cards";
 import { usePinnedLists } from "../pins";
-import { useItemActions, useListActions, useLists } from "../useLists";
+import { useAllLists, useItemActions, useListActions } from "../useLists";
 import { ListCard } from "../widgets/ListCard";
 import classes from "../widgets/ListCard.module.css";
 import { ListModal } from "../widgets/ListModal";
@@ -16,19 +16,24 @@ import { ListModal } from "../widgets/ListModal";
 /** The caller's lists as cards: those pinned on this device first, a search over names and items. */
 export function ListsScreen() {
   const [search, setSearch] = useState("");
-  const [q] = useDebouncedValue(search, 200);
-  const lists = useLists(q);
-  const { create } = useListActions();
-  const { update: updateItem } = useItemActions();
+  const { lists, isLoading } = useAllLists();
+  const listActions = useListActions();
+  const itemActions = useItemActions();
   const { isPinned, toggle } = usePinnedLists();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
-  const all = lists.data ?? [];
+  const all = useMemo(
+    () =>
+      (lists ?? [])
+        .filter((list) => matches(list, search))
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [lists, search],
+  );
   const pinned = all.filter((list) => isPinned(list.id));
   const others = all.filter((list) => !isPinned(list.id));
 
-  const grid = (items: ListSummary[]) => (
+  const grid = (items: List[]) => (
     <div className={classes.grid}>
       {items.map((list) => (
         <ListCard
@@ -36,7 +41,7 @@ export function ListsScreen() {
           list={list}
           pinned={isPinned(list.id)}
           onTogglePin={() => toggle(list.id)}
-          onTick={(itemId) => updateItem.mutate({ id: itemId, completed: true })}
+          onTick={(itemId) => itemActions.update(itemId, { completed: true })}
         />
       ))}
     </div>
@@ -62,14 +67,14 @@ export function ListsScreen() {
         onChange={(event) => setSearch(event.currentTarget.value)}
         maw={560}
       />
-      {lists.isLoading ? (
+      {isLoading ? (
         <Group justify="center" p="xl">
           <Loader size="sm" />
         </Group>
       ) : all.length === 0 ? (
-        q.trim() ? (
+        search.trim() ? (
           <Text c="dimmed" size="sm">
-            No list or item matches “{q.trim()}”.
+            No list or item matches “{search.trim()}”.
           </Text>
         ) : (
           <EmptyState
@@ -108,9 +113,9 @@ export function ListsScreen() {
         opened={creating}
         onClose={() => setCreating(false)}
         list={null}
-        onSave={async (values) => {
-          const made = await create.mutateAsync(values);
-          void navigate(withBranch(`/lists/${made.id}`));
+        onSave={(values) => {
+          const id = listActions.create(values);
+          void navigate(withBranch(`/lists/${id}`));
         }}
       />
     </Page>

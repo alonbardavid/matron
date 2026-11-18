@@ -62,7 +62,7 @@ export function householdTools(ctx: ToolContext): ToolSet {
     }),
     list_lists: tool({
       description:
-        "The user's lists (made by them or shared with them), last changed first, each with its first open items, counts, who it is shared with and what the user may do with it (myPermissions: view, edit, share). q keeps lists whose name or items contain it.",
+        "The user's lists (made by them or shared with them), last changed first, each with all its items (parentId and position place them), who it is shared with and what the user may do with it (myPermissions: view, edit, share). q keeps lists whose name or items contain it.",
       inputSchema: z.object({ q: z.string().optional() }),
       execute: ({ q }) => listLists(principal, q),
     }),

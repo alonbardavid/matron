@@ -25,8 +25,9 @@ interface ItemModalProps {
   people: string[];
   /** Whether the caller may change the list's items. */
   editable: boolean;
-  onSave: (values: ItemValues) => Promise<void>;
-  onRemove?: () => Promise<void>;
+  /** Makes the change; it shows at once, so the dialog closes. */
+  onSave: (values: ItemValues) => void;
+  onRemove?: () => void;
 }
 
 const EMPTY: ItemValues = { title: "", description: "", dueDate: null, assignees: [] };
@@ -58,7 +59,6 @@ export function ItemModal({
   onRemove,
 }: ItemModalProps) {
   const [values, setValues] = useState<ItemValues>(valuesOf(item));
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (opened) {
@@ -70,22 +70,14 @@ export function ItemModal({
   const set = <K extends keyof ItemValues>(key: K, value: ItemValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
-  const save = async () => {
+  const save = () => {
     if (!editable) return onClose();
     if (!values.title.trim()) {
       setError("Give the item a title");
       return;
     }
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave({ ...values, title: values.title.trim() });
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the item");
-    } finally {
-      setSaving(false);
-    }
+    onSave({ ...values, title: values.title.trim() });
+    onClose();
   };
 
   const title = item
@@ -97,7 +89,7 @@ export function ItemModal({
       : "New item";
   return (
     <Modal opened={opened} onClose={onClose} title={title} centered>
-      <Form onSubmit={() => void save()}>
+      <Form onSubmit={save}>
         {under && !item && (
           <Text size="sm" c="dimmed">
             Under “{under}”
@@ -137,11 +129,6 @@ export function ItemModal({
           only={people}
           disabled={!editable}
         />
-        {error && values.title.trim() && (
-          <Text c="red" size="sm">
-            {error}
-          </Text>
-        )}
         <Group justify="space-between" mt="xs">
           {item && onRemove && editable ? (
             <ConfirmButton
@@ -149,8 +136,8 @@ export function ItemModal({
               color="red"
               message="Remove this item and everything under it?"
               confirmLabel="Remove"
-              onConfirm={async () => {
-                await onRemove();
+              onConfirm={() => {
+                onRemove();
                 onClose();
               }}
             >
@@ -159,7 +146,7 @@ export function ItemModal({
           ) : (
             <span />
           )}
-          <Button type="submit" loading={saving}>
+          <Button type="submit">
             {!editable ? "Close" : item ? "Save" : "Add item"}
           </Button>
         </Group>

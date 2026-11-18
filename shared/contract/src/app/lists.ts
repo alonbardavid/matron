@@ -60,43 +60,16 @@ const listFields = {
   updatedAt: z.number(),
 };
 
-/** One line of a list's card: an open item at the top, or one under it. */
-export const previewLineSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  depth: z.number().int(),
-  dueDate: dayString.nullable(),
-  /** For an item with items under it: how many of those are done. */
-  progress: z.object({ done: z.number().int(), total: z.number().int() }).nullable(),
-});
-export type PreviewLine = z.infer<typeof previewLineSchema>;
-
-/** A list as its card shows it. */
-export const listSummarySchema = z.object({
-  ...listFields,
-  openCount: z.number().int(),
-  completedCount: z.number().int(),
-  /** Its first open items, in order. */
-  preview: z.array(previewLineSchema),
-  /** Whether it has open items beyond the preview. */
-  more: z.boolean(),
-});
-export type ListSummary = z.infer<typeof listSummarySchema>;
-
 /** A list with all its items, in no particular order: `parentId` and `position` place them. */
 export const listSchema = z.object({ ...listFields, items: z.array(listItemSchema) });
 export type List = z.infer<typeof listSchema>;
 
-/** An item with a due day, as the calendar shows it. */
-export const dueItemSchema = listItemSchema.extend({
-  listName: z.string(),
-  listColor: z.string(),
-  /** Who sees its list, and so may be assigned it. */
-  people: z.array(z.string()),
-  /** Whether the caller may change it. */
-  editable: z.boolean(),
-});
-export type DueItem = z.infer<typeof dueItemSchema>;
+/**
+ * An id the browser picks for a list or item it makes, so it can show it, and
+ * change it, before the server has it: the prefix, then a UUID.
+ */
+const clientId = (prefix: "LI" | "LT") =>
+  z.string().regex(new RegExp(`^${prefix}_[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$`));
 
 const listName = z.string().trim().min(1, "Give the list a name").max(120);
 const itemTitle = z.string().trim().min(1, "Give the item a title").max(500);
@@ -144,18 +117,22 @@ export const itemMoveSchema = z.object({
 export type ItemMove = z.infer<typeof itemMoveSchema>;
 
 export const listsContract = {
-  /** The lists the caller made or was given, last changed first; `q` keeps those whose name or items match. */
+  /**
+   * The lists the caller made or was given, each with all its items, last
+   * changed first; `q` keeps those whose name or items match.
+   */
   list: oc
     .route({ method: "GET", path: "/api/app/lists" })
     .input(z.object({ q: z.string().trim().max(200).optional() }))
-    .output(z.array(listSummarySchema)),
+    .output(z.array(listSchema)),
   get: oc
     .route({ method: "GET", path: "/api/app/lists/{id}" })
     .input(z.object({ id: z.string() }))
     .output(listSchema),
+  /** `id`, when given, is the new list's: picked by the browser, to show it before it is saved. */
   create: oc
     .route({ method: "POST", path: "/api/app/lists" })
-    .input(listCreateSchema)
+    .input(listCreateSchema.extend({ id: clientId("LI").optional() }))
     .output(listSchema),
   /** The name and colour need edit; who it is shared with needs share. */
   update: oc
@@ -167,9 +144,10 @@ export const listsContract = {
     .route({ method: "DELETE", path: "/api/app/lists/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
+  /** `itemId`, when given, is the new item's: picked by the browser, like a new list's. */
   addItem: oc
     .route({ method: "POST", path: "/api/app/lists/{id}/items" })
-    .input(itemCreateSchema.extend({ id: z.string() }))
+    .input(itemCreateSchema.extend({ id: z.string(), itemId: clientId("LT").optional() }))
     .output(listItemSchema),
   updateItem: oc
     .route({ method: "PUT", path: "/api/app/list-items/{id}" })
@@ -185,10 +163,6 @@ export const listsContract = {
     .route({ method: "DELETE", path: "/api/app/list-items/{id}" })
     .input(z.object({ id: z.string() }))
     .output(z.object({ ok: z.literal(true) })),
-  /** Every item with a due day on the caller's lists, for the calendar. */
-  dueItems: oc
-    .route({ method: "GET", path: "/api/app/list-items/due" })
-    .output(z.array(dueItemSchema)),
   /** The caller's own alarm on an item: how long before its due day ends they are reminded. */
   itemAlarm: oc
     .route({ method: "GET", path: "/api/app/list-items/{id}/alarm" })

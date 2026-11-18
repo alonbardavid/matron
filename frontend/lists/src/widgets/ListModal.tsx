@@ -43,7 +43,8 @@ interface ListModalProps {
   onClose: () => void;
   /** The list being changed, or null for a new one. */
   list: List | null;
-  onSave: (values: Values) => Promise<void>;
+  /** Makes the change; it shows at once, so the dialog closes. */
+  onSave: (values: Values) => void;
 }
 
 /**
@@ -54,7 +55,6 @@ interface ListModalProps {
 export function ListModal({ opened, onClose, list, onSave }: ListModalProps) {
   const { me } = useMe();
   const [values, setValues] = useState<Values>(valuesOf(list));
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (opened) {
@@ -70,21 +70,13 @@ export function ListModal({ opened, onClose, list, onSave }: ListModalProps) {
   const set = <K extends keyof Values>(key: K, value: Values[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
-  const save = async () => {
+  const save = () => {
     if (!values.name.trim()) {
       setError("Give the list a name");
       return;
     }
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave({ ...values, name: values.name.trim() });
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the list");
-    } finally {
-      setSaving(false);
-    }
+    onSave({ ...values, name: values.name.trim() });
+    onClose();
   };
 
   return (
@@ -94,7 +86,7 @@ export function ListModal({ opened, onClose, list, onSave }: ListModalProps) {
       title={list ? "List settings" : "New list"}
       centered
     >
-      <Form onSubmit={() => void save()}>
+      <Form onSubmit={save}>
         <TextInput
           label="Name"
           value={values.name}
@@ -139,13 +131,8 @@ export function ListModal({ opened, onClose, list, onSave }: ListModalProps) {
           canShare={canShare}
           onChange={(permissions) => set("permissions", permissions)}
         />
-        {error && values.name.trim() && (
-          <Text c="red" size="sm">
-            {error}
-          </Text>
-        )}
         <Group justify="flex-end" mt="xs">
-          <Button type="submit" loading={saving}>
+          <Button type="submit">
             {list ? "Save" : "Make list"}
           </Button>
         </Group>

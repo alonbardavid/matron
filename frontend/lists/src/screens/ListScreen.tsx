@@ -17,11 +17,9 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { List, ListItem } from "@shared/contract/app/lists";
 import { withBranch } from "@frontend/api/branch";
-import { orpc } from "@frontend/api/orpc";
 import { useHouseholdMembers } from "@frontend/auth/useHouseholdMembers";
 import { useMe } from "@frontend/auth/useMe";
 import { PeopleAvatars } from "@frontend/auth/widgets/PeopleAvatars";
@@ -35,7 +33,7 @@ import {
   IconPlus,
 } from "@frontend/ds/icons";
 import { usePinnedLists } from "../pins";
-import { applyMove, childrenOf, rowsOf, type Placement } from "../tree";
+import { childrenOf, rowsOf } from "../tree";
 import { useItemActions, useList, useListActions } from "../useLists";
 import { ItemModal, type ItemValues } from "../widgets/ItemModal";
 import { ItemTree } from "../widgets/ItemTree";
@@ -60,10 +58,9 @@ function sharingLine(
 /** One list: its items as a tree to tick off, reorder and nest, and what was done, folded away. */
 export function ListScreen() {
   const { id = "" } = useParams();
-  const list = useList(id);
+  const { list: current, isLoading } = useList(id);
   const { me } = useMe();
   const { nameOf } = useHouseholdMembers();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const itemActions = useItemActions();
   const listActions = useListActions();
@@ -78,7 +75,7 @@ export function ListScreen() {
   const [removing, setRemoving] = useState(false);
   const [deleting, setDeleting] = useState<ListItem | null>(null);
 
-  const items = list.data?.items ?? [];
+  const items = useMemo(() => current?.items ?? [], [current]);
   const children = useMemo(() => childrenOf(items), [items]);
   const tops = children.get(null) ?? [];
   const openRows = useMemo(
@@ -98,14 +95,14 @@ export function ListScreen() {
     [tops, children],
   );
 
-  if (list.isLoading) {
+  if (isLoading) {
     return (
       <Group justify="center" p="xl">
         <Loader size="sm" />
       </Group>
     );
   }
-  if (!list.data) {
+  if (!current) {
     return (
       <Container size="md" py="lg">
         <EmptyState
@@ -121,43 +118,14 @@ export function ListScreen() {
     );
   }
 
-  const current = list.data;
   const editable = current.myPermissions.includes("edit");
   const people = [current.creatorId, ...current.sharedWith];
   const pinned = isPinned(current.id);
-  const listKey = orpc.lists.get.queryKey({ input: { id: current.id } });
-
-  const move = (item: ListItem, placement: Placement) => {
-    // Shown where it was put at once; the server's answer replaces it.
-    queryClient.setQueryData<List>(listKey, (old) =>
-      old ? { ...old, items: applyMove(old.items, item.id, placement) } : old,
-    );
-    itemActions.move.mutate({ id: item.id, ...placement });
-  };
-
-  const toggleDone = (item: ListItem, completed: boolean) => {
-    queryClient.setQueryData<List>(listKey, (old) =>
-      old
-        ? {
-            ...old,
-            items: old.items.map((i) =>
-              i.id === item.id ? { ...i, completedAt: completed ? Date.now() : null } : i,
-            ),
-          }
-        : old,
-    );
-    itemActions.update.mutate({ id: item.id, completed });
-  };
-
-  const save = async (values: ItemValues) => {
+  const save = (values: ItemValues) => {
     if (editing?.item) {
-      await itemActions.update.mutateAsync({ id: editing.item.id, ...values });
+      itemActions.update(editing.item.id, values);
     } else {
-      await itemActions.add.mutateAsync({
-        id: current.id,
-        ...values,
-        parentId: editing?.under?.id ?? null,
-      });
+      itemActions.add(current.id, { ...values, parentId: editing?.under?.id ?? null });
     }
   };
 
@@ -168,10 +136,10 @@ export function ListScreen() {
       childMap={children}
       editable={editable}
       draggable={draggable}
-      onToggle={toggleDone}
+      onToggle={(item, completed) => itemActions.update(item.id, { completed })}
       onOpen={(item) => setEditing({ item, under: null })}
       onAddUnder={(under) => setEditing({ item: null, under })}
-      onMove={move}
+      onMove={(item, placement) => itemActions.move(item.id, placement)}
       onDelete={setDeleting}
     />
   );
@@ -258,7 +226,7 @@ export function ListScreen() {
               onSubmit={() => {
                 const title = draft.trim();
                 if (!title) return;
-                itemActions.add.mutate({ id: current.id, title });
+                itemActions.add(current.id, { title });
                 setDraft("");
               }}
             >
@@ -318,9 +286,7 @@ export function ListScreen() {
         onSave={save}
         onRemove={
           editing?.item
-            ? async () => {
-                await itemActions.remove.mutateAsync({ id: editing.item!.id });
-              }
+            ? () => itemActions.remove(editing.item!.id)
             : undefined
         }
       />
@@ -339,14 +305,10 @@ export function ListScreen() {
             </Button>
             <Button
               color="red"
-              loading={itemActions.remove.isPending}
-              onClick={() =>
-                deleting &&
-                itemActions.remove.mutate(
-                  { id: deleting.id },
-                  { onSuccess: () => setDeleting(null) },
-                )
-              }
+              onClick={() => {
+                if (deleting) itemActions.remove(deleting.id);
+                setDeleting(null);
+              }}
             >
               Delete
             </Button>
@@ -370,13 +332,10 @@ export function ListScreen() {
             </Button>
             <Button
               color="red"
-              loading={listActions.remove.isPending}
-              onClick={() =>
-                listActions.remove.mutate(
-                  { id: current.id },
-                  { onSuccess: () => void navigate(withBranch("/lists")) },
-                )
-              }
+              onClick={() => {
+                listActions.remove(current.id);
+                void navigate(withBranch("/lists"));
+              }}
             >
               Remove
             </Button>
@@ -387,9 +346,7 @@ export function ListScreen() {
         opened={settings}
         onClose={() => setSettings(false)}
         list={current}
-        onSave={async (values) => {
-          await listActions.update.mutateAsync({ id: current.id, ...values });
-        }}
+        onSave={(values) => listActions.update(current.id, values)}
       />
     </Container>
   );

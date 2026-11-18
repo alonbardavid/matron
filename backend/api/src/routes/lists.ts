@@ -3,7 +3,6 @@ import {
   createList,
   getItemAlarm,
   getList,
-  listDueItems,
   listLists,
   moveItem,
   removeItem,
@@ -21,8 +20,8 @@ export const lists = app.lists.router({
   get: app.lists.get.handler(({ context, input }) =>
     getList(context.principal, input.id),
   ),
-  create: app.lists.create.handler(({ context, input }) =>
-    createList(context.principal, input),
+  create: app.lists.create.handler(({ context, input: { id, ...values } }) =>
+    createList(context.principal, values, id),
   ),
   update: app.lists.update.handler(({ context, input: { id, ...changes } }) =>
     updateList(context.principal, id, changes),
@@ -31,8 +30,8 @@ export const lists = app.lists.router({
     await removeList(context.principal, input.id);
     return { ok: true as const };
   }),
-  addItem: app.lists.addItem.handler(({ context, input: { id, ...item } }) =>
-    addItem(context.principal, id, item),
+  addItem: app.lists.addItem.handler(({ context, input: { id, itemId, ...item } }) =>
+    addItem(context.principal, id, item, itemId),
   ),
   updateItem: app.lists.updateItem.handler(({ context, input: { id, ...changes } }) =>
     updateItem(context.principal, id, changes),
@@ -44,7 +43,6 @@ export const lists = app.lists.router({
     await removeItem(context.principal, input.id);
     return { ok: true as const };
   }),
-  dueItems: app.lists.dueItems.handler(({ context }) => listDueItems(context.principal)),
   itemAlarm: app.lists.itemAlarm.handler(({ context, input }) =>
     getItemAlarm(context.principal, input.id),
   ),

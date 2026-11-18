@@ -325,4 +325,64 @@ test.describe("lists", () => {
     await page.mouse.click(text.x + text.width / 2, text.y + text.height / 2);
     await expect(page.getByRole("heading", { name: "Films to watch" })).toBeVisible();
   });
+
+  test("a tick shows at once and goes back if the server refuses it", async ({ page }) => {
+    await signIn(page, OWNER);
+    const trip = await makeList(page, { name: "Trip" });
+    const tent = await addItem(page, trip.id, { title: "Tent" });
+    await addItem(page, trip.id, { title: "Pegs", parentId: tent.id });
+    await addItem(page, trip.id, { title: "Poles", parentId: tent.id });
+    await addItem(page, trip.id, { title: "Stove" });
+
+    // Ticks are held until let go, then answered with a failure.
+    const held: (() => Promise<void>)[] = [];
+    await page.route("**/api/app/list-items/*", (route) =>
+      route.request().method() === "PUT"
+        ? held.push(() => route.fulfill({ status: 500, json: { message: "down" } }))
+        : route.continue(),
+    );
+
+    await page.goto("/lists");
+    const card = page.locator("[data-list-card='Trip']");
+    await expect(card).toContainText("0/2");
+
+    // An item under another: its line goes and its parent counts it done.
+    await card.getByRole("checkbox", { name: "Pegs" }).click();
+    await expect(card.getByRole("checkbox", { name: "Pegs" })).toHaveCount(0);
+    await expect(card).toContainText("1/2");
+    await expect(card).toContainText("+ 1 completed");
+    // A top item: its line goes with those under it.
+    await card.getByRole("checkbox", { name: "Tent" }).click();
+    await expect(card.getByRole("checkbox", { name: "Poles" })).toHaveCount(0);
+    await expect(card).toContainText("+ 2 completed");
+
+    // The list's page, opened before the server has answered, shows both ticks.
+    await card.getByRole("link", { name: "Trip" }).click();
+    await expect(page.getByRole("heading", { name: "Trip" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Tent" })).toHaveCount(0);
+    await expect(page.getByText("1 completed")).toBeVisible();
+
+    // They go to the server one after the other; each refused goes back.
+    await expect.poll(() => held.length).toBe(1);
+    await held.splice(0)[0]!();
+    await expect.poll(() => held.length).toBe(1);
+    await held.splice(0)[0]!();
+    await page.getByRole("link", { name: "All lists" }).click();
+    await expect(card.getByRole("checkbox", { name: "Pegs" })).toBeVisible();
+    await expect(card.getByRole("checkbox", { name: "Poles" })).toBeVisible();
+    await expect(card).toContainText("0/2");
+    await expect(card).not.toContainText("completed");
+
+    // On the list's page, likewise: ticked, it goes to the folded completed items.
+    await page.goto(`/lists/${trip.id}`);
+    const stove = page.getByRole("checkbox", { name: "Stove" });
+    await stove.click();
+    await expect(stove).toHaveCount(0);
+    await expect(page.getByText("1 completed")).toBeVisible();
+    await expect.poll(() => held.length).toBe(1);
+    await held.splice(0)[0]!();
+    await expect(stove).not.toBeChecked();
+    await expect(page.getByText("1 completed")).toHaveCount(0);
+    expect(await outlineOf(page, trip.id)).toBe("Tent [Pegs, Poles], Stove");
+  });
 });

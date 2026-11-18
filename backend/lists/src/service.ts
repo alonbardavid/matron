@@ -1,6 +1,6 @@
 import { tz } from "@date-fns/tz";
 import { addDays, parseISO } from "date-fns";
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
@@ -19,16 +19,13 @@ import {
 import { timeZoneOf } from "@backend/notifications/service";
 import {
   LIST_COLORS,
-  type DueItem,
   type ItemCreate,
   type ItemMove,
   type ItemUpdate,
   type List,
   type ListCreate,
   type ListItem,
-  type ListSummary,
   type ListUpdate,
-  type PreviewLine,
   type SharePermission,
 } from "@shared/contract/app/lists";
 import type { Alarm } from "@shared/contract/app/notifications";
@@ -40,8 +37,6 @@ type ListRow = typeof list.$inferSelect;
 type ShareRow = typeof listShare.$inferSelect;
 type ItemRow = typeof listItem.$inferSelect;
 
-/** A list's card shows this many lines of open items. */
-const PREVIEW_LINES = 9;
 /** D1 takes about a hundred parameters in one statement. */
 const ID_CHUNK = 90;
 const EVERYTHING: SharePermission[] = ["view", "share", "edit"];
@@ -56,14 +51,10 @@ interface Held {
 // ---------------------------------------------------------------- lists
 
 /**
- * The lists the caller made or was given, last changed first, each with the
- * first open items its card shows. With `q`, only those whose name or any
- * item's title holds it.
+ * The lists the caller made or was given, last changed first, each with all
+ * its items. With `q`, only those whose name or any item's title holds it.
  */
-export async function listLists(
-  principal: Principal,
-  q?: string,
-): Promise<ListSummary[]> {
+export async function listLists(principal: Principal, q?: string): Promise<List[]> {
   listPermissions.require(principal, "view");
   const held = await heldLists(principal);
   const items = await itemsOf(held.map((h) => h.row.id));
@@ -77,7 +68,7 @@ export async function listLists(
           item.title.toLowerCase().includes(needle),
         ),
     )
-    .map((h) => toSummary(h, items.get(h.row.id) ?? []))
+    .map((h) => ({ ...listFieldsOf(h), items: items.get(h.row.id) ?? [] }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -87,9 +78,13 @@ export async function getList(principal: Principal, id: string): Promise<List> {
   return { ...listFieldsOf(held), items: (await itemsOf([id])).get(id) ?? [] };
 }
 
-export async function createList(principal: Principal, input: ListCreate): Promise<List> {
+/** Makes a list; `id` is the one the browser picked for it, if it did. */
+export async function createList(
+  principal: Principal,
+  input: ListCreate,
+  id = newEntityId("LIST"),
+): Promise<List> {
   listPermissions.require(principal, "create");
-  const id = newEntityId("LIST");
   const sharedWith = await resolveShares(principal.userId, input.sharedWith ?? []);
   const [row] = await getDb()
     .insert(list)
@@ -200,11 +195,15 @@ export async function removeList(principal: Principal, id: string): Promise<void
 
 // ---------------------------------------------------------------- items
 
-/** Adds an item last, at the top of the list or under another of its items. */
+/**
+ * Adds an item last, at the top of the list or under another of its items;
+ * `id` is the one the browser picked for it, if it did.
+ */
 export async function addItem(
   principal: Principal,
   listId: string,
   input: ItemCreate,
+  id = newEntityId("LIST_ITEM"),
 ): Promise<ListItem> {
   listPermissions.require(principal, "update");
   const held = await holdList(principal, listId);
@@ -216,7 +215,6 @@ export async function addItem(
   }
   const siblings = items.filter((item) => item.parentId === parentId);
   const position = Math.max(-1, ...siblings.map((item) => item.position)) + 1;
-  const id = newEntityId("LIST_ITEM");
   await getDb()
     .insert(listItem)
     .values({
@@ -361,33 +359,6 @@ export async function removeItem(principal: Principal, id: string): Promise<void
   await deleteItems([...subtreeOf(items, id)]);
   await touch(row.listId);
   log.info("list item removed", { itemId: id, userId: principal.userId });
-}
-
-/** Every item with a due day on the caller's lists. */
-export async function listDueItems(principal: Principal): Promise<DueItem[]> {
-  listPermissions.require(principal, "view");
-  const held = await heldLists(principal);
-  const byId = new Map(held.map((h) => [h.row.id, h]));
-  const rows: ItemRow[] = [];
-  for (const chunk of chunks([...byId.keys()])) {
-    rows.push(
-      ...(await getDb()
-        .select()
-        .from(listItem)
-        .where(and(inArray(listItem.listId, chunk), isNotNull(listItem.dueDate)))),
-    );
-  }
-  const assignees = await assigneesOf(rows.map((r) => r.id));
-  return rows.map((r) => {
-    const h = byId.get(r.listId)!;
-    return {
-      ...toItem(r, assignees.get(r.id) ?? []),
-      listName: h.row.name,
-      listColor: h.row.color,
-      people: [h.row.creatorId, ...h.shares.map((s) => s.userId)],
-      editable: h.mine.includes("edit"),
-    };
-  });
 }
 
 /** The item, when the caller sees its list. */
@@ -718,43 +689,3 @@ function listFieldsOf(h: Held) {
   };
 }
 
-/**
- * A list's card: its open items at the top in order, each followed by the
- * open items right under it, as far as the card goes.
- */
-function toSummary(h: Held, items: ListItem[]): ListSummary {
-  const open = items.filter((item) => item.completedAt === null);
-  const under = (parentId: string | null) =>
-    items.filter((item) => item.parentId === parentId).sort(byPosition);
-  const lines: PreviewLine[] = [];
-  const line = (item: ListItem, depth: number): PreviewLine => {
-    const children = under(item.id);
-    return {
-      id: item.id,
-      title: item.title,
-      depth,
-      dueDate: item.dueDate,
-      progress:
-        children.length > 0
-          ? {
-              done: children.filter((c) => c.completedAt !== null).length,
-              total: children.length,
-            }
-          : null,
-    };
-  };
-  for (const top of under(null)) {
-    if (top.completedAt !== null) continue;
-    lines.push(line(top, 0));
-    for (const child of under(top.id)) {
-      if (child.completedAt === null) lines.push(line(child, 1));
-    }
-  }
-  return {
-    ...listFieldsOf(h),
-    openCount: open.length,
-    completedCount: items.length - open.length,
-    preview: lines.slice(0, PREVIEW_LINES),
-    more: lines.length > PREVIEW_LINES,
-  };
-}
