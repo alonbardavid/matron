@@ -5,6 +5,7 @@ import {
   getEvent,
   getEventAlarm,
   hideEvent,
+  leaveEvent,
   listOccurrences,
   placeEvent,
   removeEvent,
@@ -55,6 +56,10 @@ export const calendar = app.calendar.router({
   cancelOccurrence: app.calendar.cancelOccurrence.handler(({ context, input }) =>
     cancelOccurrence(context.principal, input.id, input.originalStartAt),
   ),
+  leave: app.calendar.leave.handler(async ({ context, input }) => {
+    await leaveEvent(context.principal, input.id);
+    return { ok: true as const };
+  }),
   hide: app.calendar.hide.handler(({ context, input }) =>
     hideEvent(context.principal, input.id, input.hidden),
   ),

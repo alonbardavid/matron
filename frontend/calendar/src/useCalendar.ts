@@ -57,7 +57,23 @@ export function useEventActions() {
       onError: (err) => notifyError(err, "Could not change the event"),
     }),
   );
-  return { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide };
+  const leave = useMutation(
+    orpc.calendar.leave.mutationOptions({
+      onSuccess: refresh,
+      onError: (err) => notifyError(err, "Could not leave the event"),
+    }),
+  );
+  return {
+    create,
+    update,
+    stop,
+    remove,
+    place,
+    editOccurrence,
+    cancelOccurrence,
+    hide,
+    leave,
+  };
 }
 
 /** The caller's own calendars. */

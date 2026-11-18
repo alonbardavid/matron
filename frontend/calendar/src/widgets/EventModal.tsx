@@ -20,6 +20,7 @@ import type {
   CalendarEvent,
   OccurrenceUpdate,
   LocationMetadata,
+  SharePermission,
 } from "@shared/contract/app/calendar";
 import { useMe } from "@frontend/auth/useMe";
 import { PeoplePicker } from "@frontend/auth/widgets/PeoplePicker";
@@ -29,6 +30,7 @@ import { allDaySpan, fromDateTimeString, toDateTimeString, toDayString } from ".
 import { EventView } from "./EventView";
 import { isLink, mapsUrl } from "../places";
 import { LocationInput } from "./LocationInput";
+import { SharePermissions } from "./SharePermissions";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 
 /** What the modal edits; times as Mantine strings in local time. */
@@ -48,6 +50,7 @@ export interface EventDraft {
   location: string;
   /** What Google gave for the location when it was picked from its suggestions; null when typed. */
   locationMetadata: LocationMetadata | null;
+  permissions: Record<string, SharePermission[]>;
 }
 
 export interface EventSubmit {
@@ -63,6 +66,8 @@ export interface EventSubmit {
   sharedWith?: string[];
   attendees?: string[];
   calendarId?: string;
+  /** What each member it is shared with may do; sent only by whoever may share it. */
+  permissions?: Record<string, SharePermission[]>;
 }
 
 /** The occurrence of a series that was opened. */
@@ -97,6 +102,8 @@ interface EventModalProps {
   onPlace?: (calendarId: string) => Promise<void>;
   /** Hides the event from the caller's own calendar, or shows it again. */
   onHide?: (hidden: boolean) => Promise<void>;
+  /** Stops the event someone shared with the caller being theirs. */
+  onLeave?: () => Promise<void>;
 }
 
 /** An existing event opens as it reads; changing it is a step further. */
@@ -109,6 +116,7 @@ function draftOf(
   event: CalendarEvent | null,
   initial: EventModalProps["initial"],
   occurrence: OpenedOccurrence | null,
+  creatorId: string | undefined,
 ): EventDraft {
   const allDay = event?.allDay ?? initial?.allDay ?? false;
   // One occurrence shows its own times and title, its description if changed.
@@ -131,8 +139,10 @@ function draftOf(
     end: allDay ? toDayString(endAt) : toDateTimeString(endAt),
     rrule: event?.rrule ?? null,
     sharedWith: event?.sharedWith ?? [],
-    attendees: event?.attendees ?? [],
+    // Whoever makes an event attends it, unless they take themselves off.
+    attendees: event?.attendees ?? (creatorId ? [creatorId] : []),
     calendarId: event?.calendarId ?? null,
+    permissions: event?.permissions ?? {},
   };
 }
 
@@ -152,11 +162,14 @@ export function EventModal({
   onEditOccurrence,
   onCancelOccurrence,
   onHide,
+  onLeave,
 }: EventModalProps) {
   const { me } = useMe();
   const [mode, setMode] = useState<Mode>("edit");
   const [scope, setScope] = useState<Scope>("all");
-  const [draft, setDraft] = useState<EventDraft>(() => draftOf(event, initial, null));
+  const [draft, setDraft] = useState<EventDraft>(() =>
+    draftOf(event, initial, null, me?.id),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // An occurrence of a series opens on itself; anything else on the whole event.
@@ -165,26 +178,34 @@ export function EventModal({
     if (opened && !loading) {
       const start: Scope = event?.rrule && occurrence ? "one" : "all";
       setScope(start);
-      setDraft(draftOf(event, initial, start === "one" ? occurrence : null));
+      setDraft(draftOf(event, initial, start === "one" ? occurrence : null, me?.id));
       setError(null);
     }
-  }, [opened, loading, event, initial, occurrence]);
+  }, [opened, loading, event, initial, occurrence, me?.id]);
   const eventId = event?.id;
   useEffect(() => {
     if (opened && !loading) setMode(eventId ? "view" : "edit");
   }, [opened, loading, eventId]);
   const changeScope = (next: Scope) => {
     setScope(next);
-    setDraft(draftOf(event, initial, next === "one" ? occurrence : null));
+    setDraft(draftOf(event, initial, next === "one" ? occurrence : null, me?.id));
   };
-  const one = scope === "one" && series;
 
   const creatorId = event?.creatorId ?? me?.id ?? "";
-  const mine = !event || event.creatorId === me?.id || me?.role === "owner";
+  // What the caller may do, as the server says: share it (who it is shared
+  // with, who attends), edit its details or remove it, each on its own.
+  const canShare = !event || event.myPermissions.includes("share");
+  const canEdit = !event || event.myPermissions.includes("edit");
   // An event imported from Google changes there; here only who it is shared with.
   const imported = event?.source === "google";
   // Seen only through a calendar shared with the caller: nothing here changes it.
   const readOnly = event?.access === "read";
+  const editable = !imported && !readOnly && canEdit;
+  // Sharing is all a Google event has to change here, and all a guest who
+  // may share but not edit has.
+  const changeable = !readOnly && (canShare || editable);
+  // One occurrence is changed on its own only in what editing changes.
+  const one = scope === "one" && series && editable;
   // Shared with the caller by someone else: they choose which of their calendars shows it.
   const placing =
     !!event &&
@@ -254,7 +275,12 @@ export function EventModal({
         allDay: draft.allDay,
         ...span,
         rrule: draft.rrule,
-        ...(mine && { sharedWith: draft.sharedWith, attendees: draft.attendees }),
+        // Who it is shared with, who attends and what each may do.
+        ...(canShare && {
+          sharedWith: draft.sharedWith,
+          attendees: draft.attendees,
+          permissions: draft.permissions,
+        }),
         ...(pickCalendar && draft.calendarId && { calendarId: draft.calendarId }),
       });
       onClose();
@@ -268,11 +294,8 @@ export function EventModal({
   const startForRule = draft.allDay
     ? parseISO(draft.start).getTime()
     : fromDateTimeString(draft.start);
-  const editable = !imported && !readOnly;
-  // A Google event has only its sharing to change here, and that is its creator's.
-  const changeable = !readOnly && (!imported || mine);
   const viewing = mode === "view" && !!event && !loading;
-  const shown = draftOf(event, initial, series ? occurrence : null);
+  const shown = draftOf(event, initial, series ? occurrence : null, me?.id);
 
   return (
     <Modal
@@ -281,11 +304,11 @@ export function EventModal({
       title={
         viewing
           ? undefined
-          : imported
-            ? "Share event"
-            : event
+          : !event
+            ? "New event"
+            : editable
               ? "Edit event"
-              : "New event"
+              : "Share event"
       }
       withCloseButton={!viewing}
       centered
@@ -306,6 +329,14 @@ export function EventModal({
           placeIn={placing ? writable : []}
           onPlace={onPlace && ((calendarId) => void onPlace(calendarId))}
           onEdit={changeable ? () => setMode("edit") : undefined}
+          onLeave={
+            placing && onLeave
+              ? async () => {
+                  await onLeave();
+                  onClose();
+                }
+              : undefined
+          }
           onHide={
             onHide &&
             (async (hidden) => {
@@ -317,9 +348,10 @@ export function EventModal({
         />
       ) : (
         <Form onSubmit={() => void save()}>
-          {imported && (
+          {event && !editable && (
             <Text size="sm" c="dimmed">
-              {draft.title}: it changes in Google Calendar. Here you choose who sees it.
+              {draft.title}:{imported && " it changes in Google Calendar."} Here you
+              choose who sees it.
             </Text>
           )}
           {series && editable && (
@@ -428,11 +460,11 @@ export function EventModal({
               )}
             </Stack>
           )}
-          {!one && mine && (
+          {!one && canShare && (
             <Stack gap="sm">
               <PeoplePicker
                 label="Shared with"
-                placeholder="Only you"
+                placeholder={draft.sharedWith.length ? undefined : "Only you"}
                 value={draft.sharedWith}
                 onChange={(ids) =>
                   setDraft((prev) => ({
@@ -449,10 +481,16 @@ export function EventModal({
                 }
                 exclude={[creatorId]}
               />
+              <SharePermissions
+                people={draft.sharedWith}
+                value={draft.permissions}
+                canEdit={canEdit}
+                onChange={(permissions) => set("permissions", permissions)}
+              />
               <PeoplePicker
                 label="Attending"
-                description="Anyone attending sees the event too."
-                placeholder="No one"
+                description="Who takes part. Share the event with someone for it to show on their calendar."
+                placeholder={draft.attendees.length ? undefined : "No one"}
                 value={draft.attendees}
                 onChange={(ids) => set("attendees", ids)}
               />
@@ -465,7 +503,7 @@ export function EventModal({
           )}
           <Group justify="space-between" mt="xs">
             <Group gap="xs">
-              {one && occurrence && onCancelOccurrence && (
+              {one && editable && occurrence && onCancelOccurrence && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
@@ -479,7 +517,7 @@ export function EventModal({
                   Remove this one
                 </ConfirmButton>
               )}
-              {event && onRemove && mine && editable && !one && (
+              {event && onRemove && editable && !one && (
                 <ConfirmButton
                   variant="subtle"
                   color="red"
@@ -497,7 +535,7 @@ export function EventModal({
                   Remove
                 </ConfirmButton>
               )}
-              {event?.rrule && onStop && occurrence && mine && editable && (
+              {event?.rrule && onStop && occurrence && editable && (
                 <ConfirmButton
                   variant="subtle"
                   message="Stop repeating from this one on? Earlier ones stay."

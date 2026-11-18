@@ -154,8 +154,17 @@ export function CalendarScreen() {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   const event = useEvent(opening?.eventId ?? null);
-  const { create, update, stop, remove, place, editOccurrence, cancelOccurrence, hide } =
-    useEventActions();
+  const {
+    create,
+    update,
+    stop,
+    remove,
+    place,
+    editOccurrence,
+    cancelOccurrence,
+    hide,
+    leave,
+  } = useEventActions();
   const calendars = useCalendars();
   const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
   const tasks = useTasks();
@@ -240,12 +249,17 @@ export function CalendarScreen() {
     });
 
   const save = async (values: EventSubmit) => {
-    if (opening?.eventId && event.data?.source === "google") {
-      // An imported event is Google's; only who it is shared with is Matron's.
+    if (
+      opening?.eventId &&
+      (event.data?.source === "google" || !event.data?.myPermissions.includes("edit"))
+    ) {
+      // Only who it is shared with changes: an imported event is Google's, and
+      // a guest who may share it does not edit it.
       await update.mutateAsync({
         id: opening.eventId,
         sharedWith: values.sharedWith,
         attendees: values.attendees,
+        permissions: values.permissions,
       });
       return;
     }
@@ -527,6 +541,13 @@ export function CalendarScreen() {
           opening?.eventId
             ? async (fromDay) => {
                 await stop.mutateAsync({ id: opening.eventId!, from: fromDay });
+              }
+            : undefined
+        }
+        onLeave={
+          opening?.eventId
+            ? async () => {
+                await leave.mutateAsync({ id: opening.eventId! });
               }
             : undefined
         }

@@ -6,6 +6,7 @@ import type { Principal } from "@backend/commons/principal";
 import {
   calendar,
   calendarEvent,
+  calendarEventAttendee,
   calendarEventHidden,
   calendarEventShare,
   calendarShare,
@@ -327,6 +328,9 @@ export async function deleteCalendars(ids: string[]): Promise<void> {
     .where(inArray(calendarEvent.calendarId, ids));
   await db.batch([
     db.delete(calendarEventShare).where(inArray(calendarEventShare.eventId, events)),
+    db
+      .delete(calendarEventAttendee)
+      .where(inArray(calendarEventAttendee.eventId, events)),
     db.delete(calendarEventHidden).where(inArray(calendarEventHidden.eventId, events)),
     db
       .update(calendarEventShare)
