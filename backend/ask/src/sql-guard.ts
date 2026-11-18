@@ -10,8 +10,10 @@
  * and `google_calendar_watch` are left off on purpose: no role reads them.
  */
 export const APP_TABLES = [
-  "task",
-  "task_share",
+  "list",
+  "list_share",
+  "list_item",
+  "list_item_assignee",
   "calendar",
   "calendar_share",
   "calendar_event",

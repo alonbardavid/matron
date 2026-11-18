@@ -14,7 +14,7 @@ const ID_CHUNK = 90;
 
 /**
  * Alarms: a member asks to be reminded some minutes before an event starts or
- * a task is due. The row here is what they asked for; a Durable Object of its
+ * a list item is due. The row here is what they asked for; a Durable Object of its
  * own (alarm-object.ts) rings it. The feature the thing belongs to decides who
  * may set one and when it rings; these act for no one.
  */
@@ -23,7 +23,7 @@ const ID_CHUNK = 90;
 export interface AlarmRing {
   /** When to ring. */
   ringAt: number;
-  /** The moment reminded of: the occurrence's start, or the end of the task's due day. */
+  /** The moment reminded of: the occurrence's start, or the end of the item's due day. */
   at: number;
   message: PushMessage;
   /** Due all the same, but not pushed: the member hid the event. */

@@ -22,7 +22,7 @@ interface Armed {
 }
 
 /**
- * One member's alarm on one event or task. It holds a single schedule: the
+ * One member's alarm on one event or list item. It holds a single schedule: the
  * next ring. When that comes it pushes the reminder to the member's devices
  * and schedules the ring after it, so a repeating event rings every time.
  *
@@ -43,7 +43,7 @@ export abstract class AlarmRinger extends Agent<Cloudflare.Env> {
   /** A scheduled ring is due: push it if it still stands, then schedule the one after. */
   async ring({ kind, subjectId, userId, ringAt }: Armed): Promise<void> {
     // Worked out again: the event may have moved or gone, or been hidden, since.
-    const due = await this.rings[kind](subjectId, userId, ringAt - 1);
+    const due = await this.nextRing(kind, subjectId, userId, ringAt - 1);
     const rang = due?.ringAt === ringAt;
     if (rang && !due.muted) await pushTo(userId, due.message, due.at);
     // A schedule is kept to the second, so this may run a moment early.
@@ -57,6 +57,12 @@ export abstract class AlarmRinger extends Agent<Cloudflare.Env> {
     if (rang && !armed) await forgetAlarm(kind, subjectId, userId);
   }
 
+  /** The ring after `after`; none for a kind of thing alarms are no longer kept on. */
+  private nextRing(kind: AlarmKind, subjectId: string, userId: string, after: number) {
+    const rings: Partial<Record<string, NextRing>> = this.rings;
+    return rings[kind]?.(subjectId, userId, after) ?? Promise.resolve(null);
+  }
+
   /** Whether a ring was scheduled. */
   private async armAfter(
     kind: AlarmKind,
@@ -67,7 +73,7 @@ export abstract class AlarmRinger extends Agent<Cloudflare.Env> {
     for (const schedule of await this.listSchedules()) {
       await this.cancelSchedule(schedule.id);
     }
-    const next = await this.rings[kind](subjectId, userId, after);
+    const next = await this.nextRing(kind, subjectId, userId, after);
     if (!next) return false;
     await this.schedule<Armed>(new Date(next.ringAt), "ring", {
       kind,

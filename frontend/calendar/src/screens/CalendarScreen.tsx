@@ -29,10 +29,10 @@ import {
   startOfWeek,
 } from "date-fns";
 import type { Occurrence } from "@shared/contract/app/calendar";
-import type { Task } from "@shared/contract/app/tasks";
+import type { DueItem } from "@shared/contract/app/lists";
 import { IconChevronDown, IconPlus } from "@frontend/ds/icons";
-import { useTaskActions, useTasks } from "@frontend/tasks/useTasks";
-import { TaskModal } from "@frontend/tasks/widgets/TaskModal";
+import { useDueItems, useItemActions } from "@frontend/lists/useLists";
+import { ItemModal } from "@frontend/lists/widgets/ItemModal";
 import { useCalendarFilters } from "../filters";
 import {
   allDayBlock,
@@ -112,7 +112,7 @@ type ItemPayload =
       startAt: number;
       endAt: number;
     }
-  | { kind: "task"; task: Task };
+  | { kind: "item"; item: DueItem };
 
 function payloadOf(item: ScheduleEventData): ItemPayload | undefined {
   return item.payload as ItemPayload | undefined;
@@ -120,7 +120,7 @@ function payloadOf(item: ScheduleEventData): ItemPayload | undefined {
 
 /**
  * An item as the schedule draws it, in every view: a hidden event faded, a
- * completed task crossed out.
+ * list item that is done crossed out.
  */
 const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
   const payload = payloadOf(item);
@@ -134,7 +134,7 @@ const renderItem: NonNullable<WeekViewProps["renderEvent"]> = (item, props) => {
           : props.title
       }
       muted={payload?.kind === "event" && payload.hidden}
-      struck={payload?.kind === "task" && payload.task.completedAt !== null}
+      struck={payload?.kind === "item" && payload.item.completedAt !== null}
     />
   );
 };
@@ -167,9 +167,9 @@ export function CalendarScreen() {
   } = useEventActions();
   const calendars = useCalendars();
   const { filters, update: setFilters, reset: resetFilters } = useCalendarFilters();
-  const tasks = useTasks();
-  const taskActions = useTaskActions();
-  const [openTask, setOpenTask] = useState<Task | null>(null);
+  const dueItems = useDueItems(filters.showItems);
+  const itemActions = useItemActions();
+  const [openItem, setOpenItem] = useState<DueItem | null>(null);
   const { viewportRef, maxHeight } = useTimeGrid();
   useEffect(enableTouchDrag, []);
   const scrollAreaProps = { viewportRef, mah: maxHeight };
@@ -214,17 +214,17 @@ export function CalendarScreen() {
             },
     } satisfies ItemPayload,
   }));
-  if (filters.showTasks) {
-    // Tasks with a due date, as all-day items on that day.
-    for (const task of tasks.data ?? []) {
-      if (!task.dueDate) continue;
-      const span = allDaySpan(task.dueDate, task.dueDate);
+  if (filters.showItems) {
+    // List items with a due date, as all-day items on that day, in their list's colour.
+    for (const item of dueItems.data ?? []) {
+      if (!item.dueDate) continue;
+      const span = allDaySpan(item.dueDate, item.dueDate);
       events.push({
-        id: `task:${task.id}`,
-        title: `${task.completedAt === null ? "☐" : "☑"} ${task.title}`,
+        id: `item:${item.id}`,
+        title: `${item.completedAt === null ? "☐" : "☑"} ${item.title}`,
         ...allDayBlock(span.startAt, span.endAt, localTimeZone()),
-        color: "gray",
-        payload: { kind: "task", task } satisfies ItemPayload,
+        color: item.listColor,
+        payload: { kind: "item", item } satisfies ItemPayload,
       });
     }
   }
@@ -233,7 +233,7 @@ export function CalendarScreen() {
     setOpening({ eventId: null, occurrence: null, initial });
   const openEvent = (item: ScheduleEventData) => {
     const payload = payloadOf(item);
-    if (payload?.kind === "task") setOpenTask(payload.task);
+    if (payload?.kind === "item") setOpenItem(payload.item);
     else if (payload)
       setOpening({
         eventId: payload.eventId,
@@ -274,7 +274,7 @@ export function CalendarScreen() {
    * edges (`resize`). The calendar draws a timed event over whole quarters of
    * an hour, so its times shift by as much as its block did rather than taking
    * the block's edges: 7:05 to 7:12 dragged an hour on is 8:05 to 8:12. An
-   * all-day event keeps its length in days; a task takes the day as its due date.
+   * all-day event keeps its length in days; a list item takes the day as its due date.
    */
   const dropped = (
     kind: "move" | "resize",
@@ -289,10 +289,10 @@ export function CalendarScreen() {
     },
   ) => {
     const payload = payloadOf(item);
-    if (payload?.kind === "task") {
+    if (payload?.kind === "item") {
       const day = toDayString(fromDateTimeString(newStart));
-      if (day !== payload.task.dueDate)
-        taskActions.update.mutate({ id: payload.task.id, dueDate: day });
+      if (payload.item.editable && day !== payload.item.dueDate)
+        itemActions.update.mutate({ id: payload.item.id, dueDate: day });
       return;
     }
     if (!payload?.editable) return;
@@ -325,7 +325,10 @@ export function CalendarScreen() {
   };
   const draggable = (item: ScheduleEventData) => {
     const payload = payloadOf(item);
-    return payload?.kind === "task" || (payload?.kind === "event" && payload.editable);
+    return (
+      (payload?.kind === "item" && payload.item.editable) ||
+      (payload?.kind === "event" && payload.editable)
+    );
   };
   const resizable = (item: ScheduleEventData) => {
     const payload = payloadOf(item);
@@ -559,18 +562,20 @@ export function CalendarScreen() {
             : undefined
         }
       />
-      <TaskModal
-        opened={openTask !== null}
-        onClose={() => setOpenTask(null)}
-        task={openTask}
+      <ItemModal
+        opened={openItem !== null}
+        onClose={() => setOpenItem(null)}
+        item={openItem}
+        people={openItem?.people ?? []}
+        editable={openItem?.editable ?? false}
         onSave={async (values) => {
-          if (openTask)
-            await taskActions.update.mutateAsync({ id: openTask.id, ...values });
+          if (openItem)
+            await itemActions.update.mutateAsync({ id: openItem.id, ...values });
         }}
         onRemove={
-          openTask
+          openItem
             ? async () => {
-                await taskActions.remove.mutateAsync({ id: openTask.id });
+                await itemActions.remove.mutateAsync({ id: openItem.id });
               }
             : undefined
         }

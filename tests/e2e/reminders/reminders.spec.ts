@@ -19,7 +19,7 @@ async function newEvent(page: Page, title: string, startsIn: number) {
   return (await response.json()) as { id: string };
 }
 
-/** The caller's alarm on an event or a task, as the API has it. */
+/** The caller's alarm on an event or a list item, as the API has it. */
 async function alarmOf(page: Page, path: string): Promise<number | null> {
   const response = await page.request.get(`${path}/alarm`);
   expect(response.ok()).toBe(true);
@@ -133,10 +133,14 @@ test.describe("reminders", () => {
     await signIn(page, OWNER);
     const event = await newEvent(page, "Private", 2 * 60 * MINUTE);
     const eventPath = `/api/app/calendar/events/${event.id}`;
-    const created = await page.request.post("/api/app/tasks", {
+    const chores = await page.request.post("/api/app/lists", {
+      data: { name: "Chores" },
+    });
+    const choresId = ((await chores.json()) as { id: string }).id;
+    const created = await page.request.post(`/api/app/lists/${choresId}/items`, {
       data: { title: "Take the bins out", dueDate: "2099-01-01" },
     });
-    const taskPath = `/api/app/tasks/${((await created.json()) as { id: string }).id}`;
+    const taskPath = `/api/app/list-items/${((await created.json()) as { id: string }).id}`;
     expect((await setAlarm(page, taskPath, 120)).ok()).toBe(true);
     expect(await alarmOf(page, taskPath)).toBe(120);
 
@@ -147,24 +151,28 @@ test.describe("reminders", () => {
     expect((await setAlarm(theirs, taskPath, 15)).status()).toBe(404);
     await other.close();
 
-    // A task that is removed takes its alarms with it.
+    // An item that is removed takes its alarms with it.
     expect((await page.request.delete(taskPath)).ok()).toBe(true);
     expect((await page.request.get(`${taskPath}/alarm`)).status()).toBe(404);
   });
 
-  test("a task with a due day offers the reminder", async ({ page }) => {
+  test("a list item with a due day offers the reminder", async ({ page }) => {
     await signIn(page, OWNER);
-    const created = await page.request.post("/api/app/tasks", {
+    const garden = await page.request.post("/api/app/lists", {
+      data: { name: "Garden" },
+    });
+    const gardenId = ((await garden.json()) as { id: string }).id;
+    const created = await page.request.post(`/api/app/lists/${gardenId}/items`, {
       data: { title: "Water the plants", dueDate: "2099-01-01" },
     });
     const { id } = (await created.json()) as { id: string };
-    await page.goto("/tasks");
-    await page.getByRole("button", { name: "Water the plants" }).click();
+    await page.goto(`/lists/${gardenId}`);
+    await page.getByRole("button", { name: "Water the plants", exact: true }).click();
     const remind = page.getByRole("dialog").getByRole("combobox", { name: "Remind me" });
     await expect(remind).toHaveValue("No reminder");
     await remind.click();
     await page.getByRole("option", { name: "2 hours before" }).click();
-    await expect.poll(() => alarmOf(page, `/api/app/tasks/${id}`)).toBe(120);
+    await expect.poll(() => alarmOf(page, `/api/app/list-items/${id}`)).toBe(120);
   });
 
   test("the event view sets the reminder", async ({ page }) => {

@@ -26,7 +26,7 @@ interface FiltersButtonProps {
   compact?: boolean;
 }
 
-/** What the calendar shows on this device: which calendars, tasks and hidden events. */
+/** What the calendar shows on this device: which calendars, list items and hidden events. */
 export function FiltersButton({
   filters,
   onChange,
@@ -107,9 +107,9 @@ export function FiltersButton({
           </Stack>
           <Divider />
           <Switch
-            label="Tasks with a due date"
-            checked={filters.showTasks}
-            onChange={(e) => onChange({ showTasks: e.currentTarget.checked })}
+            label="List items with a due date"
+            checked={filters.showItems}
+            onChange={(e) => onChange({ showItems: e.currentTarget.checked })}
           />
           <Switch
             label="Hidden events"

@@ -10,7 +10,7 @@ export const pushSubscription = sqliteTable(
     endpoint: text("endpoint").notNull().unique(),
     p256dh: text("p256dh").notNull(),
     auth: text("auth").notNull(),
-    /** The device's IANA time zone when it subscribed; the person's tasks are due by its days. */
+    /** The device's IANA time zone when it subscribed; the person's list items are due by its days. */
     timeZone: text("time_zone").notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -19,11 +19,11 @@ export const pushSubscription = sqliteTable(
 );
 
 /** What an alarm is on. */
-export const ALARM_KINDS = ["event", "task"] as const;
+export const ALARM_KINDS = ["event", "item"] as const;
 export type AlarmKind = (typeof ALARM_KINDS)[number];
 
 /**
- * A member's own alarm on an event or a task: how long before it starts or is
+ * A member's own alarm on an event or a list item: how long before it starts or is
  * due they are reminded. One per member and thing; nobody else's is affected.
  */
 export const alarm = sqliteTable(
@@ -31,7 +31,7 @@ export const alarm = sqliteTable(
   {
     id: text("id").primaryKey(),
     kind: text("kind", { enum: ALARM_KINDS }).notNull(),
-    /** The event's or the task's id. */
+    /** The event's or the list item's id. */
     subjectId: text("subject_id").notNull(),
     userId: text("user_id").notNull(),
     minutesBefore: integer("minutes_before").notNull(),

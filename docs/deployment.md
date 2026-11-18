@@ -76,7 +76,7 @@ Flags (`pnpm run deploy --name home`):
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PLACES_API_KEY`               | Worker secrets too, set from App settings through Cloudflare's API; a deploy leaves them as they are             |
 | `APP_ORIGIN`, `WORKER_NAME`, `CLOUDFLARE_ACCOUNT_ID`, `BUILDER_IMAGE`, `NODE_ENV` | Worker vars in the generated config; every resource the deployment owns carries the name in `WORKER_NAME`        |
 | Code                                                                              | Artifacts repository `<name>` in namespace `<name>` (the only source of truth after the first deploy)            |
-| Users, branches, sessions, tasks, events                                          | Production D1 `<name>`                                                                                           |
+| Users, branches, sessions, lists, events                                          | Production D1 `<name>`                                                                                           |
 | Files                                                                             | R2 bucket `<name>`, one prefix per branch                                                                        |
 | Builder image                                                                     | `registry.cloudflare.com/<account>/<name>@sha256:<digest>`                                                       |
 | Planner model, AI Gateway                                                         | App settings (builder model, assistant model and backend); the account's `default` gateway is a constant in code |

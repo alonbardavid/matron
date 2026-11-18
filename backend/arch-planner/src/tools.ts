@@ -24,7 +24,7 @@ export function repositoryTools(ref: string = MAIN_BRANCH): ToolSet {
           .string()
           .optional()
           .describe(
-            "Repository-relative directory, such as 'frontend/tasks'; omit for the root",
+            "Repository-relative directory, such as 'frontend/lists'; omit for the root",
           ),
       }),
       execute: ({ directory }) =>

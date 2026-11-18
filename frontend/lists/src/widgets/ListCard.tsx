@@ -1,0 +1,113 @@
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { Link } from "react-router-dom";
+import type { ListSummary } from "@shared/contract/app/lists";
+import { withBranch } from "@frontend/api/branch";
+import { PeopleAvatars } from "@frontend/auth/widgets/PeopleAvatars";
+import { IconPin } from "@frontend/ds/icons";
+import { describeDay, isPast } from "../dates";
+import classes from "./ListCard.module.css";
+
+interface ListCardProps {
+  list: ListSummary;
+  pinned: boolean;
+  onTogglePin: () => void;
+}
+
+/**
+ * A list on the Lists page: its name, its first open items with those under
+ * them, how many are done, and who it is shared with. It opens the list; its
+ * pin keeps it at the top on this device.
+ */
+export function ListCard({ list, pinned, onTogglePin }: ListCardProps) {
+  const pinLabel = pinned ? "Unpin from this device" : "Pin on this device";
+  return (
+    <Paper withBorder radius="md" className={classes.card} data-list-card={list.name}>
+      <Link
+        to={withBranch(`/lists/${list.id}`)}
+        className={classes.link}
+        aria-label={list.name}
+      >
+        <Stack gap="xs">
+          <Group gap="xs" wrap="nowrap" pr={36}>
+            <Box className={classes.dot} style={{ background: list.color }} />
+            <Text fw={650} size="lg" lh={1.3}>
+              {list.name}
+            </Text>
+          </Group>
+          {list.preview.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              {list.completedCount > 0 ? "All done" : "Nothing here yet"}
+            </Text>
+          ) : (
+            <Stack gap={6} component="ul" className={classes.lines}>
+              {list.preview.map((line) => (
+                <Group
+                  key={line.id}
+                  component="li"
+                  gap="xs"
+                  wrap="nowrap"
+                  align="flex-start"
+                  pl={line.depth * 22}
+                >
+                  <Box className={classes.box} />
+                  <Text size="sm" style={{ flex: 1, minWidth: 0 }} lh={1.4}>
+                    {line.title}
+                  </Text>
+                  {line.progress && (
+                    <Badge size="xs" variant="light" color="gray">
+                      {line.progress.done}/{line.progress.total}
+                    </Badge>
+                  )}
+                  {line.dueDate && (
+                    <Badge
+                      size="xs"
+                      variant="light"
+                      color={isPast(line.dueDate) ? "red" : "rose"}
+                    >
+                      {describeDay(line.dueDate)}
+                    </Badge>
+                  )}
+                </Group>
+              ))}
+              {list.more && (
+                <Text size="sm" c="dimmed" pl={24}>
+                  …
+                </Text>
+              )}
+            </Stack>
+          )}
+          {list.completedCount > 0 && (
+            <Text size="sm" c="dimmed" className={classes.completed}>
+              + {list.completedCount} completed
+            </Text>
+          )}
+          {list.sharedWith.length > 0 && (
+            <PeopleAvatars ids={[list.creatorId, ...list.sharedWith]} max={5} />
+          )}
+        </Stack>
+      </Link>
+      <Tooltip label={pinLabel} withArrow>
+        <ActionIcon
+          variant={pinned ? "light" : "subtle"}
+          color={pinned ? "rose" : "gray"}
+          size="lg"
+          className={classes.pin}
+          aria-label={pinLabel}
+          aria-pressed={pinned}
+          onClick={onTogglePin}
+        >
+          <IconPin size={18} filled={pinned} />
+        </ActionIcon>
+      </Tooltip>
+    </Paper>
+  );
+}

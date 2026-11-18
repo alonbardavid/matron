@@ -8,15 +8,15 @@ import { useMe } from "@frontend/auth/useMe";
 export interface CalendarFilters {
   /** Calendars left out; any calendar not named here shows, a new one included. */
   hiddenCalendars: string[];
-  /** Tasks with a due date, as all-day items on that day. */
-  showTasks: boolean;
+  /** List items with a due date, as all-day items on that day. */
+  showItems: boolean;
   /** Events the member hid, shown faded so they can be opened and unhidden. */
   showHidden: boolean;
 }
 
 export const DEFAULT_FILTERS: CalendarFilters = {
   hiddenCalendars: [],
-  showTasks: true,
+  showItems: true,
   showHidden: false,
 };
 
@@ -31,10 +31,10 @@ function read(key: string): CalendarFilters {
       Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
     return {
       hiddenCalendars: ids(parsed.hiddenCalendars),
-      showTasks:
-        typeof parsed.showTasks === "boolean"
-          ? parsed.showTasks
-          : DEFAULT_FILTERS.showTasks,
+      showItems:
+        typeof parsed.showItems === "boolean"
+          ? parsed.showItems
+          : DEFAULT_FILTERS.showItems,
       showHidden:
         typeof parsed.showHidden === "boolean"
           ? parsed.showHidden
@@ -49,7 +49,7 @@ function read(key: string): CalendarFilters {
 export function filtering(filters: CalendarFilters): boolean {
   return (
     filters.hiddenCalendars.length > 0 ||
-    filters.showTasks !== DEFAULT_FILTERS.showTasks ||
+    filters.showItems !== DEFAULT_FILTERS.showItems ||
     filters.showHidden !== DEFAULT_FILTERS.showHidden
   );
 }

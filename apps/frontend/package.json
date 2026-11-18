@@ -21,7 +21,7 @@
     "@frontend/notifications": "workspace:*",
     "@frontend/root": "workspace:*",
     "@frontend/settings": "workspace:*",
-    "@frontend/tasks": "workspace:*",
+    "@frontend/lists": "workspace:*",
     "@mantine/core": "9.7.4",
     "@mantine/dates": "9.7.4",
     "@mantine/form": "9.7.4",

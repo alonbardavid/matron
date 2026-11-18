@@ -37,7 +37,7 @@ export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
 
   const main: Item[] = [
     { to: "/", icon: <IconCalendar size={20} /> },
-    { to: "/tasks", icon: <IconChecklist size={20} /> },
+    { to: "/lists", icon: <IconChecklist size={20} /> },
   ];
   const more: Item[] = [
     { to: "/conversations", icon: <IconMessages size={20} /> },
@@ -54,7 +54,11 @@ export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
       key={item.to}
       to={withBranch(item.to)}
       className={classes.link}
-      data-active={pathname === item.to || undefined}
+      data-active={
+        pathname === item.to ||
+        (item.to !== "/" && pathname.startsWith(`${item.to}/`)) ||
+        undefined
+      }
       onClick={onNavigate}
     >
       <span className={classes.linkIcon}>{item.icon}</span>
