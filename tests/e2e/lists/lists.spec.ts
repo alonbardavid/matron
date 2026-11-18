@@ -245,7 +245,7 @@ test.describe("lists", () => {
       // Given edit, from the list's settings: they add items.
       await page.goto(`/lists/${list.id}`);
       await page.getByRole("button", { name: "List options" }).click();
-      await page.getByRole("menuitem", { name: "Name, colour and sharing" }).click();
+      await page.getByRole("menuitem", { name: "Edit" }).click();
       const settings = page.getByRole("dialog");
       await settings.getByRole("checkbox", { name: `${MEMBER.name} may edit` }).check();
       await settings.getByRole("button", { name: "Save" }).click();

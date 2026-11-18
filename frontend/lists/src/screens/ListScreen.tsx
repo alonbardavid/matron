@@ -200,7 +200,7 @@ export function ListScreen() {
               <Menu.Dropdown>
                 <Menu.Item onClick={() => setSettings(true)}>
                   {current.myPermissions.includes("share") || editable
-                    ? "Name, colour and sharing"
+                    ? "Edit"
                     : "Sharing"}
                 </Menu.Item>
                 {current.creatorId === me?.id && (
@@ -284,11 +284,7 @@ export function ListScreen() {
         people={people}
         editable={editable}
         onSave={save}
-        onRemove={
-          editing?.item
-            ? () => itemActions.remove(editing.item!.id)
-            : undefined
-        }
+        onRemove={editing?.item ? () => itemActions.remove(editing.item!.id) : undefined}
       />
       <Modal
         opened={deleting !== null}
