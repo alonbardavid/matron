@@ -25,13 +25,26 @@ export const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: "owner", label: "Owner" },
 ];
 
+/** The roles one may give: the owner role only by an owner. */
+export function grantableRoles(canManageOwners: boolean) {
+  return canManageOwners
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((option) => option.value !== "owner");
+}
+
 interface NewMemberModalProps {
   opened: boolean;
   onClose: () => void;
   onCreate: (values: MemberValues) => Promise<void>;
+  canManageOwners: boolean;
 }
 
-export function NewMemberModal({ opened, onClose, onCreate }: NewMemberModalProps) {
+export function NewMemberModal({
+  opened,
+  onClose,
+  onCreate,
+  canManageOwners,
+}: NewMemberModalProps) {
   const form = useForm<MemberValues>({
     initialValues: { name: "", email: "", password: "", role: "member" },
     schema: memberSchema,
@@ -49,7 +62,12 @@ export function NewMemberModal({ opened, onClose, onCreate }: NewMemberModalProp
         <FormTextInput name="name" label="Name" autoComplete="off" data-autofocus />
         <FormTextInput name="email" label="Email" type="email" autoComplete="off" />
         <FormPasswordInput name="password" label="Password" autoComplete="new-password" />
-        <FormSelect name="role" label="Role" data={ROLE_OPTIONS} allowDeselect={false} />
+        <FormSelect
+          name="role"
+          label="Role"
+          data={grantableRoles(canManageOwners)}
+          allowDeselect={false}
+        />
         <FormGeneralErrors />
         <FormSubmitButton mt="xs">Add user</FormSubmitButton>
       </StandardForm>
