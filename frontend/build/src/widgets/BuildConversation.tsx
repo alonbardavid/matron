@@ -6,7 +6,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { orpc } from "@frontend/api/orpc";
 import { ChatComposer } from "@frontend/ds/chat/ChatComposer";
 import { EmptyState } from "@frontend/ds/EmptyState";
-import { sessionSocketPath, type BuildPhase } from "@shared/contract/arch/sessions";
+import {
+  sessionSocketPath,
+  type BuildMessageMetadata,
+  type BuildPhase,
+} from "@shared/contract/arch/sessions";
 import type { BuildInput } from "../BuildChatContext";
 import { BuildMessage } from "./BuildMessage";
 import { BuilderRunCard } from "./BuilderRunCard";
@@ -24,6 +28,11 @@ const PLANNER_ACTIVITY: Record<string, string> = {
 };
 
 const REFRESH_DEBOUNCE_MS = 800;
+
+/** A member's message carries when it was said; the session keeps it. */
+function saidNow(): BuildMessageMetadata {
+  return { createdAt: Date.now() };
+}
 
 interface SessionState {
   phase?: BuildPhase;
@@ -81,7 +90,7 @@ export function BuildConversation({
   const say = (text: string, files: BuildInput["files"]) => {
     clearError();
     setAwaiting(true);
-    void sendMessage({ text, files });
+    void sendMessage({ text, files, metadata: saidNow() });
   };
   // The turn failed before an answer came: say so, and offer the last message again.
   const lastMember = [...messages]
@@ -128,7 +137,11 @@ export function BuildConversation({
     if (!pending || sentPending.current || status !== "ready") return;
     sentPending.current = true;
     setAwaiting(true);
-    void sendMessage({ text: pending.text, files: pending.files });
+    void sendMessage({
+      text: pending.text,
+      files: pending.files,
+      metadata: saidNow(),
+    });
     onPendingSent();
   }, [pending, status, sendMessage, onPendingSent]);
 

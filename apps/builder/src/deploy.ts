@@ -163,6 +163,12 @@ export async function ensureBranchDatabase(ctx: DeployContext): Promise<string> 
   return created.uuid;
 }
 
+/**
+ * Said once wrangler has deployed, so the chat's latest line is this and not
+ * the tail of wrangler's output.
+ */
+const DEPLOYED_LINE = "deployed successfully";
+
 export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
   const { run } = ctx;
   const w = wranglerContext(ctx);
@@ -203,6 +209,7 @@ export async function deployPreview(ctx: DeployContext): Promise<DeployResult> {
         describeFailure("wrangler preview", result),
         tail(combined(result)),
       );
+    ctx.log(DEPLOYED_LINE);
     previewUrl =
       parsePreviewUrl(recorded, run.branch.previewName, run.cloudflare.workerName) ??
       parsePreviewUrl(
@@ -247,4 +254,5 @@ export async function deployProduction(ctx: DeployContext): Promise<void> {
   await wranglerMust(w, "wrangler deploy", ["deploy", "--config", config], {
     timeoutMs: 20 * 60 * 1000,
   });
+  ctx.log(DEPLOYED_LINE);
 }

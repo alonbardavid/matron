@@ -26,7 +26,11 @@ test.describe("build chat", () => {
     const { id } = (await response.json()) as { id: string };
     const held = await page.request.get(`/api/arch/sessions/${id}/ws/get-messages`);
     expect(held.ok()).toBeTruthy();
-    expect(JSON.stringify(await held.json())).toContain("Add a shopping list");
+    const messages = (await held.json()) as { metadata?: { createdAt?: number } }[];
+    expect(JSON.stringify(messages)).toContain("Add a shopping list");
+    // It carries when it was said, which the chat shows beside it.
+    expect(messages[0]?.metadata?.createdAt).toBeGreaterThan(0);
+    await expect(chat.getByText("just now")).toBeVisible();
     // A reload replays it from the session.
     await page.reload();
     await page.getByRole("button", { name: "Chat" }).click();
