@@ -333,6 +333,9 @@ importers:
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261008.1
@@ -376,6 +379,9 @@ importers:
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261008.1

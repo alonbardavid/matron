@@ -1,4 +1,3 @@
-import { getAgentByName } from "agents";
 import { desc, eq } from "drizzle-orm";
 import { branchPermissions } from "@backend/arch-branches/permissions";
 import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
@@ -16,7 +15,7 @@ import type { BuildSessionObject } from "./session-object";
 
 const log = logger("arch-sessions/service");
 
-/** Headers the router puts on the upgrade request it forwards to the session's Durable Object. */
+/** Headers the router puts on every request it forwards to the session's Durable Object. */
 export const SOCKET_HEADERS = {
   sessionId: "x-session-id",
   userId: "x-user-id",
@@ -27,7 +26,8 @@ export const SOCKET_HEADERS = {
 
 export type SessionRow = typeof buildSessions.$inferSelect;
 
-function authorize(principal: Principal): void {
+/** Refuses a caller whose role may not use build sessions at all. */
+export function authorize(principal: Principal): void {
   if (!branchPermissions.can(principal.role, "create")) {
     throw new DomainError("FORBIDDEN", "You cannot start build sessions");
   }
@@ -138,37 +138,6 @@ export async function getSession(
     throw new DomainError("FORBIDDEN", "This is not your build session");
   }
   return sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
-}
-
-/**
- * Upgrades the request to a WebSocket served by the session's Durable Object,
- * which replays the transcript on it and then streams every new frame. The
- * identity travels in headers the Durable Object trusts: only the router can
- * reach it. A refusal is thrown; the route's error hook answers it.
- */
-export async function openSessionSocket(
-  principal: Principal,
-  sessionId: string,
-  request: Request,
-): Promise<Response> {
-  authorize(principal);
-  const row = await getSessionRow(sessionId);
-  if (row.userId !== principal.userId && principal.role !== "owner") {
-    throw new DomainError("FORBIDDEN", "This is not your build session");
-  }
-  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
-  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-    return new Response("Expected a WebSocket upgrade", { status: 426 });
-  }
-  const headers = new Headers(request.headers);
-  headers.set(SOCKET_HEADERS.sessionId, sessionId);
-  headers.set(SOCKET_HEADERS.userId, principal.userId);
-  headers.set(SOCKET_HEADERS.userName, principal.name);
-  headers.set(SOCKET_HEADERS.userEmail, principal.email);
-  headers.set(SOCKET_HEADERS.userRole, principal.role);
-  log.info("build session socket opened", { sessionId, userId: principal.userId });
-  const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
-  return buildSession.fetch(new Request(request, { headers }));
 }
 
 /** What the builder prepared for the review of the session's branch with its newest deploy, or null. */

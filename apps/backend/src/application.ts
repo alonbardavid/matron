@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { serveAppApi } from "@backend/api/handler";
 import { servePublicAppApi } from "@backend/api/public/handler";
-import { openAskSocket } from "@backend/ask/socket";
+import { askProxyRoute } from "@backend/api/routes/conversations";
 import { answerError } from "@backend/commons/errors";
 import {
   requireHandoff,
@@ -42,12 +42,9 @@ application.use("/api/app/*", async (c, next) => {
   return response ?? next();
 });
 
-// The assistant's chat socket, served by the ask session's object.
-application.get("/api/app/ask/:id/ws", async (c) => {
-  const principal = c.get("principal");
-  if (!principal) return c.json({ message: "Not signed in" }, 401);
-  return openAskSocket(principal, c.get("branch"), c.req.param("id"), c.req.raw);
-});
+// The assistant's chat socket and what the chat asks for beside it, served by the
+// ask session's object.
+application.get("/api/app/ask/:id/ws/*", askProxyRoute);
 
 application.all("/api/*", (c) => c.json({ message: "No such application route" }, 404));
 

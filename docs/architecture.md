@@ -8,9 +8,10 @@ how a request moves through it.
 1. `apps/backend/src/index.ts` picks the router or the application by `WORKER_ROLE`.
    `apps/backend/src/router.ts` is the **router**. It mounts better-auth at `/api/arch/auth/*`,
    resolves the session cookie into a `Principal` (`backend/arch-auth/src/session.ts`) and the
-   branch from `?branch=` or the referer (`backend/arch-routing/src/branch-param.ts`), upgrades the
-   build chat socket at `/api/arch/sessions/:sessionId/ws` (`openSessionSocket` in
-   `backend/arch-sessions/src/service.ts`) and serves
+   branch from `?branch=` or the referer (`backend/arch-routing/src/branch-param.ts`), hands the
+   build chat socket at `/api/arch/sessions/:sessionId/ws` and what the chat asks for below it
+   to the session's Durable Object (`sessionProxyRoute` in
+   `backend/arch-api/src/routes/sessions.ts`, through `backend/arch-sessions/src/proxy.ts`) and serves
    `/api/arch/*` itself through `backend/arch-api` (routes and handler for the
    `shared/contract/src/arch` contract); a path there that no procedure claims is a 404. A
    request naming a branch that does not exist gets `apps/backend/static/branch-not-found.html`
@@ -26,9 +27,10 @@ how a request moves through it.
    same request sent to the branch's Preview URL. A Preview runs this same Worker with
    `WORKER_ROLE=application`, so its entry skips the router and serves the application only.
 3. The application verifies the signature (`require-handoff.ts`), serves `/api/app/*` through
-   `backend/api` (routes and handler for the `shared/contract/src/app` contract), upgrades the
-   assistant's chat socket at `/api/app/ask/:id/ws` (`backend/ask/src/socket.ts`), and serves
-   everything else from static assets. The features behind the routes are `backend/tasks`,
+   `backend/api` (routes and handler for the `shared/contract/src/app` contract), hands the
+   assistant's chat socket at `/api/app/ask/:id/ws` and what the chat asks for below it to the
+   conversation's object (`askProxyRoute` in `backend/api/src/routes/conversations.ts`, through
+   `backend/ask/src/proxy.ts`), and serves everything else from static assets. The features behind the routes are `backend/tasks`,
    `backend/calendar` (with the recurrence expansion in `recurrence.ts`), `backend/household`
    (the member list and their pictures, `avatar.ts`), `backend/files` (uploads: `storage.ts` keeps
    writes under the branch's own R2 prefix, `service.ts` records and opens them by their visibility,
@@ -40,7 +42,7 @@ how a request moves through it.
 
 `AskSessionObject` (`backend/ask/src/ask-object.ts`) is a Think agent, one per conversation,
 named by the ask session id, on the branch the conversation was started on (the socket's URL
-names the branch; `socket.ts` refuses another branch's conversation). Its tools (`tools.ts`) wrap the tasks, calendar and household
+names the branch; `proxy.ts` refuses another branch's conversation). Its tools (`tools.ts`) wrap the tasks, calendar and household
 services as the connected user, so a tool can do no more than the user could in the app, plus
 `query_database`, one read-only SELECT checked by `sql-guard.ts` against the tables the user's
 role may read. The model is the household's assistant setting (`backend/arch-settings`); the
