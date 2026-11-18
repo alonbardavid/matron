@@ -8,9 +8,10 @@ how a request moves through it.
 1. `apps/backend/src/index.ts` picks the router or the application by `WORKER_ROLE`.
    `apps/backend/src/router.ts` is the **router**. It mounts better-auth at `/api/arch/auth/*`,
    resolves the session cookie into a `Principal` (`backend/arch-auth/src/session.ts`) and the
-   branch from `?branch=` or the referer (`backend/arch-routing/src/branch-param.ts`), upgrades the
-   build chat socket at `/api/arch/sessions/:sessionId/ws` (`openSessionSocket` in
-   `backend/arch-sessions/src/service.ts`) and serves
+   branch from `?branch=` or the referer (`backend/arch-routing/src/branch-param.ts`), hands the
+   build chat socket at `/api/arch/sessions/:sessionId/ws` and what the chat asks for below it
+   to the session's Durable Object (`sessionSocketRouter` in
+   `backend/arch-sessions/src/socket.ts`) and serves
    `/api/arch/*` itself through `backend/arch-api` (routes and handler for the
    `shared/contract/src/arch` contract); a path there that no procedure claims is a 404. A
    request naming a branch that does not exist gets `apps/backend/static/branch-not-found.html`

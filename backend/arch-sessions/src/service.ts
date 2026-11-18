@@ -141,19 +141,28 @@ export async function getSession(
 }
 
 /**
- * Upgrades the request to a WebSocket served by the session's Durable Object,
- * which replays the transcript on it and then streams every new frame. The
- * identity travels in headers the Durable Object trusts: only the router can
- * reach it. A refusal is thrown; the route's error hook answers it.
+ * Answers a request on the session's socket path, or below it, from the
+ * session's Durable Object. An upgrade becomes the chat's WebSocket, on which
+ * the object replays the transcript and then streams every new frame; the
+ * identity travels in headers the Durable Object trusts, since only the
+ * router can reach it. Anything else is what the chat asks for beside its
+ * socket (the messages so far, before it connects) and is answered by the
+ * path alone. A refusal is thrown; the route's error hook answers it.
  */
-export async function openSessionSocket(
+export async function serveSessionSocket(
   principal: Principal,
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  await requireOpenSession(principal, sessionId);
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
+  }
+  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-    return new Response("Expected a WebSocket upgrade", { status: 426 });
+    const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
+    return buildSession.fetch(new Request(request.url));
   }
   const headers = new Headers(request.headers);
   headers.set(SOCKET_HEADERS.sessionId, sessionId);
@@ -164,35 +173,6 @@ export async function openSessionSocket(
   log.info("build session socket opened", { sessionId, userId: principal.userId });
   const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
   return buildSession.fetch(new Request(request, { headers }));
-}
-
-/**
- * The session's messages so far, as its Durable Object answers the chat's
- * request for them. The chat starts from these: a socket that connects while
- * the planner is answering is sent the answer as it streams, not what was
- * said before it.
- */
-export async function readSessionMessages(
-  principal: Principal,
-  sessionId: string,
-  request: Request,
-): Promise<Response> {
-  await requireOpenSession(principal, sessionId);
-  const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
-  return buildSession.fetch(new Request(request.url));
-}
-
-/** Refuses a caller who may not use the session, and a session that was cleared. */
-async function requireOpenSession(
-  principal: Principal,
-  sessionId: string,
-): Promise<void> {
-  authorize(principal);
-  const row = await getSessionRow(sessionId);
-  if (row.userId !== principal.userId && principal.role !== "owner") {
-    throw new DomainError("FORBIDDEN", "This is not your build session");
-  }
-  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
 }
 
 /** What the builder prepared for the review of the session's branch with its newest deploy, or null. */

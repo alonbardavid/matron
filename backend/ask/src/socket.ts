@@ -1,5 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getAgentByName } from "agents";
+import type { MiddlewareHandler } from "hono";
+import type { ApiContext } from "@backend/commons/api";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
@@ -14,20 +16,47 @@ interface AskEnv {
 }
 
 /**
- * Upgrades the request to the ask session's object, which runs the assistant.
- * The identity travels in headers the object trusts: only the application,
- * behind the router's signed handoff, can reach it. A refusal is thrown; the
- * route's error hook answers it.
+ * The assistant's chat socket path and everything below it, for the
+ * application to mount with the conversation's id as `:id`. The chat's library
+ * decides what is asked for there (the socket itself, the messages so far
+ * before it connects), and the conversation's object is what answers it, so no
+ * path is named here: a request the object does not know gets the object's own
+ * refusal.
  */
-export async function openAskSocket(
+export const conversationSocketRouter: MiddlewareHandler<{
+  Variables: Pick<ApiContext, "principal" | "branch">;
+}> = async (c, next) => {
+  const id = c.req.param("id");
+  if (c.req.method !== "GET" || !id) return next();
+  const principal = c.get("principal");
+  if (!principal) return c.json({ message: "Not signed in" }, 401);
+  return serveConversationSocket(principal, c.get("branch"), id, c.req.raw);
+};
+
+/**
+ * Answers a request on the conversation's socket path, or below it, from the
+ * ask session's object, which runs the assistant. An upgrade becomes the
+ * chat's WebSocket; the identity travels in headers the object trusts, since
+ * only the application, behind the router's signed handoff, can reach it.
+ * Anything else is what the chat asks for beside its socket (the messages so
+ * far, before it connects) and is answered by the path alone. A refusal is
+ * thrown; the route's error hook answers it.
+ */
+async function serveConversationSocket(
   principal: Principal,
   branch: string,
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  await requireConversation(principal, branch, sessionId);
+  conversationPermissions.require(principal, "chat");
+  const conversation = await getConversation(principal, sessionId);
+  // Its messages live on the branch it was started on; another branch's object holds nothing of it.
+  if (conversation.branch !== branch) {
+    throw new DomainError("FORBIDDEN", "This conversation was started on another branch");
+  }
+  const object = await getAgentByName((env as unknown as AskEnv).ASK_SESSIONS, sessionId);
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-    return new Response("Expected a WebSocket upgrade", { status: 426 });
+    return object.fetch(new Request(request.url));
   }
   const headers = new Headers(request.headers);
   headers.set(ASK_SOCKET_HEADERS.userId, principal.userId);
@@ -36,37 +65,5 @@ export async function openAskSocket(
   headers.set(ASK_SOCKET_HEADERS.userRole, principal.role);
   headers.set(ASK_SOCKET_HEADERS.branch, branch);
   log.info("ask socket opened", { askSessionId: sessionId, userId: principal.userId });
-  const object = await getAgentByName((env as unknown as AskEnv).ASK_SESSIONS, sessionId);
   return object.fetch(new Request(request, { headers }));
-}
-
-/**
- * The conversation's messages so far, as its object answers the chat's request
- * for them. The chat starts from these: a socket that connects while the
- * assistant is answering is sent the answer as it streams, not what was said
- * before it.
- */
-export async function readAskMessages(
-  principal: Principal,
-  branch: string,
-  sessionId: string,
-  request: Request,
-): Promise<Response> {
-  await requireConversation(principal, branch, sessionId);
-  const object = await getAgentByName((env as unknown as AskEnv).ASK_SESSIONS, sessionId);
-  return object.fetch(new Request(request.url));
-}
-
-/** Refuses a caller who may not chat in the conversation, and a conversation of another branch. */
-async function requireConversation(
-  principal: Principal,
-  branch: string,
-  sessionId: string,
-): Promise<void> {
-  conversationPermissions.require(principal, "chat");
-  const conversation = await getConversation(principal, sessionId);
-  // Its messages live on the branch it was started on; another branch's object holds nothing of it.
-  if (conversation.branch !== branch) {
-    throw new DomainError("FORBIDDEN", "This conversation was started on another branch");
-  }
 }

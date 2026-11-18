@@ -7,7 +7,7 @@ import { readBranchParam } from "@backend/arch-routing/branch-param";
 import { handoff } from "@backend/arch-routing/handoff";
 import { answerError } from "@backend/commons/errors";
 import { missingBranchResponse } from "@backend/arch-routing/missing-branch";
-import { openSessionSocket, readSessionMessages } from "@backend/arch-sessions/service";
+import { sessionSocketRouter } from "@backend/arch-sessions/socket";
 import type { ApiContext } from "@backend/commons/api";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
@@ -36,20 +36,9 @@ router.use("*", async (c, next) => {
   await next();
 });
 
-// The build chat socket: the chat procedures are served on the socket itself,
-// by the session's Durable Object.
-router.get("/api/arch/sessions/:sessionId/ws", async (c) => {
-  const principal = c.get("principal");
-  if (!principal) return c.json({ message: "Not signed in" }, 401);
-  return openSessionSocket(principal, c.req.param("sessionId"), c.req.raw);
-});
-
-// What the chat asks for before it connects: the session's messages so far.
-router.get("/api/arch/sessions/:sessionId/ws/get-messages", async (c) => {
-  const principal = c.get("principal");
-  if (!principal) return c.json({ message: "Not signed in" }, 401);
-  return readSessionMessages(principal, c.req.param("sessionId"), c.req.raw);
-});
+// The build chat socket and what the chat asks for beside it: the chat procedures
+// are served on the socket itself, by the session's Durable Object.
+router.use("/api/arch/sessions/:sessionId/ws/*", sessionSocketRouter);
 
 router.all("/api/arch/*", (c) =>
   serveArchApi(c.req.raw, { principal: c.get("principal"), branch: c.get("branch") }),
