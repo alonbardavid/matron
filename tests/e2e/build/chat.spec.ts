@@ -52,4 +52,34 @@ test.describe("build chat", () => {
     await expect(panel.getByText("sketch.txt")).toBeHidden();
     await expect(panel.getByRole("button", { name: "Send" })).toBeDisabled();
   });
+
+  test("the chat panel widens by dragging its edge, and stays so", async ({ page }) => {
+    await signIn(page, OWNER);
+    await page.getByRole("button", { name: "Build" }).click();
+    const panel = page.locator(".mantine-Drawer-content");
+    await expect(panel).toBeVisible();
+    const widthOf = async () => Math.round((await panel.boundingBox())!.width);
+    await expect.poll(widthOf).toBe(440);
+    // It slides in: the edge is where it will stay once the panel reaches the window's.
+    const viewport = page.viewportSize()!;
+    const rightOf = async () => {
+      const box = (await panel.boundingBox())!;
+      return Math.round(box.x + box.width);
+    };
+    await expect.poll(rightOf).toBe(viewport.width);
+    const edge = page.getByRole("separator", { name: "Panel width" });
+    const at = (await edge.boundingBox())!;
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(viewport.width - 700, at.y + at.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(widthOf).toBe(700);
+    // The width is this browser's: it is there again after a reload.
+    await page.reload();
+    await page.getByRole("button", { name: "Build" }).click();
+    await expect.poll(widthOf).toBe(700);
+    // A double click gives the usual width back.
+    await edge.dblclick();
+    await expect.poll(widthOf).toBe(440);
+  });
 });
