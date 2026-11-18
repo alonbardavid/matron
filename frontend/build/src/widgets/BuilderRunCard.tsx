@@ -35,7 +35,7 @@ const KINDS: Record<
   log: { label: "output", ...PLAIN },
   agent: { label: "agent", ...tint("blue") },
   thought: { label: "thinking", ...tint("grape") },
-  tool: { label: "tool", ...tint("teal") },
+  tool: { label: "tool", ...PLAIN },
 };
 
 /** How much of the latest line shows while the run is collapsed. */
