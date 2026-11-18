@@ -49,7 +49,8 @@ function ReviewRoute() {
 }
 
 export function App() {
-  const { me, isLoading, can, canManage, canTroubleshoot, canReview } = useMe();
+  const { me, isLoading, can, canManage, canConfigure, canTroubleshoot, canReview } =
+    useMe();
 
   if (isLoading) return <Loading />;
   if (!me) return <LoginScreen />;
@@ -94,7 +95,7 @@ export function App() {
             <Route
               path="app-settings"
               element={
-                <Guard allow={canManage}>
+                <Guard allow={canConfigure}>
                   <AppSettingsScreen />
                 </Guard>
               }

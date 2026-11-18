@@ -234,8 +234,9 @@ test.describe("drag with a finger", () => {
   const { defaultBrowserType: _browser, ...phone } = devices["Pixel 7"];
   test.use(phone);
   test.beforeEach(async ({ page }) => {
-    // The day view opens with now in its middle: here, the events' evening, clear of the others'.
-    await page.clock.setFixedTime(new Date(dayAt(19) + 30 * 60_000));
+    // The day view opens with now in its middle: here, the evening of this spec's own day, clear
+    // of the events other specs make today at times that follow the real clock.
+    await page.clock.setFixedTime(new Date(dayAt(19, OWN_DAY) + 30 * 60_000));
   });
 
   test("an event held moves where it is dragged; one stretched from its edge grows", async ({
@@ -244,8 +245,8 @@ test.describe("drag with a finger", () => {
     await signIn(page, OWNER);
     const event = await addEvent(page, {
       title: "Physio",
-      startAt: dayAt(18),
-      endAt: dayAt(19),
+      startAt: dayAt(18, OWN_DAY),
+      endAt: dayAt(19, OWN_DAY),
     });
     await page.reload();
     const block = onCalendar(page, "Physio");
@@ -262,9 +263,10 @@ test.describe("drag with a finger", () => {
     await expect
       .poll(
         async () =>
-          (await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.startAt,
+          (await occurrencesOf(page, event.id, dayAt(0, OWN_DAY), dayAt(24, OWN_DAY)))[0]
+            ?.startAt,
       )
-      .toBe(dayAt(20));
+      .toBe(dayAt(20, OWN_DAY));
 
     const moved = (await block.boundingBox())!;
     await fingerDrag(
@@ -274,9 +276,11 @@ test.describe("drag with a finger", () => {
     );
     await expect
       .poll(
-        async () => (await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.endAt,
+        async () =>
+          (await occurrencesOf(page, event.id, dayAt(0, OWN_DAY), dayAt(24, OWN_DAY)))[0]
+            ?.endAt,
       )
-      .toBe(dayAt(22));
+      .toBe(dayAt(22, OWN_DAY));
   });
 
   test("a quick swipe over an event scrolls the day and leaves the event", async ({
@@ -285,8 +289,8 @@ test.describe("drag with a finger", () => {
     await signIn(page, OWNER);
     const event = await addEvent(page, {
       title: "Piano",
-      startAt: dayAt(17),
-      endAt: dayAt(18),
+      startAt: dayAt(17, OWN_DAY),
+      endAt: dayAt(18, OWN_DAY),
     });
     await page.reload();
     const block = onCalendar(page, "Piano");
@@ -301,8 +305,9 @@ test.describe("drag with a finger", () => {
       .poll(async () => (await block.boundingBox())!.y)
       .toBeGreaterThan(before.y + 50);
     await page.waitForTimeout(500);
-    expect((await occurrencesOf(page, event.id, dayAt(0), dayAt(24)))[0]?.startAt).toBe(
-      dayAt(17),
-    );
+    expect(
+      (await occurrencesOf(page, event.id, dayAt(0, OWN_DAY), dayAt(24, OWN_DAY)))[0]
+        ?.startAt,
+    ).toBe(dayAt(17, OWN_DAY));
   });
 });

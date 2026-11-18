@@ -42,8 +42,9 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    Checks with `git push --dry-run` that the commit can become `main` there: if `main` there
    holds commits this one lacks (a merge made in the app, another deploy), the deploy stops
    before anything changes. Merge that `main` in and deploy again.
-5. Builds `apps/builder` with `wrangler containers build ... --push`, tagged with the git sha, and
-   keeps the pushed digest: the config references
+5. Builds `apps/builder` with `wrangler containers build`, tagged with the git sha. An image the
+   registry already holds (the builder unchanged since an earlier deploy) is reused by its
+   digest; any other is pushed with `wrangler containers push`. The config references
    `registry.cloudflare.com/<account>/matron@sha256:<digest>`.
 6. Writes `apps/backend/dist/worker/wrangler.generated.production.json`.
 7. Applies pending D1 migrations to the production database.

@@ -26,9 +26,12 @@ interface Item {
   show?: boolean;
 }
 
-/** The app's navigation: the household's pages, then its management, with the account at the bottom. */
+/**
+ * The app's navigation: the household's pages at the top; at the bottom the
+ * household's management, then the account.
+ */
 export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
-  const { can, canManage, canTroubleshoot } = useMe();
+  const { can, canManage, canConfigure, canTroubleshoot } = useMe();
   const logout = useLogout();
   const { pathname } = useLocation();
 
@@ -39,8 +42,10 @@ export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
   const more: Item[] = [
     { to: "/conversations", icon: <IconMessages size={20} /> },
     { to: "/builds", icon: <IconBranch size={20} />, show: can("view") },
+  ].filter((item) => item.show !== false);
+  const manage: Item[] = [
     { to: "/users", icon: <IconUsers size={20} />, show: canManage },
-    { to: "/app-settings", icon: <IconSliders size={20} />, show: canManage },
+    { to: "/app-settings", icon: <IconSliders size={20} />, show: canConfigure },
     { to: "/troubleshooting", icon: <IconWrench size={20} />, show: canTroubleshoot },
   ].filter((item) => item.show !== false);
 
@@ -73,7 +78,8 @@ export function Navbar({ onNavigate }: { onNavigate?: () => void }) {
         <div className={classes.spacer} />
         {more.map(link)}
       </div>
-      <div className={classes.footer}>
+      {manage.length > 0 && <div className={classes.section}>{manage.map(link)}</div>}
+      <div className={classes.section}>
         {link({ to: "/settings", icon: <IconSettings size={20} /> })}
         <button type="button" className={classes.link} onClick={() => void logout()}>
           <span className={classes.linkIcon}>

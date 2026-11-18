@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { admin } from "better-auth/plugins";
 import { newEntityId, type Entity } from "@backend/commons/ids";
 import { authSchema } from "@backend/db-models/arch-auth";
@@ -24,6 +25,32 @@ const AUTH_MODEL_ENTITIES: Record<string, Entity> = {
   account: "USER_ACCOUNT",
   verification: "USER_VERIFICATION",
 };
+
+/**
+ * The admin plugin checks what a role may do, not to whom: only an owner makes
+ * someone an owner, or changes an owner's account.
+ */
+const guardOwners = createAuthMiddleware(async (ctx) => {
+  const { role, data, userId } = (ctx.body ?? {}) as {
+    role?: unknown;
+    data?: { role?: unknown };
+    userId?: unknown;
+  };
+  const grantsOwner = [role, data?.role].flat().some((r) => String(r).includes("owner"));
+  if (!grantsOwner && typeof userId !== "string") return;
+  const session = await getSessionFromCtx(ctx);
+  if (!session || session.user.role === "owner") return;
+  // The admin plugin adds `role` to the user, beyond better-auth's own type.
+  const target =
+    typeof userId === "string"
+      ? ((await ctx.context.internalAdapter.findUserById(userId)) as {
+          role?: string | null;
+        } | null)
+      : null;
+  if (grantsOwner || target?.role === "owner") {
+    throw new APIError("FORBIDDEN", { message: "Only an owner can edit another owner" });
+  }
+});
 
 function createAuth() {
   const { BETTER_AUTH_SECRET, APP_ORIGIN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } =
@@ -65,6 +92,7 @@ function createAuth() {
     // the household through the admin plugin.
     emailAndPassword: { enabled: true, disableSignUp: true },
     plugins: [admin({ ac, roles, adminRoles: ADMIN_ROLES, defaultRole: "member" })],
+    hooks: { before: guardOwners },
     databaseHooks: {
       user: {
         // `image` is the id of an uploaded file, set only by the household's

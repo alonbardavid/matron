@@ -42,7 +42,7 @@ function groupedCatalog(catalog: ModelCatalog | undefined) {
   return [...groups].map(([group, items]) => ({ group, items }));
 }
 
-/** Household-wide settings; owners and admins only. */
+/** Household-wide settings; owners only. */
 export function AppSettingsScreen() {
   const queryClient = useQueryClient();
   const settings = useQuery(orpc.settings.get.queryOptions());

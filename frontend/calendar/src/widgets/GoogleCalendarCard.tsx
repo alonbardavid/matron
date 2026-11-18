@@ -123,8 +123,8 @@ export function GoogleCalendarCard() {
   } else if (!status.data.configured) {
     body = (
       <Text size="sm" c="dimmed">
-        Not set up for the household yet: an owner or admin adds the household&apos;s
-        Google app in App settings.
+        Not set up for the household yet: the owner adds the household&apos;s Google app
+        in App settings.
       </Text>
     );
   } else if (!connection) {
