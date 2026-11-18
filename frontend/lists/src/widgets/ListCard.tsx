@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Checkbox,
   Group,
   Paper,
   Stack,
@@ -20,22 +21,27 @@ interface ListCardProps {
   list: ListSummary;
   pinned: boolean;
   onTogglePin: () => void;
+  /** Ticks an item off; only on a list the caller may edit. */
+  onTick: (itemId: string) => void;
 }
 
 /**
  * A list on the Lists page: its name, its first open items with those under
- * them, how many are done, and who it is shared with. It opens the list; its
- * pin keeps it at the top on this device.
+ * them, how many are done, and who it is shared with. Anywhere on it opens
+ * the list, but for its boxes, which tick items off, and its pin, which keeps
+ * it at the top on this device.
  */
-export function ListCard({ list, pinned, onTogglePin }: ListCardProps) {
+export function ListCard({ list, pinned, onTogglePin, onTick }: ListCardProps) {
   const pinLabel = pinned ? "Unpin from this device" : "Pin on this device";
+  const editable = list.myPermissions.includes("edit");
   return (
     <Paper withBorder radius="md" className={classes.card} data-list-card={list.name}>
       <Link
         to={withBranch(`/lists/${list.id}`)}
         className={classes.link}
         aria-label={list.name}
-      >
+      />
+      <div className={classes.body}>
         <Stack gap="xs">
           <Group gap="xs" wrap="nowrap" pr={36}>
             <Box className={classes.dot} style={{ background: list.color }} />
@@ -58,7 +64,16 @@ export function ListCard({ list, pinned, onTogglePin }: ListCardProps) {
                   align="flex-start"
                   pl={line.depth * 22}
                 >
-                  <Box className={classes.box} />
+                  <Checkbox
+                    size="xs"
+                    radius="sm"
+                    mt={3}
+                    className={classes.tick}
+                    checked={false}
+                    disabled={!editable}
+                    aria-label={line.title}
+                    onChange={() => onTick(line.id)}
+                  />
                   <Text size="sm" style={{ flex: 1, minWidth: 0 }} lh={1.4}>
                     {line.title}
                   </Text>
@@ -94,7 +109,7 @@ export function ListCard({ list, pinned, onTogglePin }: ListCardProps) {
             <PeopleAvatars ids={[list.creatorId, ...list.sharedWith]} max={5} />
           )}
         </Stack>
-      </Link>
+      </div>
       <Tooltip label={pinLabel} withArrow>
         <ActionIcon
           variant={pinned ? "light" : "subtle"}

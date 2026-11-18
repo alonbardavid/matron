@@ -36,7 +36,7 @@ import {
 } from "@frontend/ds/icons";
 import { usePinnedLists } from "../pins";
 import { applyMove, childrenOf, rowsOf, type Placement } from "../tree";
-import { useItemActions, useList, useListActions, useLists } from "../useLists";
+import { useItemActions, useList, useListActions } from "../useLists";
 import { ItemModal, type ItemValues } from "../widgets/ItemModal";
 import { ItemTree } from "../widgets/ItemTree";
 import { ListModal } from "../widgets/ListModal";
@@ -61,7 +61,6 @@ function sharingLine(
 export function ListScreen() {
   const { id = "" } = useParams();
   const list = useList(id);
-  const lists = useLists("");
   const { me } = useMe();
   const { nameOf } = useHouseholdMembers();
   const queryClient = useQueryClient();
@@ -77,6 +76,7 @@ export function ListScreen() {
   } | null>(null);
   const [draft, setDraft] = useState("");
   const [removing, setRemoving] = useState(false);
+  const [deleting, setDeleting] = useState<ListItem | null>(null);
 
   const items = list.data?.items ?? [];
   const children = useMemo(() => childrenOf(items), [items]);
@@ -124,20 +124,15 @@ export function ListScreen() {
   const current = list.data;
   const editable = current.myPermissions.includes("edit");
   const people = [current.creatorId, ...current.sharedWith];
-  const otherLists = (lists.data ?? [])
-    .filter((other) => other.id !== current.id && other.myPermissions.includes("edit"))
-    .map((other) => ({ id: other.id, name: other.name }));
   const pinned = isPinned(current.id);
   const listKey = orpc.lists.get.queryKey({ input: { id: current.id } });
 
-  const move = (item: ListItem, placement: Placement, listId?: string) => {
-    if (!listId) {
-      // Shown where it was put at once; the server's answer replaces it.
-      queryClient.setQueryData<List>(listKey, (old) =>
-        old ? { ...old, items: applyMove(old.items, item.id, placement) } : old,
-      );
-    }
-    itemActions.move.mutate({ id: item.id, ...placement, ...(listId && { listId }) });
+  const move = (item: ListItem, placement: Placement) => {
+    // Shown where it was put at once; the server's answer replaces it.
+    queryClient.setQueryData<List>(listKey, (old) =>
+      old ? { ...old, items: applyMove(old.items, item.id, placement) } : old,
+    );
+    itemActions.move.mutate({ id: item.id, ...placement });
   };
 
   const toggleDone = (item: ListItem, completed: boolean) => {
@@ -177,7 +172,7 @@ export function ListScreen() {
       onOpen={(item) => setEditing({ item, under: null })}
       onAddUnder={(under) => setEditing({ item: null, under })}
       onMove={move}
-      otherLists={otherLists}
+      onDelete={setDeleting}
     />
   );
 
@@ -329,6 +324,35 @@ export function ListScreen() {
             : undefined
         }
       />
+      <Modal
+        opened={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title="Delete item"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">Delete “{deleting?.title}” and everything under it?</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDeleting(null)}>
+              Keep it
+            </Button>
+            <Button
+              color="red"
+              loading={itemActions.remove.isPending}
+              onClick={() =>
+                deleting &&
+                itemActions.remove.mutate(
+                  { id: deleting.id },
+                  { onSuccess: () => setDeleting(null) },
+                )
+              }
+            >
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={removing}
         onClose={() => setRemoving(false)}

@@ -127,36 +127,3 @@ export function applyMove(
     return item.id === id ? { ...item, parentId, position } : { ...item, position };
   });
 }
-
-/** Moving an item up or down among those beside it, in or out a level: where it goes, or null when it cannot. */
-export function nudge(
-  items: ListItem[],
-  item: ListItem,
-  how: "up" | "down" | "in" | "out",
-): Placement | null {
-  const children = childrenOf(items);
-  const siblings = children.get(item.parentId) ?? [];
-  const at = siblings.findIndex((s) => s.id === item.id);
-  switch (how) {
-    case "up":
-      return at > 0 ? { parentId: item.parentId, index: at - 1 } : null;
-    case "down":
-      return at < siblings.length - 1 ? { parentId: item.parentId, index: at + 1 } : null;
-    case "in": {
-      const above = siblings[at - 1];
-      return above
-        ? { parentId: above.id, index: (children.get(above.id) ?? []).length }
-        : null;
-    }
-    case "out": {
-      if (item.parentId === null) return null;
-      const parent = items.find((p) => p.id === item.parentId);
-      if (!parent) return null;
-      const around = children.get(parent.parentId) ?? [];
-      return {
-        parentId: parent.parentId,
-        index: around.findIndex((p) => p.id === parent.id) + 1,
-      };
-    }
-  }
-}

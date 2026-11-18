@@ -102,9 +102,7 @@ test.describe("lists", () => {
     await expect(page.getByRole("heading", { name: "Weekend chores" })).toBeVisible();
   });
 
-  test("items nest and keep their order, from the menu and by dragging", async ({
-    page,
-  }) => {
+  test("items keep their order and nest by dragging", async ({ page }) => {
     await signIn(page, OWNER);
     const list = await makeList(page, { name: "Party" });
     for (const title of ["Venue", "Invitations", "Cake", "Flavour"]) {
@@ -112,49 +110,86 @@ test.describe("lists", () => {
     }
     await page.goto(`/lists/${list.id}`);
     await expect(page.getByRole("checkbox", { name: "Flavour" })).toBeVisible();
+    const row = (title: string) => page.locator(`[data-item-row='${title}']`);
+    /** Drags the item by its handle: down to a point in another row, or sideways. */
+    const drag = async (title: string, to: { below?: string; dx?: number }) => {
+      const from = (await page
+        .getByRole("button", { name: `Drag ${title}` })
+        .boundingBox())!;
+      const x = from.x + from.width / 2;
+      const y = from.y + from.height / 2;
+      const target = to.below ? (await row(to.below).boundingBox())! : null;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(
+        x + (to.dx ?? 0),
+        target ? target.y + target.height * 0.9 : y,
+        { steps: 10 },
+      );
+      await page.mouse.up();
+    };
 
+    // Down past two items.
+    await drag("Venue", { below: "Cake" });
+    await expect
+      .poll(() => outlineOf(page, list.id))
+      .toBe("Invitations, Cake, Venue, Flavour");
+    // Right: under the item above.
+    await drag("Venue", { dx: 40 });
+    await expect
+      .poll(() => outlineOf(page, list.id))
+      .toBe("Invitations, Cake [Venue], Flavour");
+    // An item under another moves with it.
+    await drag("Cake", { below: "Flavour" });
+    await expect
+      .poll(() => outlineOf(page, list.id))
+      .toBe("Invitations, Flavour, Cake [Venue]");
+    // Left: out a level again.
+    await drag("Venue", { dx: -40 });
+    await expect
+      .poll(() => outlineOf(page, list.id))
+      .toBe("Invitations, Flavour, Cake, Venue");
+  });
+
+  test("an item's menu edits it, adds an item under it and deletes it", async ({
+    page,
+  }) => {
+    await signIn(page, OWNER);
+    const list = await makeList(page, { name: "Garage" });
+    await addItem(page, list.id, { title: "Sell the bike" });
+    await page.goto(`/lists/${list.id}`);
     const menu = async (title: string, action: string) => {
       await page.getByRole("button", { name: `Options for ${title}` }).click();
+      await expect(page.getByRole("menuitem")).toHaveText([
+        "Edit",
+        "Add a subitem",
+        "Delete",
+      ]);
       await page.getByRole("menuitem", { name: action }).click();
     };
-    await menu("Flavour", "Put under the item above");
-    await expect
-      .poll(() => outlineOf(page, list.id))
-      .toBe("Venue, Invitations, Cake [Flavour]");
-    await menu("Cake", "Move up");
-    await expect
-      .poll(() => outlineOf(page, list.id))
-      .toBe("Venue, Cake [Flavour], Invitations");
-    await menu("Flavour", "Move out a level");
-    await expect
-      .poll(() => outlineOf(page, list.id))
-      .toBe("Venue, Cake, Flavour, Invitations");
+    const dialog = page.getByRole("dialog");
 
-    // Dragged by its handle: down past the next item, then right to go under the one above.
-    const handle = page.getByRole("button", { name: "Drag Venue" });
-    const row = (title: string) => page.locator(`[data-item-row='${title}']`);
-    const from = (await handle.boundingBox())!;
-    const target = (await row("Cake").boundingBox())!;
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(from.x + from.width / 2, target.y + target.height * 0.9, {
-      steps: 10,
-    });
-    await page.mouse.up();
-    await expect
-      .poll(() => outlineOf(page, list.id))
-      .toBe("Cake, Venue, Flavour, Invitations");
+    await menu("Sell the bike", "Edit");
+    await dialog.getByLabel("Title").fill("Sell the old bike");
+    await dialog.getByLabel("Title").press("Enter");
+    await expect(page.getByRole("checkbox", { name: "Sell the old bike" })).toBeVisible();
 
-    const venue = (await page.getByRole("button", { name: "Drag Venue" }).boundingBox())!;
-    await page.mouse.move(venue.x + venue.width / 2, venue.y + venue.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(venue.x + venue.width / 2 + 40, venue.y + venue.height / 2, {
-      steps: 8,
-    });
-    await page.mouse.up();
+    await menu("Sell the old bike", "Add a subitem");
+    await expect(dialog.getByText("Under “Sell the old bike”")).toBeVisible();
+    await dialog.getByLabel("Title").fill("Take photos");
+    await dialog.getByRole("button", { name: "Add item" }).click();
     await expect
       .poll(() => outlineOf(page, list.id))
-      .toBe("Cake [Venue], Flavour, Invitations");
+      .toBe("Sell the old bike [Take photos]");
+
+    await menu("Sell the old bike", "Delete");
+    const confirm = page.getByRole("dialog", { name: "Delete item" });
+    await expect(confirm).toContainText(
+      "Delete “Sell the old bike” and everything under it?",
+    );
+    await confirm.getByRole("button", { name: "Delete" }).click();
+    await expect.poll(() => outlineOf(page, list.id)).toBe("");
+    await expect(page.getByRole("checkbox", { name: "Take photos" })).toHaveCount(0);
   });
 
   test("an item moves to another list with the items under it", async ({ page }) => {
@@ -164,14 +199,15 @@ test.describe("lists", () => {
     const shed = await addItem(page, home.id, { title: "Tidy the shed" });
     await addItem(page, home.id, { title: "Sort the tools", parentId: shed.id });
     await addItem(page, garden.id, { title: "Plant bulbs" });
-    await page.goto(`/lists/${home.id}`);
-    await page.getByRole("button", { name: "Options for Tidy the shed" }).click();
-    await page.getByRole("menuitem", { name: "Move to list" }).hover();
-    await page.getByRole("menuitem", { name: "Garden" }).click();
-    await expect
-      .poll(() => outlineOf(page, garden.id))
-      .toBe("Plant bulbs, Tidy the shed [Sort the tools]");
-    await expect.poll(() => outlineOf(page, home.id)).toBe("");
+    // The assistant moves items between lists; the page does not offer it.
+    const moved = await page.request.put(`/api/app/list-items/${shed.id}/position`, {
+      data: { listId: garden.id, parentId: null, index: 1 },
+    });
+    expect(moved.ok()).toBeTruthy();
+    expect(await outlineOf(page, garden.id)).toBe(
+      "Plant bulbs, Tidy the shed [Sort the tools]",
+    );
+    expect(await outlineOf(page, home.id)).toBe("");
   });
 
   test("a list is shared to view, edit or share", async ({ page, browser }) => {
@@ -277,5 +313,16 @@ test.describe("lists", () => {
       .getByRole("button", { name: "Unpin from this device" })
       .click();
     await expect(pinned).toHaveCount(0);
+
+    // An item is ticked off from its card; the rest of the card opens the list.
+    await card("Books to read").getByRole("checkbox", { name: "The Overstory" }).click();
+    await expect(card("Books to read")).toContainText("+ 1 completed");
+    await expect(
+      card("Books to read").getByRole("checkbox", { name: "The Overstory" }),
+    ).toHaveCount(0);
+    // The card's link lies over its text: a click there, as a finger's, opens the list.
+    const text = (await card("Films to watch").getByText("Paddington 2").boundingBox())!;
+    await page.mouse.click(text.x + text.width / 2, text.y + text.height / 2);
+    await expect(page.getByRole("heading", { name: "Films to watch" })).toBeVisible();
   });
 });

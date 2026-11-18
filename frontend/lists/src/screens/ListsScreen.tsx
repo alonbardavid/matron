@@ -8,7 +8,7 @@ import { EmptyState } from "@frontend/ds/EmptyState";
 import { IconPlus, IconSearch } from "@frontend/ds/icons";
 import { Page } from "@frontend/ds/Page";
 import { usePinnedLists } from "../pins";
-import { useListActions, useLists } from "../useLists";
+import { useItemActions, useListActions, useLists } from "../useLists";
 import { ListCard } from "../widgets/ListCard";
 import classes from "../widgets/ListCard.module.css";
 import { ListModal } from "../widgets/ListModal";
@@ -19,6 +19,7 @@ export function ListsScreen() {
   const [q] = useDebouncedValue(search, 200);
   const lists = useLists(q);
   const { create } = useListActions();
+  const { update: updateItem } = useItemActions();
   const { isPinned, toggle } = usePinnedLists();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export function ListsScreen() {
           list={list}
           pinned={isPinned(list.id)}
           onTogglePin={() => toggle(list.id)}
+          onTick={(itemId) => updateItem.mutate({ id: itemId, completed: true })}
         />
       ))}
     </div>

@@ -13,14 +13,7 @@ import type { ListItem } from "@shared/contract/app/lists";
 import { PeopleAvatars } from "@frontend/auth/widgets/PeopleAvatars";
 import { IconDots, IconGrip } from "@frontend/ds/icons";
 import { describeDay, isPast } from "../dates";
-import {
-  depthBounds,
-  nudge,
-  placementAt,
-  subtreeIds,
-  type Placement,
-  type Row,
-} from "../tree";
+import { depthBounds, placementAt, subtreeIds, type Placement, type Row } from "../tree";
 import classes from "./ItemTree.module.css";
 
 /** How far in each level of items sits, and how far a drag goes to change level. */
@@ -53,16 +46,15 @@ interface ItemTreeProps {
   onToggle: (item: ListItem, completed: boolean) => void;
   onOpen: (item: ListItem) => void;
   onAddUnder: (item: ListItem) => void;
-  onMove: (item: ListItem, placement: Placement, listId?: string) => void;
-  /** The other lists the caller may move items to. */
-  otherLists: { id: string; name: string }[];
+  onMove: (item: ListItem, placement: Placement) => void;
+  onDelete: (item: ListItem) => void;
 }
 
 /**
  * A list's items as an indented tree. Each can be dragged by its handle: up
  * and down to reorder it, right to put it under the item above, left to take
- * it out a level; the items under it go with it. Its menu does the same
- * without dragging, and moves it to another list.
+ * it out a level; the items under it go with it. Its menu edits it, adds an
+ * item under it, or deletes it.
  */
 export function ItemTree(props: ItemTreeProps) {
   const { rows, childMap: children, editable, draggable } = props;
@@ -237,18 +229,13 @@ export function ItemTree(props: ItemTreeProps) {
   );
 }
 
-/** The same moves as dragging, and moving to another list. */
+/** What can be done with one item besides ticking it off and dragging it. */
 function ItemMenu({
   item,
-  items,
+  onOpen,
   onAddUnder,
-  onMove,
-  otherLists,
+  onDelete,
 }: ItemTreeProps & { item: ListItem }) {
-  const move = (how: "up" | "down" | "in" | "out") => {
-    const placement = nudge(items, item, how);
-    if (placement) onMove(item, placement);
-  };
   return (
     <Menu position="bottom-end" withinPortal>
       <Menu.Target>
@@ -261,42 +248,12 @@ function ItemMenu({
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
+        <Menu.Item onClick={() => onOpen(item)}>Edit</Menu.Item>
         <Menu.Item onClick={() => onAddUnder(item)}>Add a subitem</Menu.Item>
         <Menu.Divider />
-        <Menu.Item disabled={!nudge(items, item, "up")} onClick={() => move("up")}>
-          Move up
+        <Menu.Item color="red" onClick={() => onDelete(item)}>
+          Delete
         </Menu.Item>
-        <Menu.Item disabled={!nudge(items, item, "down")} onClick={() => move("down")}>
-          Move down
-        </Menu.Item>
-        <Menu.Item disabled={!nudge(items, item, "in")} onClick={() => move("in")}>
-          Put under the item above
-        </Menu.Item>
-        <Menu.Item disabled={!nudge(items, item, "out")} onClick={() => move("out")}>
-          Move out a level
-        </Menu.Item>
-        {otherLists.length > 0 && (
-          <>
-            <Menu.Divider />
-            <Menu.Sub>
-              <Menu.Sub.Target>
-                <Menu.Sub.Item>Move to list</Menu.Sub.Item>
-              </Menu.Sub.Target>
-              <Menu.Sub.Dropdown>
-                {otherLists.map((list) => (
-                  <Menu.Item
-                    key={list.id}
-                    onClick={() =>
-                      onMove(item, { parentId: null, index: 1_000_000 }, list.id)
-                    }
-                  >
-                    {list.name}
-                  </Menu.Item>
-                ))}
-              </Menu.Sub.Dropdown>
-            </Menu.Sub>
-          </>
-        )}
       </Menu.Dropdown>
     </Menu>
   );
