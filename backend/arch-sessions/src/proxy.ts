@@ -1,8 +1,9 @@
 import { getAgentByName } from "agents";
+import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
 import type { Principal } from "@backend/commons/principal";
 import { sessionsEnv } from "./env";
-import { requireOpenSession, SOCKET_HEADERS } from "./service";
+import { authorize, getSessionRow, SOCKET_HEADERS } from "./service";
 
 const log = logger("arch-sessions/proxy");
 
@@ -19,7 +20,13 @@ export async function proxyToBuildSession(
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  await requireOpenSession(principal, sessionId);
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
+  }
+  // A cleared session holds nothing to talk to.
+  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
   const headers = new Headers(request.headers);
   headers.set(SOCKET_HEADERS.sessionId, sessionId);
   headers.set(SOCKET_HEADERS.userId, principal.userId);

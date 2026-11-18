@@ -26,7 +26,8 @@ export const SOCKET_HEADERS = {
 
 export type SessionRow = typeof buildSessions.$inferSelect;
 
-function authorize(principal: Principal): void {
+/** Refuses a caller whose role may not use build sessions at all. */
+export function authorize(principal: Principal): void {
   if (!branchPermissions.can(principal.role, "create")) {
     throw new DomainError("FORBIDDEN", "You cannot start build sessions");
   }
@@ -137,22 +138,6 @@ export async function getSession(
     throw new DomainError("FORBIDDEN", "This is not your build session");
   }
   return sessionsEnv().BUILD_SESSIONS.getByName(sessionId);
-}
-
-/**
- * Refuses a caller who may not talk to the session's Durable Object: someone
- * who is neither its member nor the owner, and anyone once it was cleared.
- */
-export async function requireOpenSession(
-  principal: Principal,
-  sessionId: string,
-): Promise<void> {
-  authorize(principal);
-  const row = await getSessionRow(sessionId);
-  if (row.userId !== principal.userId && principal.role !== "owner") {
-    throw new DomainError("FORBIDDEN", "This is not your build session");
-  }
-  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
 }
 
 /** What the builder prepared for the review of the session's branch with its newest deploy, or null. */
