@@ -42,8 +42,6 @@ export function useMe() {
     isOwner: me?.role === "owner",
     /** Owners and admins: the household's members. */
     canManage: me ? householdPermissions.can(me.role, "manage") : false,
-    /** Owners: making someone an owner, and changing an owner's account. */
-    canManageOwners: me ? householdPermissions.can(me.role, "manage_owners") : false,
     /** Owners: the app settings, its models and household secrets. */
     canConfigure: me ? settingsPermissions.can(me.role, "manage") : false,
     /** Owners: the deployment's own databases, containers and objects. */

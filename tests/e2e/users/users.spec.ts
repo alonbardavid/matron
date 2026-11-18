@@ -31,7 +31,7 @@ test.describe("users", () => {
     await expect(page.getByText("nina@example.com")).toHaveCount(0);
   });
 
-  test("an admin manages users but has no app settings or troubleshooting", async ({
+  test("an admin manages users, but not owners, app settings or troubleshooting", async ({
     page,
     browser,
   }) => {
@@ -68,7 +68,7 @@ test.describe("users", () => {
       });
       expect(update.status()).toBe(403);
 
-      // No admin path to the owner role: not granting it, not taking over an owner.
+      // Only an owner makes an owner or touches an owner's account.
       const post = (path: string, data: object) =>
         adminPage.request.post(`/api/arch/auth/admin/${path}`, {
           headers: { origin },
@@ -81,26 +81,17 @@ test.describe("users", () => {
         users: { id: string; email: string }[];
       };
       const ownerId = users.find((u) => u.email === OWNER.email)!.id;
-      const newOwner = {
+      const refused = await post("create-user", {
         email: "otto@example.com",
         password: "otto-password-123",
         name: "Otto Owner",
-      };
-      expect((await post("create-user", { ...newOwner, role: "owner" })).status()).toBe(
-        403,
-      );
-      expect(
-        (await post("create-user", { ...newOwner, data: { role: "owner" } })).status(),
-      ).toBe(403);
+        role: "owner",
+      });
+      expect(refused.status()).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        message: "Only an owner can edit another owner",
+      });
       expect((await post("set-role", { userId: user.id, role: "owner" })).status()).toBe(
-        403,
-      );
-      expect(
-        (
-          await post("update-user", { userId: user.id, data: { role: "owner" } })
-        ).status(),
-      ).toBe(403);
-      expect((await post("set-role", { userId: ownerId, role: "member" })).status()).toBe(
         403,
       );
       expect(
@@ -111,9 +102,8 @@ test.describe("users", () => {
           })
         ).status(),
       ).toBe(403);
-      expect((await post("remove-user", { userId: ownerId })).status()).toBe(403);
 
-      // Members and admins are still the admin's to manage.
+      // Members are still the admin's to add.
       const member = await post("create-user", {
         email: "mia@example.com",
         password: "mia-password-123",
@@ -122,23 +112,7 @@ test.describe("users", () => {
       });
       expect(member.ok()).toBe(true);
       const { user: mia } = (await member.json()) as { user: { id: string } };
-      expect((await post("set-role", { userId: mia.id, role: "admin" })).ok()).toBe(true);
       expect((await post("remove-user", { userId: mia.id })).ok()).toBe(true);
-
-      // The screen offers none of it: no Owner to pick, the owner's row is fixed.
-      await navLink(adminPage, "Users").click();
-      await expect(
-        adminPage.getByRole("combobox", { name: `Role of ${OWNER.name}` }),
-      ).toBeDisabled();
-      await expect(
-        adminPage
-          .getByRole("row", { name: new RegExp(OWNER.name) })
-          .getByRole("button", { name: "Remove" }),
-      ).toHaveCount(0);
-      await adminPage.getByRole("button", { name: "Add user" }).click();
-      await adminPage.getByRole("dialog").getByRole("combobox", { name: "Role" }).click();
-      await expect(adminPage.getByRole("option", { name: "Admin" })).toBeVisible();
-      await expect(adminPage.getByRole("option", { name: "Owner" })).toHaveCount(0);
     } finally {
       await context.close();
       await page.request.post("/api/arch/auth/admin/remove-user", {

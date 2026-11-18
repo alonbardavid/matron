@@ -2,16 +2,11 @@ import { env } from "cloudflare:workers";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
-import type { GenericEndpointContext } from "better-auth";
 import { admin } from "better-auth/plugins";
-import { DomainError } from "@backend/commons/errors";
 import { newEntityId, type Entity } from "@backend/commons/ids";
-import type { Principal } from "@backend/commons/principal";
 import { authSchema } from "@backend/db-models/arch-auth";
 import { getDb } from "@backend/db-models/db";
-import { requireOwnerAccess, requireOwnerGrant } from "@backend/household/owners";
 import { ac, ADMIN_ROLES, roles } from "@backend/access/registry";
-import { principalOf } from "./principal";
 
 /** better-auth is mounted here by the router; nothing under it is proxied. */
 export const AUTH_BASE_PATH = "/api/arch/auth";
@@ -31,22 +26,31 @@ const AUTH_MODEL_ENTITIES: Record<string, Entity> = {
   verification: "USER_VERIFICATION",
 };
 
-/** Runs a household rule on better-auth's behalf, answering its refusal as better-auth answers. */
-async function asAuthError(rule: () => void | Promise<void>): Promise<void> {
-  try {
-    await rule();
-  } catch (err) {
-    if (err instanceof DomainError) throw new APIError(err.code, { message: err.message });
-    throw err;
-  }
-}
-
-/** Who made the request a write belongs to; null for a request with no session, or none at all. */
-async function callerOf(ctx: GenericEndpointContext | null): Promise<Principal | null> {
-  if (!ctx) return null;
+/**
+ * The admin plugin checks what a role may do, not to whom: only an owner makes
+ * someone an owner, or changes an owner's account.
+ */
+const guardOwners = createAuthMiddleware(async (ctx) => {
+  const { role, data, userId } = (ctx.body ?? {}) as {
+    role?: unknown;
+    data?: { role?: unknown };
+    userId?: unknown;
+  };
+  const grantsOwner = [role, data?.role].flat().some((r) => String(r).includes("owner"));
+  if (!grantsOwner && typeof userId !== "string") return;
   const session = await getSessionFromCtx(ctx);
-  return session ? principalOf(session.user) : null;
-}
+  if (!session || session.user.role === "owner") return;
+  // The admin plugin adds `role` to the user, beyond better-auth's own type.
+  const target =
+    typeof userId === "string"
+      ? ((await ctx.context.internalAdapter.findUserById(userId)) as {
+          role?: string | null;
+        } | null)
+      : null;
+  if (grantsOwner || target?.role === "owner") {
+    throw new APIError("FORBIDDEN", { message: "Only an owner can edit another owner" });
+  }
+});
 
 function createAuth() {
   const { BETTER_AUTH_SECRET, APP_ORIGIN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } =
@@ -88,35 +92,13 @@ function createAuth() {
     // the household through the admin plugin.
     emailAndPassword: { enabled: true, disableSignUp: true },
     plugins: [admin({ ac, roles, adminRoles: ADMIN_ROLES, defaultRole: "member" })],
-    hooks: {
-      // The admin plugin checks what a role may do, not to whom. Every request it
-      // takes on one user names them as `userId`: an owner's is the household's to guard.
-      before: createAuthMiddleware(async (ctx) => {
-        const userId = (ctx.body as { userId?: unknown } | undefined)?.userId;
-        if (typeof userId !== "string") return;
-        const caller = await callerOf(ctx);
-        // Without a session the admin plugin refuses the request itself.
-        if (caller) await asAuthError(() => requireOwnerAccess(caller, userId));
-      }),
-    },
+    hooks: { before: guardOwners },
     databaseHooks: {
       user: {
-        // Whatever the route, a user written with the owner role is one an owner made.
-        create: {
-          before: async (data, ctx) => {
-            const caller = await callerOf(ctx);
-            // The deploy script creates the first owner, with no one signed in.
-            if (caller) await asAuthError(() => requireOwnerGrant(caller, data.role));
-          },
-        },
+        // `image` is the id of an uploaded file, set only by the household's
+        // avatar service; a profile update names nothing else as a picture.
         update: {
-          before: async (data, ctx) => {
-            if ("role" in data) {
-              const caller = await callerOf(ctx);
-              if (caller) await asAuthError(() => requireOwnerGrant(caller, data.role));
-            }
-            // `image` is the id of an uploaded file, set only by the household's
-            // avatar service; a profile update names nothing else as a picture.
+          before: async (data) => {
             const { image: _image, ...rest } = data;
             return { data: rest };
           },

@@ -9,7 +9,7 @@ import { Page } from "@frontend/ds/Page";
 import { useHouseholdMembers } from "../useHouseholdMembers";
 import { useHouseholdUsers } from "../useHouseholdUsers";
 import { toRole, useMe, type Role } from "../useMe";
-import { grantableRoles, NewMemberModal, ROLE_OPTIONS } from "../widgets/NewMemberModal";
+import { NewMemberModal, ROLE_OPTIONS } from "../widgets/NewMemberModal";
 import { UserAvatar } from "../widgets/UserAvatar";
 
 /** A member as the admin list gives them: the application's list adds the picture. */
@@ -17,9 +17,6 @@ type HouseholdUser = Omit<ListedUser, "avatarUrl">;
 
 interface MemberControls {
   self: boolean;
-  /** An owner, and the viewer is not one: their account is not the viewer's to change. */
-  locked: boolean;
-  canManageOwners: boolean;
   busy: boolean;
   onRole: (role: Role) => void;
   onRemove: () => Promise<unknown>;
@@ -59,12 +56,12 @@ function RoleSelect({
 }) {
   return (
     <Select
-      data={controls.locked ? ROLE_OPTIONS : grantableRoles(controls.canManageOwners)}
+      data={ROLE_OPTIONS}
       value={toRole(user.role)}
       variant={variant}
       allowDeselect={false}
       aria-label={`Role of ${user.name}`}
-      disabled={controls.self || controls.locked || controls.busy}
+      disabled={controls.self || controls.busy}
       onChange={(value) => value && controls.onRole(value as Role)}
     />
   );
@@ -77,7 +74,7 @@ function RemoveButton({
   user: HouseholdUser;
   controls: MemberControls;
 }) {
-  if (controls.self || controls.locked) return null;
+  if (controls.self) return null;
   return (
     <ConfirmButton
       size="xs"
@@ -94,15 +91,13 @@ function RemoveButton({
 
 /** The household's members and their roles; owners and admins manage them. */
 export function UsersScreen() {
-  const { me, canManageOwners } = useMe();
+  const { me } = useMe();
   const { users, createUser, setRole, removeUser } = useHouseholdUsers();
   const [modalOpened, modal] = useDisclosure(false);
   const narrow = useMediaQuery("(max-width: 48em)");
 
   const controlsFor = (user: HouseholdUser): MemberControls => ({
     self: user.id === me?.id,
-    locked: !canManageOwners && toRole(user.role) === "owner",
-    canManageOwners,
     busy: setRole.isPending,
     onRole: (role) => setRole.mutate({ userId: user.id, role }),
     onRemove: () => removeUser.mutateAsync({ userId: user.id }),
@@ -183,7 +178,6 @@ export function UsersScreen() {
       <NewMemberModal
         opened={modalOpened}
         onClose={modal.close}
-        canManageOwners={canManageOwners}
         onCreate={async (values) => {
           await createUser.mutateAsync(values);
         }}
