@@ -1,4 +1,3 @@
-import { listModelCatalog } from "@backend/arch-settings/catalog";
 import {
   getHouseholdSecrets,
   getSettings,
@@ -12,7 +11,6 @@ export const settings = arch.settings.router({
   update: arch.settings.update.handler(({ context, input }) =>
     updateSettings(context.principal, input),
   ),
-  models: arch.settings.models.handler(() => listModelCatalog()),
   secrets: arch.settings.secrets.handler(({ context }) =>
     getHouseholdSecrets(context.principal),
   ),

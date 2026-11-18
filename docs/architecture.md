@@ -46,9 +46,9 @@ names the branch; `proxy.ts` refuses another branch's conversation). Its tools (
 services as the connected user, so a tool can do no more than the user could in the app, plus
 `query_database`, one read-only SELECT checked by `sql-guard.ts` against the tables the user's
 role may read. The model is the household's assistant setting (`backend/arch-settings`); the
-planner and the builder's agent turns have their own. `models/gateway.ts` reaches it: an
-`anthropic/` slug is Anthropic's API through the gateway with the Worker's token, so the
-household's stored provider key applies, and a `@cf/` slug is Workers AI through the AI binding.
+planner and the builder's agent turns have their own. It is one of Anthropic's models, as for
+the builder, and `models/gateway.ts` reaches it: Anthropic's API through the gateway with the
+Worker's token, so the household's stored provider key applies.
 A Preview holds the token too, so its assistant takes the same route.
 
 ## Reminders
