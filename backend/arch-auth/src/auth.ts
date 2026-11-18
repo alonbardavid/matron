@@ -2,12 +2,14 @@ import { env } from "cloudflare:workers";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import type { GenericEndpointContext } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId, type Entity } from "@backend/commons/ids";
+import type { Principal } from "@backend/commons/principal";
 import { authSchema } from "@backend/db-models/arch-auth";
 import { getDb } from "@backend/db-models/db";
-import { requireUserChange, type UserChange } from "@backend/household/owners";
+import { requireOwnerAccess, requireOwnerGrant } from "@backend/household/owners";
 import { ac, ADMIN_ROLES, roles } from "@backend/access/registry";
 import { principalOf } from "./principal";
 
@@ -29,41 +31,21 @@ const AUTH_MODEL_ENTITIES: Record<string, Entity> = {
   verification: "USER_VERIFICATION",
 };
 
-/** The admin routes that act on one user's account, named by `userId` in the body. */
-const ACTS_ON_USER = new Set([
-  "/admin/set-role",
-  "/admin/update-user",
-  "/admin/remove-user",
-  "/admin/set-user-password",
-  "/admin/ban-user",
-  "/admin/unban-user",
-  "/admin/revoke-user-sessions",
-]);
-
-/** A role as the admin plugin takes it: a string, a comma-separated list or an array. */
-function rolesIn(value: unknown): string[] {
-  const values = Array.isArray(value) ? value : value == null ? [] : [value];
-  return values
-    .flatMap((v) => String(v).split(","))
-    .map((role) => role.trim())
-    .filter(Boolean);
+/** Runs a household rule on better-auth's behalf, answering its refusal as better-auth answers. */
+async function asAuthError(rule: () => void | Promise<void>): Promise<void> {
+  try {
+    await rule();
+  } catch (err) {
+    if (err instanceof DomainError) throw new APIError(err.code, { message: err.message });
+    throw err;
+  }
 }
 
-/** What an admin route changes about the household's users, or null for any other route. */
-function userChangeOf(path: string, body: unknown): UserChange | null {
-  const input = (body ?? {}) as {
-    role?: unknown;
-    userId?: unknown;
-    data?: { role?: unknown };
-  };
-  const userId = typeof input.userId === "string" ? input.userId : undefined;
-  if (path === "/admin/create-user") {
-    return { roles: [...rolesIn(input.role), ...rolesIn(input.data?.role)] };
-  }
-  if (!ACTS_ON_USER.has(path)) return null;
-  const roles =
-    path === "/admin/set-role" ? rolesIn(input.role) : rolesIn(input.data?.role);
-  return { roles, userId };
+/** Who made the request a write belongs to; null for a request with no session, or none at all. */
+async function callerOf(ctx: GenericEndpointContext | null): Promise<Principal | null> {
+  if (!ctx) return null;
+  const session = await getSessionFromCtx(ctx);
+  return session ? principalOf(session.user) : null;
 }
 
 function createAuth() {
@@ -107,30 +89,34 @@ function createAuth() {
     emailAndPassword: { enabled: true, disableSignUp: true },
     plugins: [admin({ ac, roles, adminRoles: ADMIN_ROLES, defaultRole: "member" })],
     hooks: {
-      // The admin plugin checks what a role may do, not to whom: the household
-      // decides who may grant the owner role or change an owner's account.
+      // The admin plugin checks what a role may do, not to whom. Every request it
+      // takes on one user names them as `userId`: an owner's is the household's to guard.
       before: createAuthMiddleware(async (ctx) => {
-        const change = userChangeOf(ctx.path, ctx.body);
-        if (!change) return;
-        const session = await getSessionFromCtx(ctx);
+        const userId = (ctx.body as { userId?: unknown } | undefined)?.userId;
+        if (typeof userId !== "string") return;
+        const caller = await callerOf(ctx);
         // Without a session the admin plugin refuses the request itself.
-        if (!session) return;
-        try {
-          await requireUserChange(principalOf(session.user), change);
-        } catch (err) {
-          if (err instanceof DomainError) {
-            throw new APIError(err.code, { message: err.message });
-          }
-          throw err;
-        }
+        if (caller) await asAuthError(() => requireOwnerAccess(caller, userId));
       }),
     },
     databaseHooks: {
       user: {
-        // `image` is the id of an uploaded file, set only by the household's
-        // avatar service; a profile update names nothing else as a picture.
+        // Whatever the route, a user written with the owner role is one an owner made.
+        create: {
+          before: async (data, ctx) => {
+            const caller = await callerOf(ctx);
+            // The deploy script creates the first owner, with no one signed in.
+            if (caller) await asAuthError(() => requireOwnerGrant(caller, data.role));
+          },
+        },
         update: {
-          before: async (data) => {
+          before: async (data, ctx) => {
+            if ("role" in data) {
+              const caller = await callerOf(ctx);
+              if (caller) await asAuthError(() => requireOwnerGrant(caller, data.role));
+            }
+            // `image` is the id of an uploaded file, set only by the household's
+            // avatar service; a profile update names nothing else as a picture.
             const { image: _image, ...rest } = data;
             return { data: rest };
           },
