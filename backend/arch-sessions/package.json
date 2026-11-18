@@ -19,7 +19,6 @@
     "agents": "0.32.0",
     "ai": "^7.0.0",
     "drizzle-orm": "^0.45.1",
-    "hono": "^4.7.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {

@@ -1,4 +1,3 @@
-import { getAgentByName } from "agents";
 import { desc, eq } from "drizzle-orm";
 import { branchPermissions } from "@backend/arch-branches/permissions";
 import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
@@ -16,7 +15,7 @@ import type { BuildSessionObject } from "./session-object";
 
 const log = logger("arch-sessions/service");
 
-/** Headers the router puts on the upgrade request it forwards to the session's Durable Object. */
+/** Headers the router puts on every request it forwards to the session's Durable Object. */
 export const SOCKET_HEADERS = {
   sessionId: "x-session-id",
   userId: "x-user-id",
@@ -141,38 +140,19 @@ export async function getSession(
 }
 
 /**
- * Answers a request on the session's socket path, or below it, from the
- * session's Durable Object. An upgrade becomes the chat's WebSocket, on which
- * the object replays the transcript and then streams every new frame; the
- * identity travels in headers the Durable Object trusts, since only the
- * router can reach it. Anything else is what the chat asks for beside its
- * socket (the messages so far, before it connects) and is answered by the
- * path alone. A refusal is thrown; the route's error hook answers it.
+ * Refuses a caller who may not talk to the session's Durable Object: someone
+ * who is neither its member nor the owner, and anyone once it was cleared.
  */
-export async function serveSessionSocket(
+export async function requireOpenSession(
   principal: Principal,
   sessionId: string,
-  request: Request,
-): Promise<Response> {
+): Promise<void> {
   authorize(principal);
   const row = await getSessionRow(sessionId);
   if (row.userId !== principal.userId && principal.role !== "owner") {
     throw new DomainError("FORBIDDEN", "This is not your build session");
   }
   if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
-  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-    const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
-    return buildSession.fetch(new Request(request.url));
-  }
-  const headers = new Headers(request.headers);
-  headers.set(SOCKET_HEADERS.sessionId, sessionId);
-  headers.set(SOCKET_HEADERS.userId, principal.userId);
-  headers.set(SOCKET_HEADERS.userName, principal.name);
-  headers.set(SOCKET_HEADERS.userEmail, principal.email);
-  headers.set(SOCKET_HEADERS.userRole, principal.role);
-  log.info("build session socket opened", { sessionId, userId: principal.userId });
-  const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
-  return buildSession.fetch(new Request(request, { headers }));
 }
 
 /** What the builder prepared for the review of the session's branch with its newest deploy, or null. */

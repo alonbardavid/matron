@@ -333,6 +333,9 @@ importers:
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261008.1
@@ -376,6 +379,9 @@ importers:
       '@shared/contract':
         specifier: workspace:*
         version: link:../../shared/contract
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261008.1
@@ -591,9 +597,6 @@ importers:
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
-      hono:
-        specifier: ^4.7.0
-        version: 4.13.14
       zod:
         specifier: ^4.1.0
         version: 4.6.7
@@ -727,9 +730,6 @@ importers:
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
-      hono:
-        specifier: ^4.7.0
-        version: 4.13.14
       just-bash:
         specifier: ^3.6.0
         version: 3.6.0
