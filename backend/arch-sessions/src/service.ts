@@ -1,14 +1,10 @@
 import { desc, eq } from "drizzle-orm";
 import { branchPermissions } from "@backend/arch-branches/permissions";
-import {
-  branchForSession,
-  isLiveBranch,
-  type BranchRow,
-} from "@backend/arch-branches/service";
+import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
-import type { Principal } from "@backend/commons/principal";
+import { MAIN_BRANCH, type Principal } from "@backend/commons/principal";
 import { getDb } from "@backend/db-models/db";
 import { buildSessions, type BuildSessionStatus } from "@backend/db-models/arch-sessions";
 import { canArchiveSession, canClearSession } from "./archive";
@@ -116,15 +112,14 @@ export async function markSessionArchived(sessionId: string): Promise<void> {
 
 /**
  * A new session, asked for from `branch`. It plans a change to main, so it is
- * started from main: on a live branch the session to talk to is the branch's
- * own. A branch that is gone holds nothing back.
+ * started from main: a tab on a branch has that branch's session and no other.
  */
 export async function createSession(
   principal: Principal,
   branch: string,
 ): Promise<BuildSession> {
   authorize(principal);
-  if (await isLiveBranch(branch)) {
+  if (branch !== MAIN_BRANCH) {
     throw new DomainError("CONFLICT", "Switch to main to start a new build");
   }
   const [row] = await getDb()
@@ -219,6 +214,10 @@ function toSession(row: SessionRow, branch: BranchRow | null): BuildSession {
     branchId: branch?.id ?? null,
     archivedAt: row.archivedAt?.getTime() ?? null,
     clearedAt: row.clearedAt?.getTime() ?? null,
+    closing:
+      branch !== null &&
+      branch.archivedAt === null &&
+      (branch.status === "merging" || branch.status === "abandoning"),
     canArchive: canArchiveSession(row, branch),
     canClear: canClearSession(row),
     createdAt: row.createdAt.getTime(),

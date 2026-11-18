@@ -24,6 +24,8 @@ export const buildSessionSchema = z.object({
   archivedAt: z.number().nullable(),
   /** Set once cleared: the transcript is gone, only this row remains. */
   clearedAt: z.number().nullable(),
+  /** Its branch is being merged or abandoned: the session is archived once that is done. */
+  closing: z.boolean(),
   /** Whether the caller may archive it now (nothing running, no live branch). */
   canArchive: z.boolean(),
   /** Whether the caller may clear it now (archived, not yet cleared). */
@@ -38,7 +40,7 @@ export const sessionsContract = {
   list: oc
     .route({ method: "GET", path: "/api/arch/sessions" })
     .output(z.array(buildSessionSchema)),
-  // Fails with CONFLICT on a live branch: a new session is started from main.
+  // Fails with CONFLICT for a request on a branch: a new session is started from main.
   create: oc
     .route({ method: "POST", path: "/api/arch/sessions" })
     .output(buildSessionSchema),

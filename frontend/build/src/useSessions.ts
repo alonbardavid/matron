@@ -1,10 +1,10 @@
 import { useState } from "react";
+import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifyError } from "@frontend/api/errors";
 import { branchParam } from "@frontend/api/branch";
 import { orpc } from "@frontend/api/orpc";
 import { useMe } from "@frontend/auth/useMe";
-import { useBranches } from "@frontend/branches/useBranches";
 import { useBuildChat } from "./BuildChatContext";
 
 export function useSessions() {
@@ -46,11 +46,11 @@ export function useCreateSession() {
 const CLOSED = new Set(["closed", "merged", "abandoned"]);
 
 /**
- * What the Build button does: on a live branch, that branch's session; on
- * main, the latest session that is still open, otherwise an empty chat whose
- * session is created by the first message. A tab left on a branch that was
- * merged or abandoned since is as good as on main: the branch's session is
- * archived, and Build never opens an archived one.
+ * What the Build button does. On a branch it is that branch's session and no
+ * other, whether the branch is live or was merged or abandoned since the tab
+ * came to it. On main it is the latest session that is still open and is not
+ * on its way out with a branch being merged or abandoned, otherwise an empty
+ * chat whose session is created by the first message.
  */
 export function useStartBuild() {
   const buildChat = useBuildChat();
@@ -65,14 +65,24 @@ export function useStartBuild() {
           orpc.branches.list.queryOptions(),
         );
         const branch = branches.find((item) => item.id === current);
-        if (branch && branch.archivedAt === null) {
-          buildChat.open(branch.buildSessionId);
-          return;
+        if (branch?.sessionViewable) buildChat.open(branch.buildSessionId);
+        else {
+          notifications.show({
+            color: "yellow",
+            message:
+              "This branch has no build chat left. Switch to main to start a build.",
+          });
         }
+        return;
       }
       const sessions = await queryClient.fetchQuery(orpc.sessions.list.queryOptions());
       const latest = sessions
-        .filter((session) => session.archivedAt === null && !CLOSED.has(session.status))
+        .filter(
+          (session) =>
+            session.archivedAt === null &&
+            !session.closing &&
+            !CLOSED.has(session.status),
+        )
         .sort((a, b) => b.updatedAt - a.updatedAt)[0];
       if (latest) {
         buildChat.open(latest.id);
@@ -91,11 +101,10 @@ export function useStartBuild() {
 
 /**
  * An empty chat; nothing is stored until the first message. A new build is
- * started from main: `onBranch` is the live branch this tab is on, where the
+ * started from main: `onBranch` says this tab is on a branch, where the
  * server refuses one.
  */
 export function useNewSession() {
   const buildChat = useBuildChat();
-  const { currentBranch } = useBranches();
-  return { start: buildChat.openNew, onBranch: currentBranch };
+  return { start: buildChat.openNew, onBranch: branchParam() !== null };
 }

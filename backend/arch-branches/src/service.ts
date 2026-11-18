@@ -73,16 +73,6 @@ export async function resolveBranch(branchId: string): Promise<BranchRow | null>
   return row;
 }
 
-/** Whether a request's branch is one that is still live; main is not, nor an id that is unknown or archived. */
-export async function isLiveBranch(branchId: string): Promise<boolean> {
-  if (branchId === MAIN_BRANCH) return false;
-  const [row] = await getDb()
-    .select({ id: branches.id })
-    .from(branches)
-    .where(and(eq(branches.id, branchId), isNull(branches.archivedAt)));
-  return row !== undefined;
-}
-
 /** A live branch by id; main is not one. */
 export async function getBranch(id: string): Promise<BranchRow> {
   const branch = await resolveBranch(id);
@@ -216,7 +206,11 @@ export async function beginMerge(
   return { ...branch, status: "merging" };
 }
 
-/** Owners abandon any branch; whoever may build abandons the branches they started. */
+/**
+ * Checks the abandon may start and marks the branch abandoning. Owners abandon
+ * any branch; whoever may build abandons the branches they started. A branch
+ * already abandoning may be abandoned again, should the first try have got stuck.
+ */
 export async function beginAbandon(principal: Principal, id: string): Promise<BranchRow> {
   const owns = branchPermissions.can(principal.role, "merge");
   if (!owns) branchPermissions.require(principal, "create");
@@ -227,8 +221,12 @@ export async function beginAbandon(principal: Principal, id: string): Promise<Br
   if (branch.status === "merging") {
     throw new DomainError("CONFLICT", "The branch is being merged");
   }
+  await getDb()
+    .update(branches)
+    .set({ status: "abandoning", updatedAt: new Date() })
+    .where(eq(branches.id, id));
   log.info("abandon started", { branchId: id, userId: principal.userId });
-  return branch;
+  return { ...branch, status: "abandoning" };
 }
 
 /**
