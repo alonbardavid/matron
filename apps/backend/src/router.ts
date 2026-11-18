@@ -7,7 +7,7 @@ import { readBranchParam } from "@backend/arch-routing/branch-param";
 import { handoff } from "@backend/arch-routing/handoff";
 import { answerError } from "@backend/commons/errors";
 import { missingBranchResponse } from "@backend/arch-routing/missing-branch";
-import { openSessionSocket } from "@backend/arch-sessions/service";
+import { openSessionSocket, readSessionMessages } from "@backend/arch-sessions/service";
 import type { ApiContext } from "@backend/commons/api";
 import { DomainError } from "@backend/commons/errors";
 import { logger } from "@backend/commons/logger";
@@ -42,6 +42,13 @@ router.get("/api/arch/sessions/:sessionId/ws", async (c) => {
   const principal = c.get("principal");
   if (!principal) return c.json({ message: "Not signed in" }, 401);
   return openSessionSocket(principal, c.req.param("sessionId"), c.req.raw);
+});
+
+// What the chat asks for before it connects: the session's messages so far.
+router.get("/api/arch/sessions/:sessionId/ws/get-messages", async (c) => {
+  const principal = c.get("principal");
+  if (!principal) return c.json({ message: "Not signed in" }, 401);
+  return readSessionMessages(principal, c.req.param("sessionId"), c.req.raw);
 });
 
 router.all("/api/arch/*", (c) =>

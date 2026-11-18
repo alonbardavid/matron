@@ -21,6 +21,12 @@ test.describe("build chat", () => {
     await expect(chat.getByText("Add a shopping list", { exact: true })).toBeVisible();
     // Without a gateway token the planner cannot answer; the session has the message by then.
     await expect(chat.getByText("The planner could not answer")).toBeVisible();
+    // The chat starts from what the session holds, asked for before the socket connects:
+    // a socket that connects while the planner answers is sent only the answer.
+    const { id } = (await response.json()) as { id: string };
+    const held = await page.request.get(`/api/arch/sessions/${id}/ws/get-messages`);
+    expect(held.ok()).toBeTruthy();
+    expect(JSON.stringify(await held.json())).toContain("Add a shopping list");
     // A reload replays it from the session.
     await page.reload();
     await page.getByRole("button", { name: "Chat" }).click();

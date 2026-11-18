@@ -151,12 +151,7 @@ export async function openSessionSocket(
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  authorize(principal);
-  const row = await getSessionRow(sessionId);
-  if (row.userId !== principal.userId && principal.role !== "owner") {
-    throw new DomainError("FORBIDDEN", "This is not your build session");
-  }
-  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
+  await requireOpenSession(principal, sessionId);
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("Expected a WebSocket upgrade", { status: 426 });
   }
@@ -169,6 +164,35 @@ export async function openSessionSocket(
   log.info("build session socket opened", { sessionId, userId: principal.userId });
   const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
   return buildSession.fetch(new Request(request, { headers }));
+}
+
+/**
+ * The session's messages so far, as its Durable Object answers the chat's
+ * request for them. The chat starts from these: a socket that connects while
+ * the planner is answering is sent the answer as it streams, not what was
+ * said before it.
+ */
+export async function readSessionMessages(
+  principal: Principal,
+  sessionId: string,
+  request: Request,
+): Promise<Response> {
+  await requireOpenSession(principal, sessionId);
+  const buildSession = await getAgentByName(sessionsEnv().BUILD_SESSIONS, sessionId);
+  return buildSession.fetch(new Request(request.url));
+}
+
+/** Refuses a caller who may not use the session, and a session that was cleared. */
+async function requireOpenSession(
+  principal: Principal,
+  sessionId: string,
+): Promise<void> {
+  authorize(principal);
+  const row = await getSessionRow(sessionId);
+  if (row.userId !== principal.userId && principal.role !== "owner") {
+    throw new DomainError("FORBIDDEN", "This is not your build session");
+  }
+  if (row.clearedAt) throw new DomainError("CONFLICT", "This session was cleared");
 }
 
 /** What the builder prepared for the review of the session's branch with its newest deploy, or null. */

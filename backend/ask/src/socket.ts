@@ -25,12 +25,7 @@ export async function openAskSocket(
   sessionId: string,
   request: Request,
 ): Promise<Response> {
-  conversationPermissions.require(principal, "chat");
-  const conversation = await getConversation(principal, sessionId);
-  // Its messages live on the branch it was started on; another branch's object holds nothing of it.
-  if (conversation.branch !== branch) {
-    throw new DomainError("FORBIDDEN", "This conversation was started on another branch");
-  }
+  await requireConversation(principal, branch, sessionId);
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("Expected a WebSocket upgrade", { status: 426 });
   }
@@ -43,4 +38,35 @@ export async function openAskSocket(
   log.info("ask socket opened", { askSessionId: sessionId, userId: principal.userId });
   const object = await getAgentByName((env as unknown as AskEnv).ASK_SESSIONS, sessionId);
   return object.fetch(new Request(request, { headers }));
+}
+
+/**
+ * The conversation's messages so far, as its object answers the chat's request
+ * for them. The chat starts from these: a socket that connects while the
+ * assistant is answering is sent the answer as it streams, not what was said
+ * before it.
+ */
+export async function readAskMessages(
+  principal: Principal,
+  branch: string,
+  sessionId: string,
+  request: Request,
+): Promise<Response> {
+  await requireConversation(principal, branch, sessionId);
+  const object = await getAgentByName((env as unknown as AskEnv).ASK_SESSIONS, sessionId);
+  return object.fetch(new Request(request.url));
+}
+
+/** Refuses a caller who may not chat in the conversation, and a conversation of another branch. */
+async function requireConversation(
+  principal: Principal,
+  branch: string,
+  sessionId: string,
+): Promise<void> {
+  conversationPermissions.require(principal, "chat");
+  const conversation = await getConversation(principal, sessionId);
+  // Its messages live on the branch it was started on; another branch's object holds nothing of it.
+  if (conversation.branch !== branch) {
+    throw new DomainError("FORBIDDEN", "This conversation was started on another branch");
+  }
 }
