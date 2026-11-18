@@ -1,4 +1,4 @@
-import { Box, Paper, Stack, Text } from "@mantine/core";
+import { Box, Group, Paper, Stack, Text } from "@mantine/core";
 import type { AgentToolRunState } from "agents";
 import { getToolName, isToolUIPart, type FileUIPart, type UIMessage } from "ai";
 import { BUILDER_SAYS, type BuildMessageMetadata } from "@shared/contract/arch/sessions";
@@ -7,6 +7,7 @@ import { AttachmentChip } from "@frontend/ds/chat/AttachmentChip";
 import { Markdown } from "@frontend/ds/Markdown";
 import { palette } from "@frontend/ds/palette";
 import { BuilderRunCard } from "./BuilderRunCard";
+import { TimeAgo } from "./TimeAgo";
 
 /** Tool calls that start a run of the builder; the run shows beside them. */
 const RUN_TOOLS = new Set(["start_build", "tell_builder"]);
@@ -30,9 +31,11 @@ export function BuildMessage({ message, runsFor }: BuildMessageProps) {
       .map((part) => (part.type === "text" ? part.text : ""))
       .join("")
       .replace(BUILDER_SAYS, "");
-    return <AgentBubble label="Builder" text={text} />;
+    return <AgentBubble label="Builder" text={text} at={metadata.createdAt} />;
   }
-  if (message.role === "user") return <MemberBubble message={message} />;
+  if (message.role === "user") {
+    return <MemberBubble message={message} at={metadata?.createdAt} />;
+  }
   const runs: AgentToolRunState[] = [];
   const texts: string[] = [];
   for (const part of message.parts) {
@@ -43,7 +46,7 @@ export function BuildMessage({ message, runsFor }: BuildMessageProps) {
   }
   return (
     <>
-      <AgentBubble label="Planner" text={texts.join("")} />
+      <AgentBubble label="Planner" text={texts.join("")} at={metadata?.createdAt} />
       {runs.map((run) => (
         <BuilderRunCard key={run.runId} run={run} />
       ))}
@@ -51,13 +54,17 @@ export function BuildMessage({ message, runsFor }: BuildMessageProps) {
   );
 }
 
-function AgentBubble({ label, text }: { label: string; text: string }) {
+/** Who said it and, when the message says so, how long ago. */
+function AgentBubble({ label, text, at }: { label: string; text: string; at?: number }) {
   if (!text) return null;
   return (
     <Box mr="10%">
-      <Text size="xs" c="dimmed" fw={600} mb={2}>
-        {label}
-      </Text>
+      <Group gap={6} mb={2} wrap="nowrap">
+        <Text size="xs" c="dimmed" fw={600}>
+          {label}
+        </Text>
+        {at !== undefined && <TimeAgo ts={at} />}
+      </Group>
       {text && (
         <Paper bg={palette.bubbleAgent} withBorder px="sm" py="xs">
           <Markdown text={text} />
@@ -67,7 +74,7 @@ function AgentBubble({ label, text }: { label: string; text: string }) {
   );
 }
 
-function MemberBubble({ message }: { message: UIMessage }) {
+function MemberBubble({ message, at }: { message: UIMessage; at?: number }) {
   const texts: string[] = [];
   const files: FileUIPart[] = [];
   const notes: { name: string }[] = [];
@@ -82,6 +89,11 @@ function MemberBubble({ message }: { message: UIMessage }) {
   const text = texts.join("");
   return (
     <Box ml="15%" style={{ alignSelf: "flex-end" }}>
+      {at !== undefined && (
+        <Group justify="flex-end" mb={2}>
+          <TimeAgo ts={at} />
+        </Group>
+      )}
       <Paper bg={palette.bubbleUser} c={palette.bubbleUserText} px="sm" py="xs">
         <Stack gap="xs">
           {files.map((file, index) =>

@@ -175,6 +175,9 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       model: `anthropic/${model}`,
       system: this.getSystemPrompt(),
       activeTools: plannerToolsFor(this.state.phase),
+      // The planner's answer is stamped as it starts; a continued answer keeps its first stamp.
+      messageMetadata: ({ part }) =>
+        part.type === "start" ? getBuildMetadata() : undefined,
     };
   }
 
@@ -263,6 +266,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       {
         id: crypto.randomUUID(),
         role: "user",
+        metadata: getBuildMetadata(),
         parts: [{ type: "text", text: input.request }],
       },
     ]);
@@ -272,6 +276,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
       {
         id: crypto.randomUUID(),
         role: "assistant",
+        metadata: getBuildMetadata(),
         parts: [{ type: "text", text: input.plan }],
       },
     ]);
@@ -388,12 +393,11 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
 
   /** A builder message for the chat: said to the planner, shown as the builder's. */
   async relay(text: string): Promise<void> {
-    const metadata: BuildMessageMetadata = { author: "builder" };
     await this.addMessages([
       {
         id: crypto.randomUUID(),
         role: "user",
-        metadata,
+        metadata: getBuildMetadata("builder"),
         parts: [{ type: "text", text: `${BUILDER_SAYS}${text}` }],
       },
     ]);
@@ -514,7 +518,12 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
   /** A message of the session's own, in the planner's voice. */
   private async post(text: string): Promise<void> {
     await this.addMessages([
-      { id: crypto.randomUUID(), role: "assistant", parts: [{ type: "text", text }] },
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        metadata: getBuildMetadata(),
+        parts: [{ type: "text", text }],
+      },
     ]);
     void touchSession(this.name).catch((err: unknown) =>
       log.warn("touch failed", { err, sessionId: this.name }),
@@ -557,6 +566,11 @@ function readPrincipal(headers: Headers): Principal | null {
     email: headers.get(SOCKET_HEADERS.userEmail) ?? "",
     role: role as Role,
   };
+}
+
+/** A chat message's metadata: when it was said, and the builder as its author when it is the builder's. */
+function getBuildMetadata(author?: "builder"): BuildMessageMetadata {
+  return author ? { author, createdAt: Date.now() } : { createdAt: Date.now() };
 }
 
 function textOf(message: UIMessage): string {

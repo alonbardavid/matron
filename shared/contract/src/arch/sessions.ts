@@ -80,6 +80,8 @@ export type BuildPhase = (typeof BUILD_PHASES)[number];
  */
 export const buildMessageMetadataSchema = z.object({
   author: z.literal("builder").optional(),
+  /** When the message was said, epoch ms. Messages from before this was kept have none. */
+  createdAt: z.number().optional(),
 });
 export type BuildMessageMetadata = z.infer<typeof buildMessageMetadataSchema>;
 

@@ -26,7 +26,11 @@ test.describe("build chat", () => {
     const { id } = (await response.json()) as { id: string };
     const held = await page.request.get(`/api/arch/sessions/${id}/ws/get-messages`);
     expect(held.ok()).toBeTruthy();
-    expect(JSON.stringify(await held.json())).toContain("Add a shopping list");
+    const messages = (await held.json()) as { metadata?: { createdAt?: number } }[];
+    expect(JSON.stringify(messages)).toContain("Add a shopping list");
+    // It carries when it was said, which the chat shows beside it.
+    expect(messages[0]?.metadata?.createdAt).toBeGreaterThan(0);
+    await expect(chat.getByText("just now")).toBeVisible();
     // A reload replays it from the session.
     await page.reload();
     await page.getByRole("button", { name: "Chat" }).click();
@@ -47,5 +51,35 @@ test.describe("build chat", () => {
     await page.getByRole("button", { name: "Remove sketch.txt" }).click();
     await expect(panel.getByText("sketch.txt")).toBeHidden();
     await expect(panel.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  test("the chat panel widens by dragging its edge, and stays so", async ({ page }) => {
+    await signIn(page, OWNER);
+    await page.getByRole("button", { name: "Build" }).click();
+    const panel = page.locator(".mantine-Drawer-content");
+    await expect(panel).toBeVisible();
+    const widthOf = async () => Math.round((await panel.boundingBox())!.width);
+    await expect.poll(widthOf).toBe(440);
+    // It slides in: the edge is where it will stay once the panel reaches the window's.
+    const viewport = page.viewportSize()!;
+    const rightOf = async () => {
+      const box = (await panel.boundingBox())!;
+      return Math.round(box.x + box.width);
+    };
+    await expect.poll(rightOf).toBe(viewport.width);
+    const edge = page.getByRole("separator", { name: "Panel width" });
+    const at = (await edge.boundingBox())!;
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(viewport.width - 700, at.y + at.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(widthOf).toBe(700);
+    // The width is this browser's: it is there again after a reload.
+    await page.reload();
+    await page.getByRole("button", { name: "Build" }).click();
+    await expect.poll(widthOf).toBe(700);
+    // A double click gives the usual width back.
+    await edge.dblclick();
+    await expect.poll(widthOf).toBe(440);
   });
 });
