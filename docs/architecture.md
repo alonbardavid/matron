@@ -71,7 +71,8 @@ kind's rings.
 
 ## Building
 
-- `POST /api/arch/sessions` creates a session row; the chat is a WebSocket to the session's
+- `POST /api/arch/sessions` creates a session row, from main only: on a live branch the
+  session to talk to is the branch's own, which is what the Build button opens there. The chat is a WebSocket to the session's
   `BuildSessionObject` (`backend/arch-sessions/src/session-object.ts`), a Think agent like the
   assistant's, named by the session id. The planner is its model, through the gateway on the
   household's builder-model setting, with the repository tools (`backend/arch-planner/src/tools.ts`)

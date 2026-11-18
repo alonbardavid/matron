@@ -1,5 +1,14 @@
 import { useState, type ReactNode } from "react";
-import { Button, Divider, Group, Loader, Stack, Switch, Text } from "@mantine/core";
+import {
+  Button,
+  Divider,
+  Group,
+  Loader,
+  Stack,
+  Switch,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import type { Branch } from "@shared/contract/arch/branches";
 import type { BuildSession } from "@shared/contract/arch/sessions";
 import type { OnOutOfDate } from "@frontend/branches/useBranchActions";
@@ -191,9 +200,24 @@ export function BuildsScreen({ onOutOfDate }: BuildsScreenProps) {
               onChange={(event) => setShowArchived(event.currentTarget.checked)}
             />
           )}
-          <Button size="xs" leftSection={<IconPlus />} onClick={newSession.start}>
-            New build
-          </Button>
+          {/* Kept focusable while it refuses, so its reason can be read. */}
+          <Tooltip
+            label="A new build starts from main. Switch to main first."
+            disabled={!newSession.onBranch}
+            events={{ hover: true, focus: true, touch: true }}
+            position="bottom-end"
+            withArrow
+          >
+            <Button
+              size="xs"
+              leftSection={<IconPlus />}
+              data-disabled={newSession.onBranch ? true : undefined}
+              aria-disabled={newSession.onBranch ? true : undefined}
+              onClick={newSession.onBranch ? undefined : newSession.start}
+            >
+              New build
+            </Button>
+          </Tooltip>
         </Group>
       }
     >

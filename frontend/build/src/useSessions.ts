@@ -4,6 +4,7 @@ import { notifyError } from "@frontend/api/errors";
 import { branchParam } from "@frontend/api/branch";
 import { orpc } from "@frontend/api/orpc";
 import { useMe } from "@frontend/auth/useMe";
+import { useBranches } from "@frontend/branches/useBranches";
 import { useBuildChat } from "./BuildChatContext";
 
 export function useSessions() {
@@ -45,9 +46,11 @@ export function useCreateSession() {
 const CLOSED = new Set(["closed", "merged", "abandoned"]);
 
 /**
- * What the Build button does: on a branch, that branch's session; on main,
- * the latest session that is still open, otherwise an empty chat whose
- * session is created by the first message.
+ * What the Build button does: on a live branch, that branch's session; on
+ * main, the latest session that is still open, otherwise an empty chat whose
+ * session is created by the first message. A tab left on a branch that was
+ * merged or abandoned since is as good as on main: the branch's session is
+ * archived, and Build never opens an archived one.
  */
 export function useStartBuild() {
   const buildChat = useBuildChat();
@@ -62,7 +65,7 @@ export function useStartBuild() {
           orpc.branches.list.queryOptions(),
         );
         const branch = branches.find((item) => item.id === current);
-        if (branch) {
+        if (branch && branch.archivedAt === null) {
           buildChat.open(branch.buildSessionId);
           return;
         }
@@ -86,8 +89,13 @@ export function useStartBuild() {
   return { start, busy };
 }
 
-/** An empty chat; nothing is stored until the first message. */
+/**
+ * An empty chat; nothing is stored until the first message. A new build is
+ * started from main: `onBranch` is the live branch this tab is on, where the
+ * server refuses one.
+ */
 export function useNewSession() {
   const buildChat = useBuildChat();
-  return { start: buildChat.openNew };
+  const { currentBranch } = useBranches();
+  return { start: buildChat.openNew, onBranch: currentBranch };
 }

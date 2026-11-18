@@ -11,7 +11,9 @@ import { arch } from "../implementer";
 
 export const sessions = arch.sessions.router({
   list: arch.sessions.list.handler(({ context }) => listSessions(context.principal)),
-  create: arch.sessions.create.handler(({ context }) => createSession(context.principal)),
+  create: arch.sessions.create.handler(({ context }) =>
+    createSession(context.principal, context.branch),
+  ),
   archive: arch.sessions.archive.handler(({ context, input }) =>
     archiveSession(context.principal, input.id),
   ),

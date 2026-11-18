@@ -1,6 +1,10 @@
 import { desc, eq } from "drizzle-orm";
 import { branchPermissions } from "@backend/arch-branches/permissions";
-import { branchForSession, type BranchRow } from "@backend/arch-branches/service";
+import {
+  branchForSession,
+  isLiveBranch,
+  type BranchRow,
+} from "@backend/arch-branches/service";
 import { DomainError } from "@backend/commons/errors";
 import { newEntityId } from "@backend/commons/ids";
 import { logger } from "@backend/commons/logger";
@@ -110,8 +114,19 @@ export async function markSessionArchived(sessionId: string): Promise<void> {
     .where(eq(buildSessions.id, sessionId));
 }
 
-export async function createSession(principal: Principal): Promise<BuildSession> {
+/**
+ * A new session, asked for from `branch`. It plans a change to main, so it is
+ * started from main: on a live branch the session to talk to is the branch's
+ * own. A branch that is gone holds nothing back.
+ */
+export async function createSession(
+  principal: Principal,
+  branch: string,
+): Promise<BuildSession> {
   authorize(principal);
+  if (await isLiveBranch(branch)) {
+    throw new DomainError("CONFLICT", "Switch to main to start a new build");
+  }
   const [row] = await getDb()
     .insert(buildSessions)
     .values({

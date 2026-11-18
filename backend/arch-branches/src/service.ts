@@ -73,6 +73,16 @@ export async function resolveBranch(branchId: string): Promise<BranchRow | null>
   return row;
 }
 
+/** Whether a request's branch is one that is still live; main is not, nor an id that is unknown or archived. */
+export async function isLiveBranch(branchId: string): Promise<boolean> {
+  if (branchId === MAIN_BRANCH) return false;
+  const [row] = await getDb()
+    .select({ id: branches.id })
+    .from(branches)
+    .where(and(eq(branches.id, branchId), isNull(branches.archivedAt)));
+  return row !== undefined;
+}
+
 /** A live branch by id; main is not one. */
 export async function getBranch(id: string): Promise<BranchRow> {
   const branch = await resolveBranch(id);
