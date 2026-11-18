@@ -47,6 +47,11 @@ test.describe("reminders", () => {
   });
 
   test("settings offer reminders on this device", async ({ page }) => {
+    // Chromium's headless shell answers "denied" whatever is granted, and the card then says
+    // notifications are blocked: present a browser that has not been asked yet.
+    await page.addInitScript(() => {
+      Object.defineProperty(Notification, "permission", { get: () => "default" });
+    });
     await signIn(page, OWNER);
     await navLink(page, "Settings").click();
     const card = page.getByRole("group", { name: "Reminders" });
