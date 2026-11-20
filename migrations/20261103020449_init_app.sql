@@ -1,29 +1,5 @@
--- The application's tables: tasks, calendar events and conversations with the
+-- The application's tables: calendar events and conversations with the
 -- household assistant.
-CREATE TABLE task (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  creator_id TEXT NOT NULL,
-  -- A calendar day, 'YYYY-MM-DD', or NULL.
-  due_date TEXT,
-  completed_at INTEGER,
-  created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-  updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
-);
-CREATE INDEX task_creator_idx ON task (creator_id);
-
--- Who a task is shared with; `assigned` marks the ones it is assigned to.
-CREATE TABLE task_share (
-  id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES task (id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
-  assigned INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-  UNIQUE (task_id, user_id)
-);
-CREATE INDEX task_share_user_idx ON task_share (user_id);
-
 CREATE TABLE calendar_event (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
