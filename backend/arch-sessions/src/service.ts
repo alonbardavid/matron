@@ -204,6 +204,10 @@ function toSession(row: SessionRow, branch: BranchRow | null): BuildSession {
     branchId: branch?.id ?? null,
     archivedAt: row.archivedAt?.getTime() ?? null,
     clearedAt: row.clearedAt?.getTime() ?? null,
+    closing:
+      branch !== null &&
+      branch.archivedAt === null &&
+      (branch.status === "merging" || branch.status === "abandoning"),
     canArchive: canArchiveSession(row, branch),
     canClear: canClearSession(row),
     createdAt: row.createdAt.getTime(),

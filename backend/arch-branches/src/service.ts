@@ -217,8 +217,12 @@ export async function beginAbandon(principal: Principal, id: string): Promise<Br
   if (branch.status === "merging") {
     throw new DomainError("CONFLICT", "The branch is being merged");
   }
+  await getDb()
+    .update(branches)
+    .set({ status: "abandoning", updatedAt: new Date() })
+    .where(eq(branches.id, id));
   log.info("abandon started", { branchId: id, userId: principal.userId });
-  return branch;
+  return { ...branch, status: "abandoning" };
 }
 
 /**

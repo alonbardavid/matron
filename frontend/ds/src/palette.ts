@@ -16,6 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
   deploying: "yellow",
   ready: "sage",
   merging: "blue",
+  abandoning: "gray",
   planning: "gray",
   building: "blue",
   waiting: "yellow",

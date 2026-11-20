@@ -7,6 +7,7 @@ export const BRANCH_STATUSES = [
   "deploying",
   "ready",
   "merging",
+  "abandoning",
   "merged",
   "abandoned",
 ] as const;

@@ -24,6 +24,8 @@ export const buildSessionSchema = z.object({
   archivedAt: z.number().nullable(),
   /** Set once cleared: the transcript is gone, only this row remains. */
   clearedAt: z.number().nullable(),
+  /** Its branch is being merged or abandoned: the session is archived once that is done. */
+  closing: z.boolean(),
   /** Whether the caller may archive it now (nothing running, no live branch). */
   canArchive: z.boolean(),
   /** Whether the caller may clear it now (archived, not yet cleared). */
