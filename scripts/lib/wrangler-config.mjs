@@ -78,7 +78,6 @@ export function generateWranglerConfig(emitted, options) {
     images: { binding: "IMAGES" },
     // Workers AI and the AI Gateway behind it; a Preview reaches models only this way.
     ai: { binding: "AI" },
-    send_email: [{ name: "SEND_EMAIL" }],
   };
 
   const vars = { ...(config.vars ?? {}) };

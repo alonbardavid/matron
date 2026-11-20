@@ -30,7 +30,6 @@ const TOKEN_PERMISSIONS = [
   "Account / AI Gateway / Run",
   "Account / Workers Containers / Edit",
   "Account / Cloudflare Images / Edit",
-  "Account / Email Sending / Edit",
   "Account / Account Settings / Read",
 ];
 

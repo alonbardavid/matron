@@ -16,7 +16,7 @@ each deploy. A Workers Paid plan is required (Containers, Artifacts).
    - Account / Artifacts / Edit
    - Account / AI Gateway / Run
    - Account / Workers Containers / Edit
-   - Account / Cloudflare Images / Edit and Account / Email Sending / Edit (a Preview binds both)
+   - Account / Cloudflare Images / Edit (a Preview binds it)
    - Account / Account Settings / Read
    - Optional: Account / Workers Observability / Read, to query log history from the terminal
 3. `export CLOUDFLARE_API_TOKEN=...`. If the token sees several accounts, also
@@ -98,7 +98,7 @@ the Worker.
   `builder` is `BUILDER_IMAGE` (or the Dockerfile when unset), linked from the `exports` entry of
   `BuilderObject`, and observability.
 - `preview`: no container at all, and a `previews` block repeating vars, D1, R2, Artifacts, AI,
-  Images, email and Durable Object bindings, because a Preview inherits nothing. The builder uses
+  Images and Durable Object bindings, because a Preview inherits nothing. The builder uses
   it with `wrangler preview --config ... --name <preview>`.
 
 ## Limitations
