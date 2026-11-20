@@ -206,11 +206,7 @@ export async function beginMerge(
   return { ...branch, status: "merging" };
 }
 
-/**
- * Checks the abandon may start and marks the branch abandoning. Owners abandon
- * any branch; whoever may build abandons the branches they started. A branch
- * already abandoning may be abandoned again, should the first try have got stuck.
- */
+/** Owners abandon any branch; whoever may build abandons the branches they started. */
 export async function beginAbandon(principal: Principal, id: string): Promise<BranchRow> {
   const owns = branchPermissions.can(principal.role, "merge");
   if (!owns) branchPermissions.require(principal, "create");
