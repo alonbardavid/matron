@@ -12,17 +12,29 @@ import {
 } from "@backend/calendar/service";
 import type { Principal } from "@backend/commons/principal";
 import { listHouseholdUsers } from "@backend/household/users";
-import { createTask, listTasks, removeTask, updateTask } from "@backend/tasks/service";
+import {
+  addItem,
+  createList,
+  getList,
+  listLists,
+  moveItem,
+  removeItem,
+  updateItem,
+  updateList,
+} from "@backend/lists/service";
 import {
   calendarEventCreateSchema,
   calendarEventUpdateSchema,
+  dayString,
   occurrenceUpdateSchema,
 } from "@shared/contract/app/calendar";
 import {
-  dayString,
-  taskCreateSchema,
-  taskUpdateSchema,
-} from "@shared/contract/app/tasks";
+  itemCreateSchema,
+  itemMoveSchema,
+  itemUpdateSchema,
+  listCreateSchema,
+  listUpdateSchema,
+} from "@shared/contract/app/lists";
 import { guardReadOnlySql } from "./sql-guard";
 import { databasePermissions } from "./permissions";
 
@@ -48,30 +60,54 @@ export function householdTools(ctx: ToolContext): ToolSet {
       inputSchema: z.object({}),
       execute: () => listHouseholdUsers(principal),
     }),
-    list_tasks: tool({
+    list_lists: tool({
       description:
-        "The tasks the user created or was given, open ones first. Includes ids, due dates, who they are shared with and assigned to.",
-      inputSchema: z.object({}),
-      execute: () => listTasks(principal),
+        "The user's lists (made by them or shared with them), last changed first, each with all its items (parentId and position place them), who it is shared with and what the user may do with it (myPermissions: view, edit, share). q keeps lists whose name or items contain it.",
+      inputSchema: z.object({ q: z.string().optional() }),
+      execute: ({ q }) => listLists(principal, q),
     }),
-    create_task: tool({
+    get_list: tool({
       description:
-        "Add a task. Dates are calendar days, YYYY-MM-DD. sharedWith and assignees are user ids.",
-      inputSchema: taskCreateSchema,
-      execute: (input) => createTask(principal, input),
+        "One list with all its items. Items nest: parentId is the item an item is under (null at the top), position its order among the items beside it.",
+      inputSchema: z.object({ id: z.string() }),
+      execute: ({ id }) => getList(principal, id),
     }),
-    update_task: tool({
+    create_list: tool({
       description:
-        "Change a task: its title, description, due date, completion, or who it is shared with or assigned to.",
-      inputSchema: taskUpdateSchema.extend({ id: z.string() }),
-      execute: ({ id, ...changes }) => updateTask(principal, id, changes),
+        "Make a list. sharedWith are user ids; permissions gives each of them, besides view, share and/or edit.",
+      inputSchema: listCreateSchema,
+      execute: (input) => createList(principal, input),
     }),
-    remove_task: tool({
+    update_list: tool({
       description:
-        "Remove a task for good. Ask the user first unless they clearly asked for it.",
+        "Rename or recolour a list (needs edit), or change who it is shared with and what each may do (needs share; who may edit needs edit too).",
+      inputSchema: listUpdateSchema.extend({ id: z.string() }),
+      execute: ({ id, ...changes }) => updateList(principal, id, changes),
+    }),
+    add_list_item: tool({
+      description:
+        "Add an item at the end of a list (id is the list's), or under another of its items (parentId). Dates are calendar days, YYYY-MM-DD; assignees are user ids who see the list.",
+      inputSchema: itemCreateSchema.extend({ id: z.string() }),
+      execute: ({ id, ...item }) => addItem(principal, id, item),
+    }),
+    update_list_item: tool({
+      description:
+        "Change an item: its title, description, due date, completion or who it is assigned to.",
+      inputSchema: itemUpdateSchema.extend({ id: z.string() }),
+      execute: ({ id, ...changes }) => updateItem(principal, id, changes),
+    }),
+    move_list_item: tool({
+      description:
+        "Move an item, with the items under it: under parentId (null for the top of the list) at index among the items there (0 first), optionally to another list (listId).",
+      inputSchema: itemMoveSchema.extend({ id: z.string() }),
+      execute: ({ id, ...move }) => moveItem(principal, id, move),
+    }),
+    remove_list_item: tool({
+      description:
+        "Remove an item and the items under it for good. Ask the user first unless they clearly asked for it.",
       inputSchema: z.object({ id: z.string() }),
       execute: async ({ id }) => {
-        await removeTask(principal, id);
+        await removeItem(principal, id);
         return { ok: true };
       },
     }),

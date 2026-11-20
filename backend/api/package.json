@@ -13,7 +13,7 @@
     "@backend/files": "workspace:*",
     "@backend/household": "workspace:*",
     "@backend/notifications": "workspace:*",
-    "@backend/tasks": "workspace:*",
+    "@backend/lists": "workspace:*",
     "@orpc/openapi": "1.15.4",
     "@orpc/server": "1.15.4",
     "@shared/contract": "workspace:*",

@@ -119,7 +119,9 @@ test.describe("hiding events and filtering the calendar", () => {
     await expect(again.getByRole("switch", { name: "Hidden events" })).not.toBeChecked();
   });
 
-  test("calendars and tasks with a due date are shown or left out", async ({ page }) => {
+  test("calendars and list items with a due date are shown or left out", async ({
+    page,
+  }) => {
     await signIn(page, OWNER);
     const made = await page.request.post("/api/app/calendar/calendars", {
       data: { name: "Garden", color: "#16a085" },
@@ -131,24 +133,26 @@ test.describe("hiding events and filtering the calendar", () => {
       startAt: todayAt(8),
       endAt: todayAt(9),
     });
-    const task = await page.request.post("/api/app/tasks", {
+    const bills = await page.request.post("/api/app/lists", { data: { name: "Bills" } });
+    const { id: billsId } = (await bills.json()) as { id: string };
+    const item = await page.request.post(`/api/app/lists/${billsId}/items`, {
       data: { title: "Pay the water bill", dueDate: today() },
     });
-    expect(task.ok()).toBeTruthy();
+    expect(item.ok()).toBeTruthy();
     await page.reload();
     await expect(onCalendar(page, "Mow the lawn")).toHaveCount(1);
     await expect(onCalendar(page, "Pay the water bill")).toHaveCount(1);
 
     const filters = await openFilters(page);
     await filters.getByRole("checkbox", { name: "Garden" }).uncheck();
-    await filters.getByRole("switch", { name: "Tasks with a due date" }).click();
+    await filters.getByRole("switch", { name: "List items with a due date" }).click();
     await expect(onCalendar(page, "Mow the lawn")).toHaveCount(0);
     await expect(onCalendar(page, "Pay the water bill")).toHaveCount(0);
 
     await filters.getByRole("checkbox", { name: "Garden" }).check();
-    await filters.getByRole("switch", { name: "Tasks with a due date" }).click();
+    await filters.getByRole("switch", { name: "List items with a due date" }).click();
     await page.keyboard.press("Escape");
-    // A task opens in the task dialog.
+    // An item opens in the item dialog.
     await onCalendar(page, "Pay the water bill").first().click();
     await expect(page.getByRole("dialog").getByLabel("Title")).toHaveValue(
       "Pay the water bill",

@@ -13,7 +13,7 @@
     "@backend/commons": "workspace:*",
     "@backend/db-models": "workspace:*",
     "@backend/household": "workspace:*",
-    "@backend/tasks": "workspace:*",
+    "@backend/lists": "workspace:*",
     "@cloudflare/computer": "^0.8.0",
     "@cloudflare/think": "0.23.0",
     "@shared/contract": "workspace:*",

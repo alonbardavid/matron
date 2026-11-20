@@ -35,7 +35,7 @@
       "@backend/files/*": ["./backend/files/src/*"],
       "@backend/household/*": ["./backend/household/src/*"],
       "@backend/notifications/*": ["./backend/notifications/src/*"],
-      "@backend/tasks/*": ["./backend/tasks/src/*"],
+      "@backend/lists/*": ["./backend/lists/src/*"],
       "@frontend/api/*": ["./frontend/api/src/*"],
       "@frontend/ask/*": ["./frontend/ask/src/*"],
       "@frontend/auth/*": ["./frontend/auth/src/*"],
@@ -48,7 +48,7 @@
       "@frontend/review/*": ["./frontend/review/src/*"],
       "@frontend/root/*": ["./frontend/root/src/*"],
       "@frontend/settings/*": ["./frontend/settings/src/*"],
-      "@frontend/tasks/*": ["./frontend/tasks/src/*"],
+      "@frontend/lists/*": ["./frontend/lists/src/*"],
       "@frontend/troubleshooting/*": ["./frontend/troubleshooting/src/*"],
       "@frontend/upstream/*": ["./frontend/upstream/src/*"],
       "@shared/contract/*": ["./shared/contract/src/*"]

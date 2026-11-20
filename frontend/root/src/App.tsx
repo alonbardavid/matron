@@ -14,7 +14,8 @@ import { CalendarScreen } from "@frontend/calendar/screens/CalendarScreen";
 import { ConversationsScreen } from "@frontend/conversations/screens/ConversationsScreen";
 import { AppSettingsScreen } from "@frontend/settings/screens/AppSettingsScreen";
 import { SettingsScreen } from "@frontend/settings/screens/SettingsScreen";
-import { TasksScreen } from "@frontend/tasks/screens/TasksScreen";
+import { ListScreen } from "@frontend/lists/screens/ListScreen";
+import { ListsScreen } from "@frontend/lists/screens/ListsScreen";
 import { ReviewScreen } from "@frontend/review/screens/ReviewScreen";
 import { TroubleshootingScreen } from "@frontend/troubleshooting/screens/TroubleshootingScreen";
 import { AppLayout } from "./AppLayout";
@@ -61,7 +62,13 @@ export function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route index element={<CalendarScreen />} />
-            <Route path="tasks" element={<TasksScreen />} />
+            <Route path="lists" element={<ListsScreen />} />
+            <Route path="lists/:id" element={<ListScreen />} />
+            {/* The page was called Tasks; old links land on Lists. */}
+            <Route
+              path="tasks"
+              element={<Navigate to={withBranch("/lists")} replace />}
+            />
             <Route path="conversations" element={<ConversationsScreen />} />
             <Route
               path="builds"

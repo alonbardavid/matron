@@ -26,7 +26,7 @@ interface AlarmSelectProps {
 }
 
 /**
- * The caller's own reminder on an event or a task: how long before, or none.
+ * The caller's own reminder on an event or a list item: how long before, or none.
  * It is theirs alone and saved at once; it reaches the devices they turned
  * reminders on for.
  */

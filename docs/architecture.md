@@ -30,7 +30,7 @@ how a request moves through it.
    `backend/api` (routes and handler for the `shared/contract/src/app` contract), hands the
    assistant's chat socket at `/api/app/ask/:id/ws` and what the chat asks for below it to the
    conversation's object (`askProxyRoute` in `backend/api/src/routes/conversations.ts`, through
-   `backend/ask/src/proxy.ts`), and serves everything else from static assets. The features behind the routes are `backend/tasks`,
+   `backend/ask/src/proxy.ts`), and serves everything else from static assets. The features behind the routes are `backend/lists`,
    `backend/calendar` (with the recurrence expansion in `recurrence.ts`), `backend/household`
    (the member list and their pictures, `avatar.ts`), `backend/files` (uploads: `storage.ts` keeps
    writes under the branch's own R2 prefix, `service.ts` records and opens them by their visibility,
@@ -42,7 +42,7 @@ how a request moves through it.
 
 `AskSessionObject` (`backend/ask/src/ask-object.ts`) is a Think agent, one per conversation,
 named by the ask session id, on the branch the conversation was started on (the socket's URL
-names the branch; `proxy.ts` refuses another branch's conversation). Its tools (`tools.ts`) wrap the tasks, calendar and household
+names the branch; `proxy.ts` refuses another branch's conversation). Its tools (`tools.ts`) wrap the lists, calendar and household
 services as the connected user, so a tool can do no more than the user could in the app, plus
 `query_database`, one read-only SELECT checked by `sql-guard.ts` against the tables the user's
 role may read. The model is the household's assistant setting (`backend/arch-settings`); the
@@ -58,14 +58,14 @@ worker handles no fetch, only `push` and `notificationclick`. `frontend/notifica
 the install prompt, the device's subscription and the settings card. A subscription is a row
 in `push_subscription` (`backend/notifications/src/service.ts`), with the device's time zone.
 
-A member's alarm on an event or a task is a row in `alarm` (`backend/notifications/src/alarms.ts`):
+A member's alarm on an event or a list item is a row in `alarm` (`backend/notifications/src/alarms.ts`):
 how many minutes before. Each has a Durable Object of its own, an Agents SDK agent
 (`alarm-object.ts`) holding one schedule: the next ring. A ring works out again what is due,
 pushes it with `web-push.ts` (RFC 8291 encryption, VAPID keys from
 `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`) and schedules the one after. The feature a thing
-belongs to works out its rings (`nextEventRing` in `backend/calendar`, `nextTaskRing` in
-`backend/tasks`), decides who may set an alarm, and arms it again when the thing changes
-(`rearmAlarms`), so `backend/notifications` knows neither events nor tasks. The one class
+belongs to works out its rings (`nextEventRing` in `backend/calendar`, `nextItemRing` in
+`backend/lists`), decides who may set an alarm, and arms it again when the thing changes
+(`rearmAlarms`), so `backend/notifications` knows neither events nor lists. The one class
 every alarm runs as, `AlarmObject` in `apps/backend/src/alarm-object.ts`, names each
 kind's rings.
 

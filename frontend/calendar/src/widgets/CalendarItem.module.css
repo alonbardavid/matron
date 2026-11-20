@@ -8,7 +8,7 @@
   outline-offset: -1px;
 }
 
-/* A completed task. */
+/* A list item that is done. */
 .item[data-struck] > :global(.mantine-ScheduleEvent-eventInner) {
   text-decoration: line-through;
 }

@@ -8,7 +8,7 @@ type EventRootProps = ComponentPropsWithoutRef<"button"> & { children: ReactNode
  * An event on the calendar as the schedule would draw it. Takes the root props
  * the schedule's `renderEvent` passes, so every view (all-day rows included)
  * draws it alike. `muted` fades an event the member hid; `struck` crosses out
- * a done task.
+ * a done list item.
  */
 export function CalendarItem({
   muted = false,

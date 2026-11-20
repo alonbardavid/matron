@@ -1,0 +1,62 @@
+.tree {
+  position: relative;
+}
+
+.tree[data-dragging] {
+  user-select: none;
+}
+
+.row {
+  position: relative;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-right: var(--mantine-spacing-sm);
+  border-top: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+}
+
+.row[data-first] {
+  border-top: 0;
+}
+
+.row[data-lifted] {
+  z-index: 2;
+  opacity: 0.7;
+  border-radius: var(--mantine-radius-md);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+.handle {
+  flex: none;
+  width: 24px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mantine-color-dimmed);
+  cursor: grab;
+  touch-action: none;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+}
+
+.tree[data-dragging] .handle {
+  cursor: grabbing;
+}
+
+.indicator {
+  position: absolute;
+  right: var(--mantine-spacing-sm);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--mantine-primary-color-filled);
+  z-index: 3;
+  pointer-events: none;
+}

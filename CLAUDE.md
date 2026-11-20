@@ -31,13 +31,13 @@ in place, never append history.
 ## Rules
 
 - **Import the file, not the package.** Packages have no `index.ts`; write
-  `import { listTasks } from "@backend/tasks/service"`, which is `backend/tasks/src/service.ts`.
+  `import { listLists } from "@backend/lists/service"`, which is `backend/lists/src/service.ts`.
   `tsconfig.base.json` `paths` and `tooling/workspace-alias.ts` do the mapping; a new package
   adds its `paths` line. ESLint rejects `export *`. `pnpm type-check` checks the Worker side
   and the browser side as one program each (`tsconfig.worker.json`, `tsconfig.browser.json`);
   a new package under `backend/`, `frontend/` or `shared/` is covered by their globs.
-- **Features are self-contained.** Changing how tasks work touches `backend/tasks`,
-  `frontend/tasks` and a migration; nothing else. Cross-feature calls go through the
+- **Features are self-contained.** Changing how lists work touches `backend/lists`,
+  `frontend/lists` and a migration; nothing else. Cross-feature calls go through the
   other feature's `service.ts`.
 - **Contract first.** Declare a procedure in the feature's file under `shared/contract/src/arch`
   (router) or `shared/contract/src/app` (application), add a new feature's contract to that
@@ -50,7 +50,7 @@ in place, never append history.
   Routes and screens only mirror it.
 - **Every table has an `id`** from `newEntityId("<ENTITY>")` in `@backend/commons/ids`; a new
   table adds its prefix there first and gets a migration.
-- **Log constant messages with props**: `log.info("task created", { taskId })`, through
+- **Log constant messages with props**: `log.info("list created", { listId })`, through
   `logger("<package>/<file>")` from `@backend/commons/logger`. Never log secrets or tokens.
 - **Forms go through `@frontend/ds/forms`**, API calls through `@frontend/api/orpc`. Every
   form is a real `<form>`: `StandardForm`, or `Form` when its state lives outside

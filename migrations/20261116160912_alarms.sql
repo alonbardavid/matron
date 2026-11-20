@@ -1,4 +1,4 @@
--- A member's own alarm on an event or a task: how long before it starts or is
+-- A member's own alarm on an event or a list item: how long before it starts or is
 -- due they are reminded. Its Durable Object rings it at that moment.
 CREATE TABLE alarm (
   id TEXT PRIMARY KEY,

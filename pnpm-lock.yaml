@@ -104,12 +104,12 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../../backend/household
+      '@backend/lists':
+        specifier: workspace:*
+        version: link:../../backend/lists
       '@backend/notifications':
         specifier: workspace:*
         version: link:../../backend/notifications
-      '@backend/tasks':
-        specifier: workspace:*
-        version: link:../../backend/tasks
       '@cloudflare/containers':
         specifier: ^0.3.7
         version: 0.3.7
@@ -190,6 +190,9 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../../frontend/ds
+      '@frontend/lists':
+        specifier: workspace:*
+        version: link:../../frontend/lists
       '@frontend/notifications':
         specifier: workspace:*
         version: link:../../frontend/notifications
@@ -199,9 +202,6 @@ importers:
       '@frontend/settings':
         specifier: workspace:*
         version: link:../../frontend/settings
-      '@frontend/tasks':
-        specifier: workspace:*
-        version: link:../../frontend/tasks
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -287,12 +287,12 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
+      '@backend/lists':
+        specifier: workspace:*
+        version: link:../lists
       '@backend/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@backend/tasks':
-        specifier: workspace:*
-        version: link:../tasks
       better-auth:
         specifier: ^1.7.7
         version: 1.7.14(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -318,12 +318,12 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
+      '@backend/lists':
+        specifier: workspace:*
+        version: link:../lists
       '@backend/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@backend/tasks':
-        specifier: workspace:*
-        version: link:../tasks
       '@orpc/openapi':
         specifier: 1.15.4
         version: 1.15.4(@opentelemetry/api@1.10.0)(ws@8.22.0)
@@ -706,9 +706,9 @@ importers:
       '@backend/household':
         specifier: workspace:*
         version: link:../household
-      '@backend/tasks':
+      '@backend/lists':
         specifier: workspace:*
-        version: link:../tasks
+        version: link:../lists
       '@cloudflare/computer':
         specifier: ^0.8.0
         version: 0.8.0(@cloudflare/workers-types@5.20261029.1)(ai@7.0.162(zod@4.6.7))(just-bash@3.6.0)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
@@ -851,35 +851,7 @@ importers:
         specifier: ^5.20261008.1
         version: 5.20261029.1
 
-  backend/notifications:
-    dependencies:
-      '@backend/commons':
-        specifier: workspace:*
-        version: link:../commons
-      '@backend/db-models':
-        specifier: workspace:*
-        version: link:../db-models
-      '@block65/webcrypto-web-push':
-        specifier: ^2.0.0
-        version: 2.0.0
-      '@shared/contract':
-        specifier: workspace:*
-        version: link:../../shared/contract
-      agents:
-        specifier: 0.32.0
-        version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
-      drizzle-orm:
-        specifier: ^0.45.1
-        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
-      jose:
-        specifier: ^6.2.3
-        version: 6.2.13
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^5.20261008.1
-        version: 5.20261029.1
-
-  backend/tasks:
+  backend/lists:
     dependencies:
       '@backend/commons':
         specifier: workspace:*
@@ -905,6 +877,34 @@ importers:
       zod:
         specifier: ^4.1.0
         version: 4.6.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261008.1
+        version: 5.20261029.1
+
+  backend/notifications:
+    dependencies:
+      '@backend/commons':
+        specifier: workspace:*
+        version: link:../commons
+      '@backend/db-models':
+        specifier: workspace:*
+        version: link:../db-models
+      '@block65/webcrypto-web-push':
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      agents:
+        specifier: 0.32.0
+        version: 0.32.0(@ai-sdk/provider@4.0.35)(@ai-sdk/react@4.0.166(react@19.3.1)(zod@4.6.7))(@babel/core@7.29.7)(@babel/runtime@7.29.10)(@cloudflare/codemode@0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.4)(zod@4.6.7))(ai@7.0.162(zod@4.6.7))(chat@4.44.0(ai@7.0.162(zod@4.6.7))(zod@4.6.7))(just-bash@3.6.0)(react@19.3.1)(rolldown@1.2.16)(vite@7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1))(zod@4.6.7)
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.4(@cloudflare/workers-types@5.20261029.1)(@opentelemetry/api@1.10.0)(kysely@0.28.17)
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.13
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261008.1
@@ -1226,12 +1226,12 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/lists':
+        specifier: workspace:*
+        version: link:../lists
       '@frontend/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@frontend/tasks':
-        specifier: workspace:*
-        version: link:../tasks
       '@mantine/core':
         specifier: 9.7.4
         version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1410,6 +1410,70 @@ importers:
         specifier: ^7.1.0
         version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
 
+  frontend/lists:
+    dependencies:
+      '@frontend/api':
+        specifier: workspace:*
+        version: link:../api
+      '@frontend/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@frontend/ds':
+        specifier: workspace:*
+        version: link:../ds
+      '@frontend/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@mantine/core':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/dates':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(dayjs@1.11.23)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/form':
+        specifier: 9.7.4
+        version: 9.7.4(react@19.3.1)
+      '@mantine/hooks':
+        specifier: 9.7.4
+        version: 9.7.4(react@19.3.1)
+      '@mantine/notifications':
+        specifier: 9.7.4
+        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@shared/contract':
+        specifier: workspace:*
+        version: link:../../shared/contract
+      '@tanstack/react-query':
+        specifier: ^5.96.2
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      date-fns:
+        specifier: 4.4.0
+        version: 4.4.0
+      dayjs:
+        specifier: 1.11.23
+        version: 1.11.23
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+      react-router-dom:
+        specifier: ^7.13.1
+        version: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      vite:
+        specifier: ^7.1.0
+        version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
+
   frontend/notifications:
     dependencies:
       '@frontend/api':
@@ -1519,15 +1583,15 @@ importers:
       '@frontend/ds':
         specifier: workspace:*
         version: link:../ds
+      '@frontend/lists':
+        specifier: workspace:*
+        version: link:../lists
       '@frontend/review':
         specifier: workspace:*
         version: link:../review
       '@frontend/settings':
         specifier: workspace:*
         version: link:../settings
-      '@frontend/tasks':
-        specifier: workspace:*
-        version: link:../tasks
       '@frontend/troubleshooting':
         specifier: workspace:*
         version: link:../troubleshooting
@@ -1601,70 +1665,6 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
-      react:
-        specifier: ^19.3.1
-        version: 19.3.1
-      react-dom:
-        specifier: ^19.3.1
-        version: 19.3.1(react@19.3.1)
-      react-router-dom:
-        specifier: ^7.13.1
-        version: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      zod:
-        specifier: ^4.1.0
-        version: 4.6.7
-    devDependencies:
-      '@types/react':
-        specifier: ^19.3.0
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: ^19.3.0
-        version: 19.3.0(@types/react@19.3.0)
-      vite:
-        specifier: ^7.1.0
-        version: 7.3.7(@types/node@22.20.5)(sugarss@5.0.2(postcss@8.5.32))(yaml@2.9.1)
-
-  frontend/tasks:
-    dependencies:
-      '@frontend/api':
-        specifier: workspace:*
-        version: link:../api
-      '@frontend/auth':
-        specifier: workspace:*
-        version: link:../auth
-      '@frontend/ds':
-        specifier: workspace:*
-        version: link:../ds
-      '@frontend/notifications':
-        specifier: workspace:*
-        version: link:../notifications
-      '@mantine/core':
-        specifier: 9.7.4
-        version: 9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@mantine/dates':
-        specifier: 9.7.4
-        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(dayjs@1.11.23)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@mantine/form':
-        specifier: 9.7.4
-        version: 9.7.4(react@19.3.1)
-      '@mantine/hooks':
-        specifier: 9.7.4
-        version: 9.7.4(react@19.3.1)
-      '@mantine/notifications':
-        specifier: 9.7.4
-        version: 9.7.4(@mantine/core@9.7.4(@mantine/hooks@9.7.4(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.7.4(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@shared/contract':
-        specifier: workspace:*
-        version: link:../../shared/contract
-      '@tanstack/react-query':
-        specifier: ^5.96.2
-        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
-      date-fns:
-        specifier: 4.4.0
-        version: 4.4.0
-      dayjs:
-        specifier: 1.11.23
-        version: 1.11.23
       react:
         specifier: ^19.3.1
         version: 19.3.1

@@ -1,7 +1,9 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { alarmSchema } from "./notifications";
-import { dayString } from "./tasks";
+
+/** A calendar day, `YYYY-MM-DD`. */
+export const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 
 /**
  * How an event repeats: an iCalendar RRULE value (RFC 5545), without the

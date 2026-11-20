@@ -17,7 +17,7 @@
     "@frontend/ds": "workspace:*",
     "@frontend/review": "workspace:*",
     "@frontend/settings": "workspace:*",
-    "@frontend/tasks": "workspace:*",
+    "@frontend/lists": "workspace:*",
     "@frontend/troubleshooting": "workspace:*",
     "@mantine/core": "9.7.4",
     "@mantine/form": "9.7.4",

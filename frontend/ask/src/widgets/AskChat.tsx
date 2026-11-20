@@ -68,7 +68,7 @@ export function AskChat() {
             <Stack flex={1} justify="center">
               <EmptyState
                 title="Ask anything about the household"
-                description="Tasks, the calendar, who is doing what. The assistant can look things up and make changes for you."
+                description="Lists, the calendar, who is doing what. The assistant can look things up and make changes for you."
               />
             </Stack>
           )}

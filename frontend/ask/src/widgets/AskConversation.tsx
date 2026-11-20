@@ -128,10 +128,10 @@ export function AskConversation({
     onPendingSent();
   }, [pending, status, sendMessage, onPendingSent]);
 
-  // The assistant may have changed tasks or events: refresh them when it finishes.
+  // The assistant may have changed lists or events: refresh them when it finishes.
   useEffect(() => {
     if (isStreaming) return;
-    void queryClient.invalidateQueries({ queryKey: orpc.tasks.key() });
+    void queryClient.invalidateQueries({ queryKey: orpc.lists.key() });
     void queryClient.invalidateQueries({ queryKey: orpc.calendar.key() });
     void queryClient.invalidateQueries({ queryKey: orpc.conversations.key() });
   }, [isStreaming, queryClient]);
