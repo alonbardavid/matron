@@ -1,20 +1,28 @@
 # The database
 
-query_database runs one read-only SQLite SELECT and returns up to 200 rows. It answers what the list tools do not: counts, history, who has which task across the household, what a conversation was called. Column conventions: ids are text; `*_at` columns are milliseconds since the epoch (compare with `unixepoch('subsecond') * 1000`, format with `datetime(x / 1000, 'unixepoch')`); booleans are 0 or 1; `created_at` and `updated_at` exist on every table.
+query_database runs one read-only SQLite SELECT and returns up to 200 rows. It answers what the list tools do not: counts, history, who has which item across the household, what a conversation was called. Column conventions: ids are text; `*_at` columns are milliseconds since the epoch (compare with `unixepoch('subsecond') * 1000`, format with `datetime(x / 1000, 'unixepoch')`); booleans are 0 or 1; `created_at` and `updated_at` exist on every table.
 
 ## user
 
 Household members. Columns: `id`, `name`, `email` (unique), `role` (owner, admin or member), `image`, `banned` (0 or 1), `ban_reason`, `ban_expires`. The id is what other tables mean by `user_id` and `creator_id`.
 
-## task
+## list
 
-Columns: `id`, `title`, `description`, `creator_id` (a user), `due_date` (a calendar day as YYYY-MM-DD, or null), `completed_at` (null while open). Indexes: `creator_id`.
+Columns: `id`, `name`, `color` (`#rrggbb`), `creator_id` (a user). Indexes: `creator_id`.
 
-## task_share
+## list_share
 
-Who a task is shared with, one row per user: `task_id`, `user_id`, `assigned` (1 when the task is theirs to do, 0 when they only see it). One row per task and user. Indexes: `user_id`, unique (`task_id`, `user_id`).
+Who a list is shared with, one row per user: `list_id`, `user_id`, `permissions` (a JSON list of `view`, `share` and `edit`; `view` is always among them). Indexes: `user_id`, unique (`list_id`, `user_id`).
 
-A member sees the tasks they created and the ones shared with them. Join `task_share` on `task_id` for "my tasks" and "who is doing what".
+## list_item
+
+An item on a list. Columns: `id`, `list_id`, `parent_id` (the item it is under, or null at the top of the list), `position` (its place among the items beside it, lowest first), `title`, `description`, `creator_id` (a user), `due_date` (a calendar day as YYYY-MM-DD, or null), `completed_at` (null while open). Indexes: (`list_id`, `parent_id`, `position`), `due_date`.
+
+## list_item_assignee
+
+Who an item is assigned to, one row per user: `item_id`, `user_id`. Indexes: `user_id`, unique (`item_id`, `user_id`).
+
+A member sees the lists they created and the ones shared with them, with every item in them. Join `list_share` on `list_id` for "my lists", and `list_item_assignee` on `item_id` for "who is doing what".
 
 ## calendar
 
