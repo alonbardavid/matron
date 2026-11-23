@@ -4,7 +4,6 @@ declare namespace Cloudflare {
     FILES: R2Bucket;
     ASSETS: Fetcher;
     IMAGES?: ImagesBinding;
-    SEND_EMAIL?: SendEmail;
     ARTIFACTS?: Artifacts;
     BUILD_SESSIONS: DurableObjectNamespace<
       import("@backend/arch-sessions/session-object").BuildSessionObject

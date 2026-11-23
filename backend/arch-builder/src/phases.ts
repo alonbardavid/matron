@@ -42,8 +42,10 @@ export interface PhaseContext {
  * where the run goes next. A build or a continue goes prepare, install,
  * agent (as many turns as the agent needs; a question parks the run), verify
  * with up to three fix turns, commit-push, deploy-preview. A merge goes
- * merge-main, install, deploy-production, cleanup. An abandon goes
- * prepare-cleanup, cleanup. A revert is the revert step alone.
+ * merge-main, install, verify, push-main, deploy-production, cleanup: main is
+ * pushed, the database migrated and production deployed only once every
+ * check has passed. An abandon goes prepare-cleanup, cleanup. A revert is the
+ * revert step alone.
  */
 export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next> {
   const { run } = at;
@@ -82,7 +84,7 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
     case "install": {
       await ctx.step("install");
       if (run.mode === "merge") {
-        at.phase = "deploy-production";
+        at.phase = "verify";
         return "continue";
       }
       if (run.mode === "build") {
@@ -136,8 +138,16 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
     case "verify": {
       const { failure } = await ctx.step<VerifyResult>("verify");
       if (!failure) {
-        at.phase = "commit-push";
+        at.phase = run.mode === "merge" ? "push-main" : "commit-push";
         return "continue";
+      }
+      if (run.mode === "merge") {
+        // Nothing has left the container yet: main, the database and production are untouched.
+        await ctx.say(
+          `The merge was stopped: ${failure.label} failed. Nothing was changed. Ask here for a fix, then merge again.\n\n\`\`\`\n${failure.output}\n\`\`\``,
+        );
+        await ctx.finish("failed", { error: `${failure.label} failed` });
+        return "end";
       }
       if (at.fixRound >= MAX_FIX_ROUNDS) {
         await ctx.say(
@@ -174,6 +184,10 @@ export async function runPhase(at: Checkpoint, ctx: PhaseContext): Promise<Next>
       await ctx.finish("deployed", { ...result, reviewReport: at.outcome?.reviewReport });
       return "end";
     }
+    case "push-main":
+      await ctx.step("push-main");
+      at.phase = "deploy-production";
+      return "continue";
     case "deploy-production":
       await ctx.step("deploy-production");
       at.phase = "cleanup";
@@ -205,6 +219,7 @@ export const PHASE_TEXT: Record<string, string> = {
   verify: "verifying",
   "commit-push": "committing and pushing",
   "deploy-preview": "deploying the Preview",
+  "push-main": "pushing main",
   "deploy-production": "deploying production",
   cleanup: "cleaning up",
 };

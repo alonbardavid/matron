@@ -8,6 +8,7 @@ export type Phase =
   | "verify"
   | "commit-push"
   | "deploy-preview"
+  | "push-main"
   | "deploy-production"
   | "cleanup";
 

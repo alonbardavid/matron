@@ -38,9 +38,7 @@ export function repositoryTools(ref: string = MAIN_BRANCH): ToolSet {
     read_file: tool({
       description: `Reads one file from the repository (${on}) and returns its text.`,
       inputSchema: z.object({
-        path: z
-          .string()
-          .describe("Repository-relative path, such as 'SELF-RELEASING-GUIDE.md'"),
+        path: z.string().describe("Repository-relative path, such as 'CLAUDE.md'"),
       }),
       execute: ({ path }) =>
         answer(

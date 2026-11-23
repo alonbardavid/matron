@@ -50,7 +50,6 @@
     "AskSessionObject": { "type": "durable-object", "storage": "sqlite" },
     "AlarmObject": { "type": "durable-object", "storage": "sqlite" },
   },
-  "send_email": [{ "name": "SEND_EMAIL" }],
   "images": { "binding": "IMAGES" },
   "vars": {
     "APP_ORIGIN": "http://localhost:5173",

@@ -35,6 +35,8 @@ async function main(step: StepName): Promise<unknown> {
       return steps.deployPreview();
     case "merge-main":
       return steps.mergeMain();
+    case "push-main":
+      return steps.pushMain();
     case "deploy-production":
       return steps.deployProduction();
     case "cleanup":

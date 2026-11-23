@@ -204,7 +204,7 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
     return {
       propose_plan: tool({
         description:
-          "Records the plan for the coding agent and the change's short name, which becomes the branch name. Call it before showing the member a plan.",
+          "Records the plan for the coding agent and the change's short name, which becomes the branch name. Call it before showing the member a plan, and again once their answers settle what the plan left open.",
         inputSchema: z.object({
           name: z
             .string()
@@ -215,16 +215,16 @@ export class BuildSessionObject extends Think<Cloudflare.Env, SessionState> {
         }),
         execute: async ({ name, plan }) => {
           await this.recordPlan(name, plan);
-          return "The plan is recorded. Show it to the member and ask them to confirm it.";
+          return "The plan is recorded.";
         },
       }),
       start_build: tool({
         description:
-          "Hands the recorded plan to the builder, which starts on a new branch. Call it only once the member has agreed to the plan.",
+          "Hands the recorded plan to the builder, which starts on a new branch. Call it once nothing in the plan is left for the member to decide: they agreed to it, or their request already settled it.",
         inputSchema: z.object({}),
         execute: async (_input, { toolCallId }) => {
           if (!(await this.ctx.storage.get<string>(KEYS.plan)))
-            return "No plan is recorded yet: propose one first and have the member confirm it.";
+            return "No plan is recorded yet: record one with propose_plan first.";
           await this.startBuild({}, toolCallId);
           return "The build has started. Tell the member in one short sentence.";
         },

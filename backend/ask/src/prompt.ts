@@ -1,5 +1,6 @@
 import type { Principal } from "@backend/commons/principal";
 import { renderTemplate } from "@backend/commons/template";
+import productGuide from "../../../docs/app-product-guide.md?raw";
 import databaseAdmin from "../prompts/database-admin.md?raw";
 import databaseMember from "../prompts/database-member.md?raw";
 import database from "../prompts/database.md?raw";
@@ -19,6 +20,7 @@ export function askSystemPrompt({ principal, timeZone, now }: AskPromptContext):
     userRole: principal.role,
     now: now.toISOString(),
     timeZone,
+    productGuide: productGuide.trim(),
     database: `${database.trim()}\n\n${(databasePermissions.can(principal.role, "read_router") ? databaseAdmin : databaseMember).trim()}`,
   }).trim();
 }

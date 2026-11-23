@@ -1,9 +1,11 @@
 # Matron — project rules
 
 Matron is a self-releasing household organizer: one Cloudflare Worker that is router,
-application and builder at once. `SELF-RELEASING-GUIDE.md` is the product and architecture spec; read the
-section you are working on before changing it. This file is a rulebook: keep it short, edit
-in place, never append history.
+application and builder at once. `docs/app-product-guide.md` says what the app does,
+`docs/app-architecture.md` how the application is built, and `docs/router-architecture.md` how
+the router and the builder are; `SELF-RELEASING-GUIDE.md` explains the self-releasing pattern.
+Read the one you are working in before changing it. This file is a rulebook: keep it short,
+edit in place, never append history.
 
 ## Layout
 
@@ -58,6 +60,11 @@ in place, never append history.
   save. Tab reaches every field and button in visual order: no `tabIndex` above 0, no
   clickable `div`s, and a popover with controls in it sets `trapFocus` and `returnFocus`.
   Controls that act at once (a filter, a toggle) are not forms.
+- **Docs change with the code.** A change to what members can do updates
+  `docs/app-product-guide.md` in the same change; a change to how the application or the
+  router is built updates `docs/app-architecture.md` or `docs/router-architecture.md`. The
+  planner's prompt carries the first two in full and the assistant's the product guide, so a
+  stale sentence there misleads every plan and answer.
 - Use `pnpm` (and `pnpx`), never `npm`/`npx`.
 
 ## Traps

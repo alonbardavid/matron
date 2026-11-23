@@ -28,10 +28,11 @@
  *   prepare-continue   reuse the restored checkout (or clone the branch), fetch main → {@link PrepareContinueResult}
  *   prepare-cleanup    make sure the repository's dependencies exist for a cleanup
  *   install            pnpm install, skipped when the lockfile is already installed
- *   verify             type-check, build, tests → {@link VerifyResult}
+ *   verify             type-check and build; in a merge the whole test suite too → {@link VerifyResult}
  *   commit-push        commit the working tree with the input's message and push the branch → {@link CommitPushResult}
  *   deploy-preview     build, clone the production D1 into `branch.databaseName` if needed, migrate it, deploy the Preview → {@link DeployResult}
- *   merge-main         fast-forward main onto the branch and push it (fails when main diverged) → {@link MergeMainResult}
+ *   merge-main         fast-forward main onto the branch in the checkout (fails when main diverged) → {@link MergeMainResult}
+ *   push-main          push main as merge-main left it
  *   deploy-production  build, migrate the production D1, deploy production
  *   cleanup            delete the Preview, the branch D1, the remote branch and the branch's R2 prefix
  *   revert             take production back to where the branch was cut: main to `branch.baseCommit`
@@ -40,8 +41,10 @@
  * The object sequences them: a build or a continue runs prepare, install,
  * agent turns until the agent is done (a question parks the run as `waiting`
  * until the user replies), verify with up to three fix turns, commit-push,
- * deploy-preview; a merge runs merge-main, install, deploy-production,
- * cleanup; an abandon runs prepare-cleanup, cleanup; a revert runs revert.
+ * deploy-preview; a merge runs merge-main, install, verify, push-main,
+ * deploy-production, cleanup, and a verify that fails ends it before anything
+ * outside the container has changed; an abandon runs prepare-cleanup, cleanup;
+ * a revert runs revert.
  *
  * Status rules
  * ------------
@@ -158,6 +161,7 @@ export type StepName =
   | "commit-push"
   | "deploy-preview"
   | "merge-main"
+  | "push-main"
   | "deploy-production"
   | "cleanup"
   | "revert";
