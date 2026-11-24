@@ -16,6 +16,8 @@ It uses:
 * Cloudflare AI Gateway to connect to claude
 * Cloudflare D1 to keep the data and fork off clones for different branches
 
+![Matron's architecture: the main Worker's router sends a request to main or to a branch's Preview Worker, each with its own D1](docs/architecture.svg)
+
 The baseline of how self-releasing apps work can be found in [self-releasing-guide](https://github.com/cloudflare/self-releasing-guide).    
 Other docs can be found in [docs](docs).
 
