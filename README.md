@@ -8,7 +8,7 @@ Matron lets your family manage their shared calendar events and tasks.
 Each user can be enabled to run claude code in a container to change and deploy the app itself.    
 The users and admins can review the changes with live data inside the app and admins can merge the changes for everyone to use.
 
-https://github.com/user-attachments/assets/59503536-a10f-4e58-a5b0-acda4ad5e297
+https://github.com/user-attachments/assets/2d40c9d1-7c7b-4d94-a3b5-ce1f061324e2
 
 Matron runs as one Cloudflare Worker provisioned automatically with all the resources it requires via cloudflare.    
 It uses:    
