@@ -1,51 +1,76 @@
-# Matron
+# Self Releasing Guide
 
 ## Overview
 
-Matron is a family organizer (or household management) application that is self-releasing. It is designed for technically minded individuals to deploy easily into Cloudflare Workers and let users modify the application in production.
+A self releasing app is an app where users may modify the code from within the app itself.    
+This guide is for architecting an app like that on cloudflare workers offerings.
 
-Users can request changes to the application from within the application, and the development processes happen as part of the production workflows.
+The architecture relies on a couple of key concepts:
+1. The worker has access to a git repo containing it's own code
+2. The worker can spin a container on-demand running a coding agent that has access to deploy previews of the same worker
+3. A change is deployed as a branch in code and as a preview in the worker
+4. The app is split into two parts - the router and the app code. The router only runs on main branch and is incharge of delegating to previews when viewing a branch.
 
-Matron is a single deployed Worker on Cloudflare but has three distinct parts: a router layer that handles proxying to specific branches of the code, the application layer that handles the code itself, and a builder layer that handles updating and releasing changes to code.
-
+The guiding principal for this setup is to be as self-contained as possible. 
+These apps are designed to be self-hosted on your own cloudflare account and used by trusted users. 
+As such, convenience trumps robustness and security.  
+ 
+ 
 ## Initial setup
 
-Matron is deployed from the terminal with `pnpm run deploy`. A Workers Paid plan is required. The deploy script:
+Self releasing cloudflare apps are deployed from the terminal with `pnpm run deploy`. A Workers Paid plan is required. The deploy script:
 
 1. Builds the code.
-2. Generates the wrangler configuration. Configuration is never committed; it is generated at build and deploy time from the environment, so the same code deploys as production or as a fork with a different database. The Worker is told only its name and origin; the database, bucket, Artifacts namespace and repository, and the builder image and container application all carry the Worker's name. The planner model and the AI Gateway are constants in code for now.
-3. Creates the production D1 database and R2 bucket if they do not exist, and applies all pending D1 migrations to the production database.
+2. Generates the wrangler configuration per environment/branch so the same code deploys as production or as a fork with a different database. 
+3. All resources are provisioned by the wrangler CLI, these are: 
+    * **Artifact namespace** - to keep the app code 
+    * **D1 database** - for the router and app data
+    * **R2 bucket** - for app images
+    * **Worker** AI - for planner agents models
+    * **Durable** objects - for agent workflows for the planner and builder
+    * **Container image** - for the builder container itself
 4. Builds the builder container image from its Dockerfile and deploys the Worker with wrangler. The image is pushed to the Cloudflare registry as part of the deploy.
-5. Creates the code repository in the Worker's Artifacts namespace and pushes the local repository to it with full history. Artifacts becomes the only source of truth for code from this point.
+5. Creates the code repository in the Worker's Artifacts namespace and pushes the local repository to it with full history.
 6. Sets the Worker secrets.
-7. On a first deploy, prompts for the owner's email and password and creates the owner through better-auth's server API with the `owner` role, so the password is hashed by better-auth itself.
-
-Bindings on the Worker: the production D1 database, the R2 bucket, Images, the Artifacts namespace holding the code repository, the builder container, and an email sending binding. Email is optional; without a configured domain the binding exists but sending fails.
+7. On a first deploy, prompts for the owner's email and password and creates the owner through the api.
 
 Secrets on the Worker:
 
-- `CLOUDFLARE_API_TOKEN`: one token used for everything the router and builder do through the API: creating and deleting D1 databases, deploying and deleting Previews, Artifacts, and AI Gateway runs. The builder receives this token.
+- `CLOUDFLARE_API_TOKEN`: one token used for everything the router and builder do through the API. It requires the following account permissions:
+  - Workers Scripts Edit - to allow the builder to deploy previews and merge, and the router to set secrets on the worker
+  - D1 Edit - to allow the builder to fork the production db for a branch, migrate it and delete it
+  - AI Gateway Run - to allow the planner and the builder to call claude
+  - Workers Containers Edit - a production deploy from the builder applies the builder container's settings
+  - Workers R2 Storage Edit - to allow branch images to be deleted by the builder
 - `SIGNING_KEY`: used to sign the handoff header on requests passed to the application. Generated by the deploy script.
-- Household secrets: values an owner or admin enters in the app settings, such as the client of an OAuth provider members link accounts at. Each is set as a secret of the Worker through Cloudflare's API with `CLOUDFLARE_API_TOKEN` (`backend/arch-settings/src/worker-secrets.ts`); only the names the contract lists (`HOUSEHOLD_SECRETS` in `shared/contract/src/arch/settings.ts`) can be set, and nothing of them is kept in the database. The same value goes to the Worker's Preview base config. Setting or removing one makes Cloudflare deploy the Worker again, and the settings page says so. A deploy leaves them as they are: a secret the deploy does not name stays on the Worker.
 
-The planner and the builder's coding agent call Claude through the account's default AI Gateway, authenticated with `CLOUDFLARE_API_TOKEN`. The gateway is created by its first authenticated request and holds the provider credentials (unified billing, or a stored provider key), set once in the dashboard. No model provider key exists on the Worker. The assistant's model is chosen in the app settings: an Anthropic model, reached through the same gateway with that token so the stored provider key applies, or a Workers AI model, served by the Worker's AI binding. The builder sets the token on each Preview it deploys, so a branch's assistant takes the same route.
+The planner and the builder's coding agent call Claude through the account's default AI Gateway, authenticated with `CLOUDFLARE_API_TOKEN`. 
 
 The deploy prints the Worker URL. The owner signs in and adds the other household members from within the application.
 
 ## Runtime layout
 
-The Worker is one codebase with three parts: router, application, builder. Production runs all three. A fork runs as a Preview of the same Worker, and only its application part is used.
+The Worker is one codebase with three parts: router, application, builder. Production runs all three. 
+A fork runs as a Preview of the same Worker, and only its application part is used.
 
 The router owns authentication and user management with better-auth, stored in the production D1. It handles every request to the production URL:
 
-- Authentication and the build chat are served by the router itself and never proxied.
-- A branch is addressed by `?branch=<id>` on the page URL; the app keeps the parameter on every navigation, so each tab is on its own branch and a branch link can be shared. The router reads it from the request, or else, for everything but a navigation, from the referer: the browser sends the page URL on every same-origin request the page makes, API calls and asset loads alike. A navigation reads only its own URL, since its referer is the page it left. Absent means main; naming a branch that does not exist or is no longer live answers 404, a "branch does not exist" page for a navigation. If it is main, the router handles the application request inside the production Worker. Otherwise it proxies the request to the branch's Preview over its public URL. The Worker uses `global_fetch_strictly_public` so the proxy reaches a same-zone Preview through its URL.
+Authentication and the build chat are served by the router itself and never proxied.
+A branch is addressed by `?branch=<id>` on the page URL; the app keeps the parameter on every navigation, so each tab is on its own branch and a branch link can be shared. 
+The router reads it from the request, or else, for everything but a navigation, from the referer: the browser sends the page URL on every same-origin request the page makes, API calls and asset loads alike.
+A navigation reads only its own URL, since its referer is the page it left. 
+If it is main, the router handles the application request inside the production Worker. Otherwise it proxies the request to the branch's Preview over its public URL.
+The Worker uses `global_fetch_strictly_public` so the proxy reaches a same-zone Preview through its URL.
 
-The boundary between router and application is a single request handoff: the router strips the session cookie, attaches the principal (or none, when signed out) and the branch in a handoff header signed with `SIGNING_KEY`, and passes the request on. Locally that is a function call into the application; for a branch it is the same request sent over the network to the Preview. The application sees an identical request either way and does not know which path it came through.
+The boundary between router and application is a single request handoff: the router strips the session cookie, attaches the principal (or none, when signed out) and the branch in a handoff header signed with `SIGNING_KEY`, and passes the request on. 
+Locally that is a function call into the application; for a branch it is the same request sent over the network to the Preview. 
+The application sees an identical request either way and does not know which path it came through.
 
-The application part accepts the principal and branch only from the signed handoff header. A Preview reached directly, without a valid signature, returns an error. Previews do not inherit production secrets, so they come from the Worker's Preview base config, which Cloudflare gives every Preview: the deploy script puts `SIGNING_KEY` and `BETTER_AUTH_SECRET` there when it generates them (the Preview's database copy holds values the latter sealed) and `CLOUDFLARE_API_TOKEN` when it is given one (the assistant on a branch reaches its model through the gateway with it; a narrower token may be set there by hand), and the app settings put the household secrets there when they are saved. The builder sets no secret on a Preview. A secret changed by hand on the Worker is changed in the Preview base config the same way.
+The application part accepts the principal and branch only from the signed handoff header. A Preview reached directly, without a valid signature, returns an error.
+Previews do not inherit production secrets, so they come from the Worker's Preview base config, which Cloudflare gives every Preview: the deploy script puts `SIGNING_KEY` and `BETTER_AUTH_SECRET` there when it generates them (the Preview's database copy holds values the latter sealed) and `CLOUDFLARE_API_TOKEN` when it is given one (the assistant on a branch reaches its model through the gateway with it; a narrower token may be set there by hand), and the app settings put the household secrets there when they are saved. 
+The builder sets no secret on a Preview. A secret changed by hand on the Worker is changed in the Preview base config the same way.
 
-A Preview binds its own D1 database. Images and email are shared with production.
+A Preview binds its own D1 database.
 
 The frontend is part of the application. Every request runs the Worker first, since only the Worker knows which branch a request belongs to: the page, its routes and the bundle's hashed JS and CSS all go through the handoff, and a branch serves them from the Preview's assets. Main's asset layer would otherwise answer a page path with main's `index.html` and a branch's bundle with its fallback.
 
@@ -72,35 +97,9 @@ All router routes live under `/api/arch/`. Everything under this prefix is handl
 
 Every other path is an application request and goes through the handoff described above.
 
-## Permissions
-
-Users have one of three roles: `owner`, `admin`, `member`. What each role may do is hardcoded, not stored. Each feature declares its own resource in `src/permissions.ts` with `definePermissions` from `@backend/commons/permissions`: the resource's actions and the actions each role gets. `backend/access/src/registry.ts` lists every feature's definition and builds the roles with better-auth's access control (`better-auth/plugins/access`), which the admin plugin also checks on its own user management routes, on the server and in the browser's auth client.
-
-The resources so far:
-
-- `branch` (router): `view`, `create`, `merge`. `owner` has all three, `admin` has `view, create`, `member` none: a member uses main only; the branch dropdown is hidden and switching is refused.
-- `household` (`manage`): the household's members and settings; owners and admins.
-- `member` (`view`): the list of members to share with; everyone.
-- `task` and `event`: `view`, `create`, `update`, `share`, `remove`; everyone. The object's own rule (its creator, who it is shared with) decides which ones.
-- `calendar` (a member's own calendars, sharing them, and their Google Calendar link): `view`, `create`, `update`, `share`, `remove`, `connect`; everyone, on their own only.
-- `conversation`: `view`, `create`, `chat`, `rename`, `archive`; everyone, on their own conversations.
-- `database` (the assistant's read-only queries): `read` for everyone, `read_router` for owners and admins.
-
-A service action first calls its resource's `require(principal, action)`, then its object rule. Routes and screens only mirror these checks. The owner is created by the deploy script.
-
 ## Application
 
-Application routes live under `/api/app/`. The household starts with a calendar, tasks, conversations and an assistant; what else the application does is added by users through build sessions. A procedure answers signed-in members only, unless it is a public one: those are under `/api/app/public/`, with a contract (`shared/contract/src/app/public`) and an implementation (`backend/api/src/public`) of their own. The router passes a signed-out request for that path to main's application, and each public procedure says itself what makes a call count.
-
-- Calendar: events with a title, an all-day span or a time range, a creator, the users it is shared with and, among those, the attendees (everyone shared with, by default). Day, week and month views.
-  - Repeating follows the iCalendar standard (RFC 5545), expanded with the `rrule` library: an event's start is its first occurrence (DTSTART, in its own time zone) and its RRULE says the rest: daily, weekly on chosen weekdays, monthly on days of the month or the nth weekday (the last Friday), or yearly; every so many; forever, until a day, or a number of times. Times hold across daylight-saving changes. One occurrence can be changed (title, description, times) or removed on its own, as an exception keyed by when it was due; stopping a repetition keeps the occurrences before that day.
-  - Every event belongs to one of its creator's calendars, and shows in that calendar's colour. A calendar has an owner, a name, a colour and a source: `matron`, or `google` for one imported from the owner's Google Calendar. Each member has a default Matron calendar, made on first need, where new events go; they add, rename, recolour and remove others in their settings.
-  - Sharing. An owner shares any of their calendars, Matron or Google, read-only with other members: a viewer sees every event in it, can change nothing, and picks their own colour for it, or stops seeing it. An event shared with a member on its own shows in one of their calendars, in that calendar's colour: the one they placed it in, else their calendar for shared events, else their default. A placement survives the creator's edits; removing the calendar it was placed in sends it back.
-  - Google Calendar import, one way: Google to Matron. Once the household's Google app is set up in the app settings, each member links their own Google account from their settings, on main only, since Google returns to production and a branch's database is a copy. Each Google calendar they pick is a calendar of theirs here. A sync mirrors a month back and a year ahead: a repeating Google event arrives as a series with its RRULE as is, its changed and cancelled instances (and EXDATEs) as exceptions; a series Matron cannot expand the same way (RDATE, EXRULE) arrives as Google's own instances. Changes update in place, and events gone from Google go. Every imported event links back to Google. Imported events are read-only in Matron except for who they are shared with. On production Google tells of each change, and that calendar is synced then; production also syncs every connection in full once a day. A branch has neither; a member syncs its copy from their settings, which is a way to see Google data on new code. Disconnecting removes the imported calendars and their events, unlinks the account and asks Google to forget the grant.
-- Tasks: a title, an optional description, a creator, the users it is shared with and, among those, the assignees. A task may have a due date and can be completed.
-- Conversations: the user's ask sessions and, for builders, their build sessions. An ask session records the branch it was started on and is continued only there: a Preview's database begins as a copy of production, so main's conversations are listed on a branch but cannot be opened, and the Ask button always starts a new one. The chat socket names its branch in the URL, since a socket carries no referer.
-- Ask: an assistant on the Agents SDK's Think harness, under the application. Its tools wrap the services the user could use themselves, so the same permissions apply, plus one read-only query on the database: a single SELECT, checked against the tables the user may read (the household's own tables and `user` for everyone; the router's tables for owners and admins only; the `file` table for owners only).
-- Settings: a member changes their name, their picture and password, not their email. A picture is stored as a square JPEG under the branch's `avatars` folder; replacing or removing one deletes the file it replaces when the branch wrote it. Owners and admins manage users (add, remove, change roles) and the app settings: the Anthropic model the planner and builder use, the assistant's model, which is either an Anthropic model or anything the AI Gateway serves, and the household secrets. Secrets entered there are write-only: the page shows only their first few characters and asterisks, and Replace takes a new one. A member manages their calendars and connects their Google Calendar in their own settings.
+Application routes live under `/api/app/`. 
 
 ## Database
 
@@ -171,6 +170,6 @@ Divergence is only checked when merging. If main has diverged, the merge call fa
 
 ## Upstream updates
 
-A deployment's repository began as a push of the upstream repository, `alonbardavid/matron` on GitHub (`UPSTREAM` in `@backend/arch-upstream/source`). The repository keeps a branch named `upstream/main` that follows it. The deploy script pushes it beside main when it does not exist yet, at main's commit. The owner's troubleshooting page has a Branches tab: every branch, archived ones on request, with who created it and its session. Its "Check updates" button pulls upstream's `main` into that branch and compares it with main, all in the Worker's memory: it fetches main from the repository and upstream over the public remote without credentials, pushes the `upstream/main` branch with a short-lived token, and says whether main already contains its head.
+A deployment's repository began as a push of the upstream repository, (`UPSTREAM` in `@backend/arch-upstream/source`). The repository keeps a branch named `upstream/main` that follows it. The deploy script pushes it beside main when it does not exist yet, at main's commit. The owner's troubleshooting page has a Branches tab: every branch, archived ones on request, with who created it and its session. Its "Check updates" button pulls upstream's `main` into that branch and compares it with main, all in the Worker's memory: it fetches main from the repository and upstream over the public remote without credentials, pushes the `upstream/main` branch with a short-lived token, and says whether main already contains its head.
 
 When it does not, "Merge into a new branch" starts an upstream update from the branch as the check left it, without pulling again. It is a build session like any other with its request and plan written for it, so the build starts without a planner turn: the same two moves the planner makes with its tools, recording a plan and starting the build, made from code. The plan names the commit and says how to merge it: the commit is already in the clone, conflicts are resolved keeping both sides, and upstream's side is taken for files the runner owns. The builder is given that plan like any other and knows nothing more about it. The session's branch has type `upstream-pull`. From there it is a regular build: verify, commit and push, a Preview, follow-ups in the chat, and a merge from the branch menu. One upstream update is open at a time. Upstream changes to `apps/builder/` apply only after the next deploy from a terminal, since deploys from the builder reuse the published image.

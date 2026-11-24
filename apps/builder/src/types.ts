@@ -48,6 +48,7 @@ export type StepName =
   | "commit-push"
   | "deploy-preview"
   | "merge-main"
+  | "push-main"
   | "deploy-production"
   | "cleanup"
   | "revert";

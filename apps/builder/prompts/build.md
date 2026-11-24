@@ -14,6 +14,6 @@ You are starting a new change on branch `{{branch}}`.
 
 {{attachments}}
 
-Read `CLAUDE.md` and the relevant parts of `SELF-RELEASING-GUIDE.md`, then implement the plan. When the
+Read `CLAUDE.md` and `docs/app-architecture.md`, then implement the plan. When the
 code type-checks, the tests that might be affected pass and you are satisfied, finish with
 `status: done`.

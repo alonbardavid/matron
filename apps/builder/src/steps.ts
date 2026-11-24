@@ -77,11 +77,15 @@ const DEV_SERVERS: {
 ];
 const SERVER_START_TIMEOUT_MS = 120_000;
 
-const VERIFICATION: { label: string; args: string[] }[] = [
+type Check = { label: string; args: string[] };
+
+/** What every build passes before it is committed. Its tests are the agent's: the ones its change might affect. */
+const BUILD_CHECKS: Check[] = [
   { label: "pnpm type-check", args: ["type-check"] },
   { label: "pnpm build", args: ["build"] },
-  { label: "pnpm test", args: ["test"] },
 ];
+/** What a merge passes before main is pushed: the same, and the whole test suite. */
+const MERGE_CHECKS: Check[] = [...BUILD_CHECKS, { label: "pnpm test", args: ["test"] }];
 
 /**
  * The steps the BuilderObject runs, one harness turn each, in the order it
@@ -221,9 +225,14 @@ export class Steps {
     progress("dev servers ready");
   }
 
+  /**
+   * Checks the checkout as it stands and changes nothing outside it. A build is
+   * type-checked and built; a merge also runs every test, against the dev servers.
+   */
   async verify(): Promise<VerifyResult> {
-    await this.warmServers();
-    for (const step of VERIFICATION) {
+    const merging = this.run.mode === "merge";
+    if (merging) await this.warmServers();
+    for (const step of merging ? MERGE_CHECKS : BUILD_CHECKS) {
       progress(`running ${step.label}`);
       const result = await exec("pnpm", step.args, {
         cwd: this.paths.repo,
@@ -255,7 +264,10 @@ export class Steps {
     return deployPreview(this.deployContext());
   }
 
-  /** Fast-forwards main onto the branch and pushes it; fails when main has diverged. */
+  /**
+   * Fast-forwards main onto the branch in a fresh checkout; fails when main
+   * has diverged. Nothing is pushed: the merge is verified first.
+   */
   async mergeMain(): Promise<MergeMainResult> {
     const g = await this.clone();
     await git.checkout(g, "main");
@@ -263,9 +275,13 @@ export class Steps {
     if (!(await git.mergeFastForward(g, `origin/${this.run.branch.name}`))) {
       throw new BuilderError("main has diverged");
     }
-    await git.push(g, "main");
-    progress("main pushed");
     return { headCommit: await git.revParse(g) };
+  }
+
+  /** Pushes main as merge-main left it: the first thing a merge changes outside the container. */
+  async pushMain(): Promise<void> {
+    await git.push(this.gitContext(), "main");
+    progress("main pushed");
   }
 
   async deployProduction(): Promise<void> {

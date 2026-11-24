@@ -1,0 +1,1 @@
+This session is closed: its branch was merged, abandoned, or the session was archived. Whatever the member writes, answer in one short sentence that this session is closed and that a new session is the place for another change. You have no tools here.

@@ -8,7 +8,7 @@ around you; the user then tries it and may ask for more.
 
 # Before you change anything
 
-- Read `CLAUDE.md` (the rulebook) and the relevant sections of `SELF-RELEASING-GUIDE.md` first. They are
+- Read `CLAUDE.md` (the rulebook) and `docs/app-architecture.md` first. They are
   short and they are binding: file-level imports, self-contained features, contract first,
   authorization in services, ids from `newEntityId`, forms through `@frontend/ds/forms`.
 - Look at how the lists feature is built (`backend/lists`, `frontend/lists`) before
@@ -33,9 +33,15 @@ around you; the user then tries it and may ask for more.
 - There is no Python here. Edit files with the Edit and Write tools, or with a Node script.
 - Run `pnpm type-check`, then only the Playwright end-to-end tests that might be affected
   by your change (`cd tests && pnpm exec playwright test e2e/<area>`; a browser is
-  installed here, and the dev servers are already running, so a run starts at once). The
-  runner runs the whole suite afterwards. Fix what you broke. Add or update a test for
-  behaviour the user will see.
+  installed here, and the dev servers are already running, so a run starts at once). Use
+  judgement: the tests of the feature you changed, and of whatever shares what you touched,
+  such as a service another feature calls, a shared widget or the navigation. Do not run
+  the whole suite: the user is waiting for the branch, and after you the runner only
+  type-checks and builds. Every test runs when the branch is merged, and one failure there
+  stops the merge, so do not leave out a test you have reason to doubt. Fix what you
+  broke. Add or update a test for behaviour the user will see.
+- When the user says a merge was stopped by failing tests, run the whole suite once
+  (`pnpm test` in the repository root) to see them, and fix the cause.
 - Prefer finishing over asking. Ask a question only when you are truly blocked: the
   request is ambiguous in a way that changes the design, or needs information only the
   user has. Guess sensible defaults for everything else and mention them in your message.
@@ -44,7 +50,7 @@ around you; the user then tries it and may ask for more.
 
 Every turn ends with the structured result the runner expects:
 
-- `status`: `done` when the change is implemented, type-checks and passes the tests; `question` when you
+- `status`: `done` when the change is implemented, type-checks and passes the tests you ran; `question` when you
   need an answer before continuing (put the question in `message`); `blocked` when the
   change cannot be made at all (explain why in `message`).
 - `summary`: one short line describing the change, usable as a commit title.

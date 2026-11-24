@@ -4,8 +4,9 @@
 // exist yet, generates the production wrangler config, deploys the Worker,
 // pushes the code into the Artifacts repository and creates the owner on a
 // first deploy. Every Cloudflare call goes through wrangler or the REST API,
-// authenticated with CLOUDFLARE_API_TOKEN from the shell or, without one, with
-// wrangler's own login. See docs/deployment.md.
+// authenticated with wrangler's own login (or CLOUDFLARE_API_TOKEN, when the
+// shell has one). The token the Worker keeps is another, narrower one:
+// WORKER_API_TOKEN. See docs/deployment.md.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,16 +23,13 @@ const backendDir = join(root, "apps/backend");
 const generatedConfig = "dist/worker/wrangler.generated.production.json"; // relative to apps/backend
 const API = "https://api.cloudflare.com/client/v4";
 
+// What the Worker's own token needs: the router and the builder act with it.
 const TOKEN_PERMISSIONS = [
   "Account / Workers Scripts / Edit",
   "Account / D1 / Edit",
-  "Account / Workers R2 Storage / Edit",
-  "Account / Artifacts / Edit",
   "Account / AI Gateway / Run",
   "Account / Workers Containers / Edit",
-  "Account / Cloudflare Images / Edit",
-  "Account / Email Sending / Edit",
-  "Account / Account Settings / Read",
+  "Account / Workers R2 Storage / Edit",
 ];
 
 const USAGE = `Usage: pnpm run deploy [flags]   (or: pnpm build && node scripts/deploy.mjs [flags])
@@ -45,8 +43,11 @@ const USAGE = `Usage: pnpm run deploy [flags]   (or: pnpm build && node scripts/
   --owner-password <pw>    Prompted without echo when omitted
   --help
 
-Shell: CLOUDFLARE_API_TOKEN (stored on the Worker; without it wrangler's login is used
-and the secret is left for later), optional CLOUDFLARE_ACCOUNT_ID, BUILDER_IMAGE (with --skip-image).`;
+The deploy runs with wrangler's login (wrangler login).
+Shell: WORKER_API_TOKEN (the token the Worker keeps to build and deploy with; give it once, or
+again to replace it), optional CLOUDFLARE_ACCOUNT_ID, BUILDER_IMAGE (with --skip-image).
+A CLOUDFLARE_API_TOKEN in the shell takes the login's place, and is the one the Worker keeps
+when WORKER_API_TOKEN is not given.`;
 
 // ---------------------------------------------------------------- helpers
 
@@ -251,15 +252,16 @@ if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(workerName)) {
   fail(`--name must be lowercase letters, digits and dashes, got "${workerName}"`);
 }
 
-const hasApiToken = Boolean(process.env.CLOUDFLARE_API_TOKEN);
-if (!hasApiToken) {
-  console.log(
-    "CLOUDFLARE_API_TOKEN is not set: deploying with wrangler's login. The Worker needs the token\n" +
-      "as a secret before it can build: create one at https://dash.cloudflare.com/profile/api-tokens with\n" +
-      TOKEN_PERMISSIONS.map((p) => `  - ${p}`).join("\n") +
-      "\nand set it with `export CLOUDFLARE_API_TOKEN=... && pnpm run deploy`.",
-  );
-}
+// The token the Worker keeps. The deploy itself runs as wrangler does: its login,
+// or CLOUDFLARE_API_TOKEN when the shell has one.
+const workerToken =
+  process.env.WORKER_API_TOKEN?.trim() ||
+  process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+  undefined;
+const WORKER_TOKEN_HELP =
+  "Create one at https://dash.cloudflare.com/profile/api-tokens with\n" +
+  TOKEN_PERMISSIONS.map((p) => `    - ${p}`).join("\n") +
+  "\n  and give it with `WORKER_API_TOKEN=... pnpm run deploy`.";
 
 if (!existsSync(join(backendDir, ".wrangler/deploy/config.json"))) {
   fail(
@@ -302,8 +304,8 @@ if (accountId) {
   const accounts = await cfApi("/accounts?per_page=50");
   if (!accounts.ok) {
     fail(
-      `GET /accounts failed: ${describeErrors(accounts.errors)}\nThe token needs at least these permissions:\n` +
-        TOKEN_PERMISSIONS.map((p) => `  - ${p}`).join("\n"),
+      `GET /accounts failed: ${describeErrors(accounts.errors)}\n` +
+        "Log in again with wrangler login, or set CLOUDFLARE_ACCOUNT_ID.",
     );
   }
   if (accounts.result.length !== 1) {
@@ -395,7 +397,7 @@ step(`Artifacts namespace "${workerName}"`);
     else {
       fail(
         `could not create the Artifacts namespace: ${describeErrors(created.errors)}\n` +
-          "Artifacts needs a Workers Paid plan and the token needs Artifacts Edit.",
+          "Artifacts needs a Workers Paid plan, and a CLOUDFLARE_API_TOKEN deploying in the login's place needs Artifacts Edit.",
       );
     }
   }
@@ -581,7 +583,7 @@ let settingNow;
     fail("could not list the Worker's secrets");
   }
   const secrets = {};
-  if (hasApiToken) secrets.CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+  if (workerToken) secrets.CLOUDFLARE_API_TOKEN = workerToken;
   for (const generated of ["BETTER_AUTH_SECRET", "SIGNING_KEY"]) {
     if (!existing.includes(generated))
       secrets[generated] = randomBytes(32).toString("hex");
@@ -597,14 +599,17 @@ let settingNow;
   }
   writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
   console.log(`  setting: ${Object.keys(secrets).join(", ") || "nothing new"}`);
-  if (hasApiToken) {
+  if (workerToken) {
     console.log(
-      "  WARNING: CLOUDFLARE_API_TOKEN is stored as a Worker secret. The router creates databases and\n" +
-        "  Previews with it, and the builder container receives it. Keep its permissions to the list above.",
+      "  WARNING: the token is stored as the Worker secret CLOUDFLARE_API_TOKEN. The router reaches the models\n" +
+        "  with it and hands it to the builder container, which creates branch databases and deploys with it.\n" +
+        "  Keep its permissions to these:\n" +
+        TOKEN_PERMISSIONS.map((p) => `    - ${p}`).join("\n"),
     );
   } else if (!existing.includes("CLOUDFLARE_API_TOKEN")) {
     console.log(
-      "  CLOUDFLARE_API_TOKEN is not set on the Worker: building stays off until it is.",
+      "  The Worker has no API token: the app runs, but building stays off until it has one.\n" +
+        `  ${WORKER_TOKEN_HELP}`,
     );
   }
 }

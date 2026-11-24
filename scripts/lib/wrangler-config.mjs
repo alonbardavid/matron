@@ -76,9 +76,6 @@ export function generateWranglerConfig(emitted, options) {
     r2_buckets: [{ binding: "FILES", bucket_name: options.workerName }],
     artifacts: [{ binding: "ARTIFACTS", namespace: options.workerName }],
     images: { binding: "IMAGES" },
-    // Workers AI and the AI Gateway behind it; a Preview reaches models only this way.
-    ai: { binding: "AI" },
-    send_email: [{ name: "SEND_EMAIL" }],
   };
 
   const vars = { ...(config.vars ?? {}) };
