@@ -8,6 +8,8 @@ Matron lets your family manage their shared calendar events and tasks.
 Each user can be enabled to run claude code in a container to change and deploy the app itself.    
 The users and admins can review the changes with live data inside the app and admins can merge the changes for everyone to use.
 
+https://github.com/user-attachments/assets/2d40c9d1-7c7b-4d94-a3b5-ce1f061324e2
+
 Matron runs as one Cloudflare Worker provisioned automatically with all the resources it requires via cloudflare.    
 It uses:    
 * Cloudflare artifact to keep the code alongside the app itself
@@ -15,6 +17,8 @@ It uses:
 * Cloudflare worker previews to route and expose multiple branches of the app 
 * Cloudflare AI Gateway to connect to claude
 * Cloudflare D1 to keep the data and fork off clones for different branches
+
+![Matron's architecture: the main Worker's router sends a request to main or to a branch's Preview Worker, each with its own D1](docs/architecture.svg)
 
 The baseline of how self-releasing apps work can be found in [self-releasing-guide](https://github.com/cloudflare/self-releasing-guide).    
 Other docs can be found in [docs](docs).
@@ -37,7 +41,7 @@ Installing Matron means deploying it once from your machine. After that the app 
    pnpm install
    ```
 
-2. Log wrangler in to your Cloudflare account. The deploy runs with this login:
+2. Sign in to your Cloudflare account with wrangler. The deploy runs with this login:
 
    ```sh
    pnpm --filter @app/backend exec wrangler login
