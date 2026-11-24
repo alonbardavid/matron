@@ -41,7 +41,7 @@ Installing Matron means deploying it once from your machine. After that the app 
    pnpm install
    ```
 
-2. Log wrangler in to your Cloudflare account. The deploy runs with this login:
+2. Sign in to your Cloudflare account with wrangler. The deploy runs with this login:
 
    ```sh
    pnpm --filter @app/backend exec wrangler login
