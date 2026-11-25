@@ -3,12 +3,12 @@
 > [!WARNING]
 > This is a POC and not production ready. Expect bugs and frequent breaking changes. Use at your own risk.
 
-A self-releasing family organizer app (A.K.A household manager).     
-Matron lets your family manage their shared calendar events and tasks.    
-Each user can be enabled to run claude code in a container to change and deploy the app itself.    
-The users and admins can review the changes with live data inside the app and admins can merge the changes for everyone to use.
+A self-releasing family organizer app (A.K.A household manager) where you can manage your family's calendar events and tasks.      
 
-https://github.com/user-attachments/assets/2d40c9d1-7c7b-4d94-a3b5-ce1f061324e2
+Matron is unique that it is both the app you use and the coding agent that lets you customize the program to fit your needs.    
+Matron can deploy changes to itself upon request, and you can review the changes in the app itself.
+
+https://github.com/user-attachments/assets/3ed03702-e299-4a86-97f8-d64aade773f2
 
 Matron runs as one Cloudflare Worker provisioned automatically with all the resources it requires via cloudflare.    
 It uses:    
